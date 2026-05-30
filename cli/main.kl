@@ -2,9 +2,112 @@ using io;
 using fs;
 using sys;
 
-import "../lexer/token.kl" { Token, TokenType }
 import "../lexer/scanner.kl" { scan }
 import "../lexer/keywords.kl" { KeywordEntry, all_keywords }
+import "../parser/parser.kl"
+
+// AST type definitions are duplicated here from parser/ast.kl so that the
+// entry-module pre-pass in the bootstrap typechecker registers stubs
+// before resolving variant param types — without that, recursive Expr /
+// Stmt / Decl variant params silently resolve to Void when imported,
+// breaking `Expr::Unary(let _, let r, ...) => ...` style destructuring.
+// The runtime matches enum variants by enum-name + variant-name across
+// modules, so values built inside parser.kl line up with these mirror
+// definitions.
+
+enum BinaryOp {
+  Add, Sub, Mul, Div, Mod,
+  Eq, Neq, Lt, Gt, Le, Ge,
+  And, Or,
+  BitAnd, BitOr, BitXor, Shl, Shr,
+}
+
+enum UnaryOp { Neg, Not, BitNot, }
+
+enum AssignOp { Assign, AddAssign, SubAssign, MulAssign, DivAssign, }
+
+struct TypeExpr {
+  string name;
+  string[] type_args;
+}
+
+enum Expr {
+  IntLit(int, int, int),
+  FloatLit(float, int, int),
+  StringLit(string, int, int),
+  BoolLit(bool, int, int),
+  Ident(string, int, int),
+  Unary(UnaryOp, Expr, int, int),
+  Binary(Expr, BinaryOp, Expr, int, int),
+  Assign(string, AssignOp, Expr, int, int),
+  Call(Expr, TypeExpr[], Expr[], int, int),
+  BindingPat(string, int, int),
+  ArrayPat(Expr[], int, int),
+  EnumPat(string, string, Expr[], int, int),
+  Match(Expr, MatchArm[], int, int),
+  Cast(TypeExpr, Expr, Expr, int, int),
+  NsAccess(string, string, int, int),
+  FieldAccess(Expr, string, int, int),
+  Index(Expr, Expr, int, int),
+  StructLit(TypeExpr, FieldInit[], int, int),
+  ArrayLit(Expr[], int, int),
+  None,
+}
+
+struct MatchArm {
+  Expr pattern;
+  Expr guard_expr;
+  Expr body;
+}
+
+struct FieldInit {
+  string name;
+  Expr value;
+}
+
+struct Parameter {
+  TypeExpr type;
+  string name;
+}
+
+enum Stmt {
+  ExprStmt(Expr, int, int),
+  ReturnStmt(Expr, int, int),
+  VarDecl(string, TypeExpr, string, Expr, int, int),
+  Block(Stmt[], int, int),
+  If(Expr, Stmt, Stmt, int, int),
+  Guard(Expr, Stmt, int, int),
+  While(Expr, Stmt, int, int),
+  For(Stmt, Expr, Stmt, Stmt, int, int),
+  Break(int, int),
+  Continue(int, int),
+  None,
+}
+
+struct FieldDef {
+  TypeExpr type;
+  string name;
+}
+
+struct EnumVariant {
+  string name;
+  TypeExpr[] param_types;
+}
+
+enum Decl {
+  FunctionDecl(string, TypeExpr, string[], Parameter[], Stmt, bool, int, int),
+  StructDecl(string, string[], FieldDef[], bool, int, int),
+  EnumDecl(string, EnumVariant[], bool, int, int),
+  ImportDecl(string, string, string[], int, int),
+  UsingDecl(string, bool, int, int),
+  TopLevelStmt(Stmt, int, int),
+}
+
+struct Program {
+  Decl[] declarations;
+}
+
+// --- token printer (existing --tokens / default behaviour) -----------------
 
 string tt_name(TokenType t) {
   KeywordEntry[] kws = all_keywords();
@@ -52,19 +155,7 @@ void print_token(Token t) {
   }
 }
 
-int main() {
-  string[] argv = sys::args();
-  if (argv.len() < 1) {
-    io::err.line("usage: kinglet cli/main.kl <source.kl>");
-    return 64;
-  }
-  string path = argv[0];
-  string source = fs::__read(path);
-  if (source == null) {
-    io::err.line("cannot read file: {}", path);
-    return 66;
-  }
-
+int run_tokens(string source) {
   Token[] tokens = scan(source);
   bool had_error = false;
   for (int i = 0; i < tokens.len(); i = i + 1) {
@@ -74,4 +165,393 @@ int main() {
   }
   if (had_error) { return 65; }
   return 0;
+}
+
+// --- ast printer (--ast flag) ---------------------------------------------
+
+string indent_str(int depth) {
+  string s = "";
+  int i = 0;
+  while (i < depth) { s = s + "  "; i = i + 1; }
+  return s;
+}
+
+string binary_op_name(BinaryOp op) {
+  return op match {
+    BinaryOp::Add    => "+",
+    BinaryOp::Sub    => "-",
+    BinaryOp::Mul    => "*",
+    BinaryOp::Div    => "/",
+    BinaryOp::Mod    => "%",
+    BinaryOp::Eq     => "==",
+    BinaryOp::Neq    => "!=",
+    BinaryOp::Lt     => "<",
+    BinaryOp::Gt     => ">",
+    BinaryOp::Le     => "<=",
+    BinaryOp::Ge     => ">=",
+    BinaryOp::And    => "&&",
+    BinaryOp::Or     => "||",
+    BinaryOp::BitAnd => "&",
+    BinaryOp::BitOr  => "|",
+    BinaryOp::BitXor => "^",
+    BinaryOp::Shl    => "<<",
+    BinaryOp::Shr    => ">>",
+  };
+}
+
+string unary_op_name(UnaryOp op) {
+  return op match {
+    UnaryOp::Neg    => "-",
+    UnaryOp::Not    => "!",
+    UnaryOp::BitNot => "~",
+  };
+}
+
+string assign_op_name(AssignOp op) {
+  return op match {
+    AssignOp::Assign    => "=",
+    AssignOp::AddAssign => "+=",
+    AssignOp::SubAssign => "-=",
+    AssignOp::MulAssign => "*=",
+    AssignOp::DivAssign => "/=",
+  };
+}
+
+string type_name(TypeExpr t) {
+  string s = t.name;
+  if (t.type_args.len() > 0) {
+    s = s + "<";
+    for (int i = 0; i < t.type_args.len(); i = i + 1) {
+      if (i > 0) { s = s + ","; }
+      s = s + t.type_args[i];
+    }
+    s = s + ">";
+  }
+  return s;
+}
+
+void print_expr(Expr e, int depth) {
+  string pad = indent_str(depth);
+  e match {
+    Expr::IntLit(let v, let _l, let _c)    => io::out.line("{}IntLit {}", pad, v),
+    Expr::FloatLit(let v, let _l, let _c)  => io::out.line("{}FloatLit {}", pad, v),
+    Expr::StringLit(let v, let _l, let _c) => io::out.line("{}StringLit \"{}\"", pad, display_string(v)),
+    Expr::BoolLit(let v, let _l, let _c)   => io::out.line("{}BoolLit {}", pad, v),
+    Expr::Ident(let n, let _l, let _c)     => io::out.line("{}Ident {}", pad, n),
+    Expr::Unary(let op, let r, let _l, let _c) => print_unary(op, r, depth),
+    Expr::Binary(let l, let op, let r, let _l, let _c) => print_binary(l, op, r, depth),
+    Expr::Assign(let n, let op, let v, let _l, let _c) => print_assign(n, op, v, depth),
+    Expr::Call(let callee, let _ta, let args, let _l, let _c) => print_call(callee, args, depth),
+    Expr::BindingPat(let n, let _l, let _c) => io::out.line("{}BindingPat {}", pad, n),
+    Expr::ArrayPat(let elems, let _l, let _c) => print_array_pat(elems, depth),
+    Expr::EnumPat(let en, let v, let fields, let _l, let _c) => print_enum_pat(en, v, fields, depth),
+    Expr::Match(let v, let arms, let _l, let _c) => print_match(v, arms, depth),
+    Expr::Cast(let t, let v, let fb, let _l, let _c) => print_cast(t, v, fb, depth),
+    Expr::NsAccess(let ns, let m, let _l, let _c) => io::out.line("{}NsAccess {}::{}", pad, ns, m),
+    Expr::FieldAccess(let o, let f, let _l, let _c) => print_field_access(o, f, depth),
+    Expr::Index(let o, let i, let _l, let _c) => print_index(o, i, depth),
+    Expr::StructLit(let t, let fields, let _l, let _c) => print_struct_lit(t, fields, depth),
+    Expr::ArrayLit(let elems, let _l, let _c) => print_array_lit(elems, depth),
+    Expr::None => io::out.line("{}None", pad),
+  };
+}
+
+void print_unary(UnaryOp op, Expr r, int depth) {
+  io::out.line("{}Unary {}", indent_str(depth), unary_op_name(op));
+  print_expr(r, depth + 1);
+}
+
+void print_binary(Expr l, BinaryOp op, Expr r, int depth) {
+  io::out.line("{}Binary {}", indent_str(depth), binary_op_name(op));
+  print_expr(l, depth + 1);
+  print_expr(r, depth + 1);
+}
+
+void print_assign(string n, AssignOp op, Expr v, int depth) {
+  io::out.line("{}Assign {} {}", indent_str(depth), n, assign_op_name(op));
+  print_expr(v, depth + 1);
+}
+
+void print_call(Expr callee, Expr[] args, int depth) {
+  io::out.line("{}Call", indent_str(depth));
+  print_expr(callee, depth + 1);
+  for (int i = 0; i < args.len(); i = i + 1) {
+    print_expr(args[i], depth + 1);
+  }
+}
+
+void print_array_pat(Expr[] elems, int depth) {
+  io::out.line("{}ArrayPat", indent_str(depth));
+  for (int i = 0; i < elems.len(); i = i + 1) {
+    print_expr(elems[i], depth + 1);
+  }
+}
+
+void print_enum_pat(string en, string v, Expr[] fields, int depth) {
+  io::out.line("{}EnumPat {}::{}", indent_str(depth), en, v);
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    print_expr(fields[i], depth + 1);
+  }
+}
+
+void print_match(Expr v, MatchArm[] arms, int depth) {
+  io::out.line("{}Match", indent_str(depth));
+  print_expr(v, depth + 1);
+  for (int i = 0; i < arms.len(); i = i + 1) {
+    MatchArm a = arms[i];
+    io::out.line("{}Arm", indent_str(depth + 1));
+    io::out.line("{}pattern", indent_str(depth + 2));
+    print_expr(a.pattern, depth + 3);
+    io::out.line("{}guard", indent_str(depth + 2));
+    print_expr(a.guard_expr, depth + 3);
+    io::out.line("{}body", indent_str(depth + 2));
+    print_expr(a.body, depth + 3);
+  }
+}
+
+void print_cast(TypeExpr t, Expr v, Expr fb, int depth) {
+  io::out.line("{}Cast {}", indent_str(depth), type_name(t));
+  print_expr(v, depth + 1);
+  print_expr(fb, depth + 1);
+}
+
+void print_field_access(Expr o, string f, int depth) {
+  io::out.line("{}FieldAccess .{}", indent_str(depth), f);
+  print_expr(o, depth + 1);
+}
+
+void print_index(Expr o, Expr i, int depth) {
+  io::out.line("{}Index", indent_str(depth));
+  print_expr(o, depth + 1);
+  print_expr(i, depth + 1);
+}
+
+void print_struct_lit(TypeExpr t, FieldInit[] fields, int depth) {
+  io::out.line("{}StructLit {}", indent_str(depth), type_name(t));
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    FieldInit fi = fields[i];
+    if (fi.name.len() == 0) {
+      io::out.line("{}field", indent_str(depth + 1));
+    } else {
+      io::out.line("{}field {}", indent_str(depth + 1), fi.name);
+    }
+    print_expr(fi.value, depth + 2);
+  }
+}
+
+void print_array_lit(Expr[] elems, int depth) {
+  io::out.line("{}ArrayLit", indent_str(depth));
+  for (int i = 0; i < elems.len(); i = i + 1) {
+    print_expr(elems[i], depth + 1);
+  }
+}
+
+void print_stmt(Stmt s, int depth) {
+  string pad = indent_str(depth);
+  s match {
+    Stmt::ExprStmt(let e, let _l, let _c) => print_expr_stmt(e, depth),
+    Stmt::ReturnStmt(let v, let _l, let _c) => print_return(v, depth),
+    Stmt::VarDecl(let stor, let t, let n, let init, let _l, let _c) => print_var_decl(stor, t, n, init, depth),
+    Stmt::Block(let stmts, let _l, let _c) => print_block(stmts, depth),
+    Stmt::If(let c, let th, let el, let _l, let _c) => print_if(c, th, el, depth),
+    Stmt::Guard(let c, let body, let _l, let _c) => print_guard(c, body, depth),
+    Stmt::While(let c, let body, let _l, let _c) => print_while(c, body, depth),
+    Stmt::For(let init, let c, let step, let body, let _l, let _c) => print_for(init, c, step, body, depth),
+    Stmt::Break(let _l, let _c) => io::out.line("{}Break", pad),
+    Stmt::Continue(let _l, let _c) => io::out.line("{}Continue", pad),
+    Stmt::None => io::out.line("{}None", pad),
+  };
+}
+
+void print_expr_stmt(Expr e, int depth) {
+  io::out.line("{}ExprStmt", indent_str(depth));
+  print_expr(e, depth + 1);
+}
+
+void print_return(Expr v, int depth) {
+  io::out.line("{}Return", indent_str(depth));
+  print_expr(v, depth + 1);
+}
+
+void print_var_decl(string stor, TypeExpr t, string n, Expr init, int depth) {
+  string label = "VarDecl";
+  if (stor.len() > 0) { label = stor + " VarDecl"; }
+  io::out.line("{}{} {} {}", indent_str(depth), label, type_name(t), n);
+  print_expr(init, depth + 1);
+}
+
+void print_block(Stmt[] stmts, int depth) {
+  io::out.line("{}Block", indent_str(depth));
+  for (int i = 0; i < stmts.len(); i = i + 1) {
+    print_stmt(stmts[i], depth + 1);
+  }
+}
+
+void print_if(Expr c, Stmt th, Stmt el, int depth) {
+  io::out.line("{}If", indent_str(depth));
+  io::out.line("{}cond", indent_str(depth + 1));
+  print_expr(c, depth + 2);
+  io::out.line("{}then", indent_str(depth + 1));
+  print_stmt(th, depth + 2);
+  io::out.line("{}else", indent_str(depth + 1));
+  print_stmt(el, depth + 2);
+}
+
+void print_guard(Expr c, Stmt body, int depth) {
+  io::out.line("{}Guard", indent_str(depth));
+  io::out.line("{}cond", indent_str(depth + 1));
+  print_expr(c, depth + 2);
+  io::out.line("{}else", indent_str(depth + 1));
+  print_stmt(body, depth + 2);
+}
+
+void print_while(Expr c, Stmt body, int depth) {
+  io::out.line("{}While", indent_str(depth));
+  io::out.line("{}cond", indent_str(depth + 1));
+  print_expr(c, depth + 2);
+  io::out.line("{}body", indent_str(depth + 1));
+  print_stmt(body, depth + 2);
+}
+
+void print_for(Stmt init, Expr c, Stmt step, Stmt body, int depth) {
+  io::out.line("{}For", indent_str(depth));
+  io::out.line("{}init", indent_str(depth + 1));
+  print_stmt(init, depth + 2);
+  io::out.line("{}cond", indent_str(depth + 1));
+  print_expr(c, depth + 2);
+  io::out.line("{}step", indent_str(depth + 1));
+  print_stmt(step, depth + 2);
+  io::out.line("{}body", indent_str(depth + 1));
+  print_stmt(body, depth + 2);
+}
+
+void print_decl(Decl d, int depth) {
+  d match {
+    Decl::FunctionDecl(let n, let rt, let tps, let params, let body, let is_pub, let _l, let _c) =>
+      print_function_decl(n, rt, tps, params, body, is_pub, depth),
+    Decl::StructDecl(let n, let tps, let fields, let is_pub, let _l, let _c) =>
+      print_struct_decl(n, tps, fields, is_pub, depth),
+    Decl::EnumDecl(let n, let variants, let is_pub, let _l, let _c) =>
+      print_enum_decl(n, variants, is_pub, depth),
+    Decl::ImportDecl(let path, let alias, let selected, let _l, let _c) =>
+      print_import_decl(path, alias, selected, depth),
+    Decl::UsingDecl(let n, let is_ns, let _l, let _c) =>
+      print_using_decl(n, is_ns, depth),
+    Decl::TopLevelStmt(let s, let _l, let _c) =>
+      print_top_level_stmt(s, depth),
+  };
+}
+
+void print_top_level_stmt(Stmt s, int depth) {
+  io::out.line("{}TopLevelStmt", indent_str(depth));
+  print_stmt(s, depth + 1);
+}
+
+string pub_marker(bool is_pub) {
+  if (is_pub) { return "pub "; }
+  return "";
+}
+
+string format_type_params(string[] tps) {
+  if (tps.len() == 0) { return ""; }
+  string s = "<";
+  for (int i = 0; i < tps.len(); i = i + 1) {
+    if (i > 0) { s = s + ","; }
+    s = s + tps[i];
+  }
+  return s + ">";
+}
+
+void print_function_decl(string n, TypeExpr rt, string[] tps, Parameter[] params, Stmt body, bool is_pub, int depth) {
+  io::out.line("{}{}FunctionDecl {} {}{}", indent_str(depth), pub_marker(is_pub), type_name(rt), n, format_type_params(tps));
+  for (int i = 0; i < params.len(); i = i + 1) {
+    Parameter pr = params[i];
+    io::out.line("{}param {} {}", indent_str(depth + 1), type_name(pr.type), pr.name);
+  }
+  print_stmt(body, depth + 1);
+}
+
+void print_struct_decl(string n, string[] tps, FieldDef[] fields, bool is_pub, int depth) {
+  io::out.line("{}{}StructDecl {}{}", indent_str(depth), pub_marker(is_pub), n, format_type_params(tps));
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    FieldDef fd = fields[i];
+    io::out.line("{}field {} {}", indent_str(depth + 1), type_name(fd.type), fd.name);
+  }
+}
+
+void print_enum_decl(string n, EnumVariant[] variants, bool is_pub, int depth) {
+  io::out.line("{}{}EnumDecl {}", indent_str(depth), pub_marker(is_pub), n);
+  for (int i = 0; i < variants.len(); i = i + 1) {
+    EnumVariant ev = variants[i];
+    io::out.line("{}variant {}", indent_str(depth + 1), ev.name);
+    for (int j = 0; j < ev.param_types.len(); j = j + 1) {
+      io::out.line("{}param {}", indent_str(depth + 2), type_name(ev.param_types[j]));
+    }
+  }
+}
+
+void print_import_decl(string path, string alias, string[] selected, int depth) {
+  string pad = indent_str(depth);
+  if (alias.len() > 0) {
+    io::out.line("{}ImportDecl \"{}\" as {}", pad, path, alias);
+  } else {
+    io::out.line("{}ImportDecl \"{}\"", pad, path);
+  }
+  for (int i = 0; i < selected.len(); i = i + 1) {
+    io::out.line("{}symbol {}", indent_str(depth + 1), selected[i]);
+  }
+}
+
+void print_using_decl(string n, bool is_ns, int depth) {
+  string kind = "using";
+  if (is_ns) { kind = "using namespace"; }
+  io::out.line("{}{} {}", indent_str(depth), kind, n);
+}
+
+int run_ast(string source) {
+  Token[] tokens = scan(source);
+  Parser p = parser::make_parser(tokens);
+  Program prog = parser::parse_program(p);
+  if (p.errors.len() > 0) {
+    for (int i = 0; i < p.errors.len(); i = i + 1) {
+      ParseError e = p.errors[i];
+      io::err.line("{}:{}: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  io::out.line("Program");
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    print_decl(prog.declarations[i], 1);
+  }
+  return 0;
+}
+
+int main() {
+  string[] argv = sys::args();
+  if (argv.len() < 1) {
+    io::err.line("usage: kinglet cli/main.kl [--ast] <source.kl>");
+    return 64;
+  }
+  bool dump_ast = false;
+  string path = "";
+  for (int i = 0; i < argv.len(); i = i + 1) {
+    if (argv[i] == "--ast") {
+      dump_ast = true;
+    } else {
+      path = argv[i];
+    }
+  }
+  if (path.len() == 0) {
+    io::err.line("usage: kinglet cli/main.kl [--ast] <source.kl>");
+    return 64;
+  }
+  string source = fs::__read(path);
+  if (source == null) {
+    io::err.line("cannot read file: {}", path);
+    return 66;
+  }
+  if (dump_ast) {
+    return run_ast(source);
+  }
+  return run_tokens(source);
 }
