@@ -1,0 +1,980 @@
+// Recursive-descent + Pratt parser for Kinglet, mirroring the C++ parser at
+// kinglet-bootstrap/src/parser/parser.cc. Tokens come from the self-host
+// scanner; output is a parser/ast.kl Program.
+//
+// The parser lives in a single file because the bootstrap compiler hits a
+// struct-meta registration bug when a pub struct's fields are referenced
+// from a function in another module that selectively imports just the
+// helper (see kinglet-bootstrap commit history). One file sidesteps it.
+//
+// Bootstrap compiler quirks worked around in this file:
+//
+// - Token / TokenType are inlined (not imported from lexer/token.kl).
+//   Importing token.kl through both the entry module and through parser.kl
+//   re-registers Token's struct meta and scrambles unrelated meta indices,
+//   manifesting as `Unknown field 'tokens'` at runtime.
+//
+// - Function names that overlap with lexer/scanner.kl helpers (peek, advance)
+//   are renamed to peek_tok / advance_tok. The compiler's import path
+//   stores private function indices keyed by unqualified name, so a
+//   collision silently rewires scanner's calls into parser's body.
+//
+// - The cli driver MUST NOT do `import "ast.kl"` after `import "parser.kl"`.
+//   The duplicate ast.kl import re-registers ast.kl's pub functions
+//   (notably make_type) under a fresh function index whose entry never
+//   gets patched, so calling make_type jumps to byte 0 and re-enters main.
+//   parser.kl already pulls ast.kl in transitively.
+//
+// Implementation notes
+//
+// - The Parser struct is mutated in place across helper calls; struct fields
+//   in Kinglet are reference-shared, so each helper reads `current` and
+//   appends to `errors[]` without explicit threading.
+// - Optional Expr/Stmt slots are encoded with the sentinel `Expr::None` /
+//   `Stmt::None` variants since enum payloads are non-nullable.
+// - Some C++ features are intentionally simplified or stubbed — they aren't
+//   used by any .kl file in this repo and aren't needed yet:
+//     * generic-CALL parsing (`name<T>(...)` at call sites) — decl-site only
+//     * map literals/types  ({K: V} ...)                    — not used yet
+//     * `>>` digraph in nested generics                      — not used yet
+//     * chained-comparison rewrite (a < b < c)              — not used yet
+//     * destructuring var decl (`auto[a, b] = expr;`)       — not used yet
+
+import "ast.kl" {
+  Program, Decl, Stmt, Expr, TypeExpr,
+  BinaryOp, UnaryOp, AssignOp,
+  MatchArm, FieldInit, Parameter, FieldDef, EnumVariant,
+  make_type
+}
+
+// TokenType is `pub` because the module loader only categorises public
+// enums into `mod.public_enums`; private enums are dropped silently, so
+// they would be unresolvable when parser.kl's function bodies are
+// re-compiled in the importer's context. Callers must do a full
+// `import "parser.kl"` (no selective brace list) so TokenType comes through.
+pub enum TokenType {
+  Auto, Int, Float, Double, Bool, String, Void, Byte,
+  Const,
+  Return, If, Else, For, While, Break, Continue, Guard,
+  Match, Let, When,
+  Pub, Import, Export, Namespace, Using,
+  Struct, Enum, Trait, Impl, Self_,
+  Spawn, Select,
+  True, False, Null_,
+
+  Plus, Minus, Star, Slash, Percent,
+  Equal, EqualEqual, BangEqual,
+  Less, Greater, LessEqual, GreaterEqual,
+  AmpAmp, PipePipe, Bang,
+  Amp, Pipe, Caret, Tilde, LessLess, GreaterGreater, PipeGreater,
+  Arrow, FatArrow, Question, ColonColon, Dot, DotDot, DotDotDot,
+  PlusEqual, MinusEqual, StarEqual, SlashEqual,
+
+  LeftParen, RightParen,
+  LeftBrace, RightBrace,
+  LeftBracket, RightBracket,
+  Comma, Semicolon, Colon,
+
+  Integer, FloatLit, StringLit, CharLit,
+
+  Identifier,
+
+  Eof,
+  Error,
+}
+
+pub struct Token {
+  TokenType type;
+  string lexeme;
+  int line;
+  int col;
+  int int_value;
+  float float_value;
+  string string_value;
+}
+
+pub struct ParseError {
+  int line;
+  int col;
+  string message;
+}
+
+pub struct Parser {
+  Token[] tokens;
+  int current;
+  ParseError[] errors;
+}
+
+pub Parser make_parser(Token[] tokens) => Parser { tokens, 0, [] };
+
+// --- token cursor primitives ---
+
+bool is_at_end(Parser p) => p.tokens[p.current].type == TokenType::Eof;
+
+Token peek_tok(Parser p) => p.tokens[p.current];
+
+Token previous(Parser p) => p.tokens[p.current - 1];
+
+bool check(Parser p, TokenType t) {
+  if (is_at_end(p)) { return false; }
+  return peek_tok(p).type == t;
+}
+
+bool check_at(Parser p, int offset, TokenType t) {
+  int i = p.current + offset;
+  if (i >= p.tokens.len()) { return false; }
+  return p.tokens[i].type == t;
+}
+
+Token advance_tok(Parser p) {
+  if (!is_at_end(p)) { p.current = p.current + 1; }
+  return previous(p);
+}
+
+bool match_tt(Parser p, TokenType t) {
+  if (!check(p, t)) { return false; }
+  advance_tok(p);
+  return true;
+}
+
+void error_at(Parser p, Token t, string msg) {
+  ParseError e = ParseError { t.line, t.col, msg };
+  p.errors.push(e);
+}
+
+Token consume(Parser p, TokenType t, string msg) {
+  if (check(p, t)) { return advance_tok(p); }
+  error_at(p, peek_tok(p), msg);
+  return peek_tok(p);
+}
+
+bool is_type_start(TokenType t) {
+  if (t == TokenType::Auto)   { return true; }
+  if (t == TokenType::Int)    { return true; }
+  if (t == TokenType::Float)  { return true; }
+  if (t == TokenType::Double) { return true; }
+  if (t == TokenType::Bool)   { return true; }
+  if (t == TokenType::String) { return true; }
+  if (t == TokenType::Void)   { return true; }
+  if (t == TokenType::Byte)   { return true; }
+  if (t == TokenType::Identifier) { return true; }
+  return false;
+}
+
+bool is_assign_op(TokenType t) {
+  if (t == TokenType::Equal)      { return true; }
+  if (t == TokenType::PlusEqual)  { return true; }
+  if (t == TokenType::MinusEqual) { return true; }
+  if (t == TokenType::StarEqual)  { return true; }
+  if (t == TokenType::SlashEqual) { return true; }
+  return false;
+}
+
+AssignOp token_to_assign_op(TokenType t) {
+  if (t == TokenType::PlusEqual)  { return AssignOp::AddAssign; }
+  if (t == TokenType::MinusEqual) { return AssignOp::SubAssign; }
+  if (t == TokenType::StarEqual)  { return AssignOp::MulAssign; }
+  if (t == TokenType::SlashEqual) { return AssignOp::DivAssign; }
+  return AssignOp::Assign;
+}
+
+BinaryOp token_to_binary_op(TokenType t) {
+  if (t == TokenType::Plus)           { return BinaryOp::Add; }
+  if (t == TokenType::Minus)          { return BinaryOp::Sub; }
+  if (t == TokenType::Star)           { return BinaryOp::Mul; }
+  if (t == TokenType::Slash)          { return BinaryOp::Div; }
+  if (t == TokenType::Percent)        { return BinaryOp::Mod; }
+  if (t == TokenType::EqualEqual)     { return BinaryOp::Eq; }
+  if (t == TokenType::BangEqual)      { return BinaryOp::Neq; }
+  if (t == TokenType::Less)           { return BinaryOp::Lt; }
+  if (t == TokenType::Greater)        { return BinaryOp::Gt; }
+  if (t == TokenType::LessEqual)      { return BinaryOp::Le; }
+  if (t == TokenType::GreaterEqual)   { return BinaryOp::Ge; }
+  if (t == TokenType::AmpAmp)         { return BinaryOp::And; }
+  if (t == TokenType::PipePipe)       { return BinaryOp::Or; }
+  if (t == TokenType::Amp)            { return BinaryOp::BitAnd; }
+  if (t == TokenType::Pipe)           { return BinaryOp::BitOr; }
+  if (t == TokenType::Caret)          { return BinaryOp::BitXor; }
+  if (t == TokenType::LessLess)       { return BinaryOp::Shl; }
+  if (t == TokenType::GreaterGreater) { return BinaryOp::Shr; }
+  return BinaryOp::Add;
+}
+
+UnaryOp token_to_unary_op(TokenType t) {
+  if (t == TokenType::Bang)  { return UnaryOp::Not; }
+  if (t == TokenType::Tilde) { return UnaryOp::BitNot; }
+  return UnaryOp::Neg;
+}
+
+// --- type expressions ---
+
+string type_to_string(TypeExpr t) {
+  if (t.type_args.len() == 0) { return t.name; }
+  string out = t.name + "<";
+  for (int i = 0; i < t.type_args.len(); i = i + 1) {
+    if (i > 0) { out = out + ","; }
+    out = out + t.type_args[i];
+  }
+  out = out + ">";
+  return out;
+}
+
+TypeExpr parse_type_expr(Parser p) {
+  if (!is_type_start(peek_tok(p).type)) {
+    error_at(p, peek_tok(p), "Expected type name.");
+    return make_type("<error>");
+  }
+  Token name_tok = advance_tok(p);
+  string[] type_args = [];
+  if (check(p, TokenType::Less)) {
+    advance_tok(p);
+    TypeExpr inner = parse_type_expr(p);
+    type_args.push(type_to_string(inner));
+    while (match_tt(p, TokenType::Comma)) {
+      TypeExpr more = parse_type_expr(p);
+      type_args.push(type_to_string(more));
+    }
+    consume(p, TokenType::Greater, "Expected '>' after type arguments.");
+  }
+  TypeExpr t = TypeExpr { name_tok.lexeme, type_args };
+  while (match_tt(p, TokenType::LeftBracket)) {
+    consume(p, TokenType::RightBracket, "Expected ']' after array type suffix.");
+    string inner_name = type_to_string(t);
+    string[] arg = [];
+    arg.push(inner_name);
+    t = TypeExpr { "Array", arg };
+  }
+  return t;
+}
+
+// --- expressions: precedence climbing matching the C++ parser ---
+
+Expr expression(Parser p) => assignment(p);
+
+string assign_target_name(Expr e) {
+  return e match {
+    Expr::Ident(let name, let _l, let _c) => name,
+    _ => "<error>",
+  };
+}
+
+Expr assignment(Parser p) {
+  Expr left = pipeline(p);
+  if (is_assign_op(peek_tok(p).type)) {
+    Token op = advance_tok(p);
+    Expr value = assignment(p);
+    AssignOp aop = token_to_assign_op(op.type);
+    string name = assign_target_name(left);
+    return Expr::Assign(name, aop, value, op.line, op.col);
+  }
+  return left;
+}
+
+Expr pipeline(Parser p) {
+  Expr left = logical_or(p);
+  while (match_tt(p, TokenType::PipeGreater)) {
+    Token op = previous(p);
+    Expr func = logical_or(p);
+    Expr[] args = [];
+    args.push(left);
+    TypeExpr[] ta = [];
+    left = Expr::Call(func, ta, args, op.line, op.col);
+  }
+  return left;
+}
+
+Expr logical_or(Parser p) {
+  Expr left = logical_and(p);
+  while (match_tt(p, TokenType::PipePipe)) {
+    Token op = previous(p);
+    Expr right = logical_and(p);
+    left = Expr::Binary(left, BinaryOp::Or, right, op.line, op.col);
+  }
+  return left;
+}
+
+Expr logical_and(Parser p) {
+  Expr left = bit_or(p);
+  while (match_tt(p, TokenType::AmpAmp)) {
+    Token op = previous(p);
+    Expr right = bit_or(p);
+    left = Expr::Binary(left, BinaryOp::And, right, op.line, op.col);
+  }
+  return left;
+}
+
+Expr bit_or(Parser p) {
+  Expr left = bit_xor(p);
+  while (match_tt(p, TokenType::Pipe)) {
+    Token op = previous(p);
+    Expr right = bit_xor(p);
+    left = Expr::Binary(left, BinaryOp::BitOr, right, op.line, op.col);
+  }
+  return left;
+}
+
+Expr bit_xor(Parser p) {
+  Expr left = bit_and(p);
+  while (match_tt(p, TokenType::Caret)) {
+    Token op = previous(p);
+    Expr right = bit_and(p);
+    left = Expr::Binary(left, BinaryOp::BitXor, right, op.line, op.col);
+  }
+  return left;
+}
+
+Expr bit_and(Parser p) {
+  Expr left = equality(p);
+  while (match_tt(p, TokenType::Amp)) {
+    Token op = previous(p);
+    Expr right = equality(p);
+    left = Expr::Binary(left, BinaryOp::BitAnd, right, op.line, op.col);
+  }
+  return left;
+}
+
+Expr equality(Parser p) {
+  Expr left = comparison(p);
+  while (peek_tok(p).type == TokenType::EqualEqual || peek_tok(p).type == TokenType::BangEqual) {
+    Token op = advance_tok(p);
+    Expr right = comparison(p);
+    left = Expr::Binary(left, token_to_binary_op(op.type), right, op.line, op.col);
+  }
+  return left;
+}
+
+Expr comparison(Parser p) {
+  Expr left = shift(p);
+  while (peek_tok(p).type == TokenType::Less || peek_tok(p).type == TokenType::LessEqual ||
+         peek_tok(p).type == TokenType::Greater || peek_tok(p).type == TokenType::GreaterEqual) {
+    Token op = advance_tok(p);
+    Expr right = shift(p);
+    left = Expr::Binary(left, token_to_binary_op(op.type), right, op.line, op.col);
+  }
+  return left;
+}
+
+Expr shift(Parser p) {
+  Expr left = term(p);
+  while (peek_tok(p).type == TokenType::LessLess || peek_tok(p).type == TokenType::GreaterGreater) {
+    Token op = advance_tok(p);
+    Expr right = term(p);
+    left = Expr::Binary(left, token_to_binary_op(op.type), right, op.line, op.col);
+  }
+  return left;
+}
+
+Expr term(Parser p) {
+  Expr left = factor(p);
+  while (peek_tok(p).type == TokenType::Plus || peek_tok(p).type == TokenType::Minus) {
+    Token op = advance_tok(p);
+    Expr right = factor(p);
+    left = Expr::Binary(left, token_to_binary_op(op.type), right, op.line, op.col);
+  }
+  return left;
+}
+
+Expr factor(Parser p) {
+  Expr left = unary(p);
+  while (peek_tok(p).type == TokenType::Star || peek_tok(p).type == TokenType::Slash ||
+         peek_tok(p).type == TokenType::Percent) {
+    Token op = advance_tok(p);
+    Expr right = unary(p);
+    left = Expr::Binary(left, token_to_binary_op(op.type), right, op.line, op.col);
+  }
+  return left;
+}
+
+Expr unary(Parser p) {
+  if (peek_tok(p).type == TokenType::Bang || peek_tok(p).type == TokenType::Minus ||
+      peek_tok(p).type == TokenType::Tilde) {
+    Token op = advance_tok(p);
+    Expr right = unary(p);
+    return Expr::Unary(token_to_unary_op(op.type), right, op.line, op.col);
+  }
+  return call_chain(p);
+}
+
+Expr call_chain(Parser p) {
+  Expr expr = primary(p);
+  while (true) {
+    if (match_tt(p, TokenType::LeftParen)) {
+      Token lp = previous(p);
+      Expr[] args = [];
+      if (!check(p, TokenType::RightParen)) {
+        args.push(expression(p));
+        while (match_tt(p, TokenType::Comma)) {
+          args.push(expression(p));
+        }
+      }
+      consume(p, TokenType::RightParen, "Expected ')' after arguments.");
+      TypeExpr[] ta = [];
+      expr = Expr::Call(expr, ta, args, lp.line, lp.col);
+    } else if (match_tt(p, TokenType::Dot)) {
+      Token field = consume(p, TokenType::Identifier, "Expected field name after '.'.");
+      expr = Expr::FieldAccess(expr, field.lexeme, field.line, field.col);
+    } else if (match_tt(p, TokenType::LeftBracket)) {
+      Token lb = previous(p);
+      Expr index = expression(p);
+      consume(p, TokenType::RightBracket, "Expected ']' after index.");
+      expr = Expr::Index(expr, index, lb.line, lb.col);
+    } else if (match_tt(p, TokenType::Match)) {
+      expr = match_expression(p, expr);
+    } else {
+      break;
+    }
+  }
+  return expr;
+}
+
+bool starts_cast(Parser p) {
+  TokenType t = peek_tok(p).type;
+  if (t != TokenType::Int && t != TokenType::Float && t != TokenType::Double &&
+      t != TokenType::Bool && t != TokenType::String && t != TokenType::Byte) {
+    return false;
+  }
+  return check_at(p, 1, TokenType::LeftParen);
+}
+
+Expr cast_expr(Parser p) {
+  Token tt = advance_tok(p);
+  TypeExpr target = make_type(tt.lexeme);
+  consume(p, TokenType::LeftParen, "Expected '(' in cast.");
+  Expr value = expression(p);
+  consume(p, TokenType::RightParen, "Expected ')' after cast value.");
+  Expr fallback = Expr::None;
+  if (match_tt(p, TokenType::Else)) {
+    fallback = expression(p);
+  }
+  return Expr::Cast(target, value, fallback, tt.line, tt.col);
+}
+
+bool first_char_is_upper(string s) {
+  if (s.len() == 0) { return false; }
+  string c = s.slice(0, 1);
+  return c >= "A" && c <= "Z";
+}
+
+bool looks_like_struct_lit(Parser p, string ident_name) {
+  if (!first_char_is_upper(ident_name)) { return false; }
+  if (!check(p, TokenType::LeftBrace)) { return false; }
+  return !check_at(p, 1, TokenType::RightBrace);
+}
+
+Expr parse_struct_literal(Parser p, TypeExpr ty, Token start) {
+  consume(p, TokenType::LeftBrace, "Expected '{' for struct literal.");
+  FieldInit[] fields = [];
+  while (!check(p, TokenType::RightBrace) && !is_at_end(p)) {
+    Expr v = expression(p);
+    FieldInit fi = FieldInit { "", v };
+    fields.push(fi);
+    if (!check(p, TokenType::RightBrace)) {
+      consume(p, TokenType::Comma, "Expected ',' between struct fields.");
+    }
+  }
+  consume(p, TokenType::RightBrace, "Expected '}' after struct literal.");
+  return Expr::StructLit(ty, fields, start.line, start.col);
+}
+
+Expr primary(Parser p) {
+  if (starts_cast(p)) { return cast_expr(p); }
+  if (match_tt(p, TokenType::Integer) || match_tt(p, TokenType::CharLit)) {
+    Token t = previous(p);
+    return Expr::IntLit(t.int_value, t.line, t.col);
+  }
+  if (match_tt(p, TokenType::FloatLit)) {
+    Token t = previous(p);
+    return Expr::FloatLit(t.float_value, t.line, t.col);
+  }
+  if (match_tt(p, TokenType::StringLit)) {
+    Token t = previous(p);
+    return Expr::StringLit(t.string_value, t.line, t.col);
+  }
+  if (match_tt(p, TokenType::True))  { Token t = previous(p); return Expr::BoolLit(true,  t.line, t.col); }
+  if (match_tt(p, TokenType::False)) { Token t = previous(p); return Expr::BoolLit(false, t.line, t.col); }
+  if (match_tt(p, TokenType::Null_)) {
+    // We don't track null literals separately; map to identifier "null".
+    Token t = previous(p);
+    return Expr::Ident("null", t.line, t.col);
+  }
+  if (match_tt(p, TokenType::LeftBracket)) {
+    Token lb = previous(p);
+    Expr[] elems = [];
+    if (!check(p, TokenType::RightBracket)) {
+      elems.push(expression(p));
+      while (match_tt(p, TokenType::Comma)) {
+        elems.push(expression(p));
+      }
+    }
+    consume(p, TokenType::RightBracket, "Expected ']' after array literal.");
+    return Expr::ArrayLit(elems, lb.line, lb.col);
+  }
+  if (match_tt(p, TokenType::LeftParen)) {
+    Expr e = expression(p);
+    consume(p, TokenType::RightParen, "Expected ')' after expression.");
+    return e;
+  }
+  if (match_tt(p, TokenType::Self_)) {
+    Token t = previous(p);
+    return Expr::Ident("self", t.line, t.col);
+  }
+  if (match_tt(p, TokenType::Identifier)) {
+    Token id = previous(p);
+    if (match_tt(p, TokenType::ColonColon)) {
+      Token member = consume(p, TokenType::Identifier, "Expected member name after '::'.");
+      return Expr::NsAccess(id.lexeme, member.lexeme, id.line, id.col);
+    }
+    if (looks_like_struct_lit(p, id.lexeme)) {
+      return parse_struct_literal(p, make_type(id.lexeme), id);
+    }
+    return Expr::Ident(id.lexeme, id.line, id.col);
+  }
+  Token bad = peek_tok(p);
+  error_at(p, bad, "Expected expression.");
+  advance_tok(p);
+  return Expr::None;
+}
+
+Expr match_expression(Parser p, Expr value) {
+  Token mt = previous(p);
+  consume(p, TokenType::LeftBrace, "Expected '{' after 'match'.");
+  MatchArm[] arms = [];
+  while (!check(p, TokenType::RightBrace) && !is_at_end(p)) {
+    Expr pat = parse_pattern(p);
+    Expr g = Expr::None;
+    if (match_tt(p, TokenType::If)) {
+      consume(p, TokenType::LeftParen, "Expected '(' after 'if' in guard.");
+      g = expression(p);
+      consume(p, TokenType::RightParen, "Expected ')' after guard condition.");
+    }
+    consume(p, TokenType::FatArrow, "Expected '=>' after match pattern.");
+    Expr body = expression(p);
+    MatchArm arm = MatchArm { pat, g, body };
+    arms.push(arm);
+    if (!check(p, TokenType::RightBrace)) {
+      consume(p, TokenType::Comma, "Expected ',' after match arm.");
+    }
+  }
+  consume(p, TokenType::RightBrace, "Expected '}' after match arms.");
+  return Expr::Match(value, arms, mt.line, mt.col);
+}
+
+Expr parse_pattern(Parser p) {
+  if (match_tt(p, TokenType::Let)) {
+    Token n = consume(p, TokenType::Identifier, "Expected variable name after 'let'.");
+    return Expr::BindingPat(n.lexeme, n.line, n.col);
+  }
+  if (match_tt(p, TokenType::LeftBracket)) {
+    Token lb = previous(p);
+    Expr[] elems = [];
+    while (!check(p, TokenType::RightBracket) && !is_at_end(p)) {
+      if (match_tt(p, TokenType::Let)) {
+        Token n = consume(p, TokenType::Identifier, "Expected variable name after 'let'.");
+        elems.push(Expr::BindingPat(n.lexeme, n.line, n.col));
+      } else {
+        elems.push(expression(p));
+      }
+      if (!check(p, TokenType::RightBracket)) {
+        consume(p, TokenType::Comma, "Expected ',' between array pattern elements.");
+      }
+    }
+    consume(p, TokenType::RightBracket, "Expected ']' after array pattern.");
+    return Expr::ArrayPat(elems, lb.line, lb.col);
+  }
+  if (check(p, TokenType::Identifier) && check_at(p, 1, TokenType::ColonColon)) {
+    Token enum_tok = advance_tok(p);
+    advance_tok(p);
+    Token variant = consume(p, TokenType::Identifier, "Expected variant name after '::'.");
+    Expr[] fields = [];
+    if (match_tt(p, TokenType::LeftParen)) {
+      while (!check(p, TokenType::RightParen) && !is_at_end(p)) {
+        if (match_tt(p, TokenType::Let)) {
+          Token n = consume(p, TokenType::Identifier, "Expected variable name after 'let'.");
+          fields.push(Expr::BindingPat(n.lexeme, n.line, n.col));
+        } else {
+          fields.push(expression(p));
+        }
+        if (!check(p, TokenType::RightParen)) {
+          consume(p, TokenType::Comma, "Expected ',' between enum pattern fields.");
+        }
+      }
+      consume(p, TokenType::RightParen, "Expected ')' after enum pattern fields.");
+    }
+    return Expr::EnumPat(enum_tok.lexeme, variant.lexeme, fields, enum_tok.line, enum_tok.col);
+  }
+  return expression(p);
+}
+
+// --- declarations ---
+
+pub Program parse_program(Parser p) {
+  Decl[] decls = [];
+  while (!is_at_end(p)) {
+    int before = p.current;
+    Decl d = parse_declaration(p);
+    decls.push(d);
+    if (p.current == before) { advance_tok(p); }
+  }
+  return Program { decls };
+}
+
+Decl parse_declaration(Parser p) {
+  if (match_tt(p, TokenType::Using))  { return parse_using(p); }
+  if (match_tt(p, TokenType::Import)) { return parse_import(p); }
+
+  bool is_pub = match_tt(p, TokenType::Pub);
+
+  if (match_tt(p, TokenType::Struct)) { return parse_struct_decl(p, is_pub); }
+  if (match_tt(p, TokenType::Enum))   { return parse_enum_decl(p, is_pub); }
+
+  if (is_function_declaration_start(p)) { return parse_function_decl(p, is_pub); }
+
+  if (is_pub) {
+    error_at(p, peek_tok(p), "'pub' can only be used before function, struct, enum, impl, or trait declarations.");
+  }
+  Token here = peek_tok(p);
+  Stmt s = parse_statement(p);
+  return Decl::TopLevelStmt(s, here.line, here.col);
+}
+
+Decl parse_using(Parser p) {
+  Token using_tok = previous(p);
+  bool is_namespace = match_tt(p, TokenType::Namespace);
+  Token name = consume(p, TokenType::Identifier, "Expected namespace name after 'using'.");
+  consume(p, TokenType::Semicolon, "Expected ';' after using declaration.");
+  return Decl::UsingDecl(name.lexeme, is_namespace, using_tok.line, using_tok.col);
+}
+
+Decl parse_import(Parser p) {
+  Token import_tok = previous(p);
+  Token path_tok = consume(p, TokenType::StringLit, "Expected file path string after 'import'.");
+  string path = path_tok.string_value;
+  string alias = "";
+  string[] selected = [];
+  if (check(p, TokenType::Identifier) && peek_tok(p).lexeme == "as") {
+    advance_tok(p);
+    Token a = consume(p, TokenType::Identifier, "Expected alias name after 'as'.");
+    alias = a.lexeme;
+  } else if (match_tt(p, TokenType::LeftBrace)) {
+    Token sym = consume(p, TokenType::Identifier, "Expected symbol name in import list.");
+    selected.push(sym.lexeme);
+    while (match_tt(p, TokenType::Comma)) {
+      Token s = consume(p, TokenType::Identifier, "Expected symbol name in import list.");
+      selected.push(s.lexeme);
+    }
+    consume(p, TokenType::RightBrace, "Expected '}' after import list.");
+  }
+  match_tt(p, TokenType::Semicolon);
+  return Decl::ImportDecl(path, alias, selected, import_tok.line, import_tok.col);
+}
+
+string[] parse_type_params(Parser p) {
+  string[] type_params = [];
+  if (match_tt(p, TokenType::Less)) {
+    Token first = consume(p, TokenType::Identifier, "Expected type parameter name.");
+    type_params.push(first.lexeme);
+    while (match_tt(p, TokenType::Comma)) {
+      Token n = consume(p, TokenType::Identifier, "Expected type parameter name.");
+      type_params.push(n.lexeme);
+    }
+    consume(p, TokenType::Greater, "Expected '>' after type parameters.");
+  }
+  return type_params;
+}
+
+Decl parse_struct_decl(Parser p, bool is_pub) {
+  Token struct_tok = previous(p);
+  Token name = consume(p, TokenType::Identifier, "Expected struct name.");
+  string[] type_params = parse_type_params(p);
+  consume(p, TokenType::LeftBrace, "Expected '{' after struct name.");
+  FieldDef[] fields = [];
+  while (!check(p, TokenType::RightBrace) && !is_at_end(p)) {
+    int before = p.current;
+    TypeExpr ty = parse_type_expr(p);
+    Token fn = consume(p, TokenType::Identifier, "Expected field name.");
+    consume(p, TokenType::Semicolon, "Expected ';' after field declaration.");
+    FieldDef fd = FieldDef { ty, fn.lexeme };
+    fields.push(fd);
+    if (p.current == before) { advance_tok(p); }
+  }
+  consume(p, TokenType::RightBrace, "Expected '}' after struct body.");
+  return Decl::StructDecl(name.lexeme, type_params, fields, is_pub, struct_tok.line, struct_tok.col);
+}
+
+Decl parse_enum_decl(Parser p, bool is_pub) {
+  Token enum_tok = previous(p);
+  Token name = consume(p, TokenType::Identifier, "Expected enum name.");
+  consume(p, TokenType::LeftBrace, "Expected '{' after enum name.");
+  EnumVariant[] variants = [];
+  while (!check(p, TokenType::RightBrace) && !is_at_end(p)) {
+    int before = p.current;
+    Token vn = consume(p, TokenType::Identifier, "Expected variant name.");
+    TypeExpr[] params = [];
+    if (match_tt(p, TokenType::LeftParen)) {
+      while (!check(p, TokenType::RightParen) && !is_at_end(p)) {
+        TypeExpr ty = parse_type_expr(p);
+        // C++ form is positional; ast.kl uses an optional trailing param name
+        // for documentation. Skip a bare identifier if one follows the type.
+        if (check(p, TokenType::Identifier)) { advance_tok(p); }
+        params.push(ty);
+        if (!check(p, TokenType::RightParen)) {
+          consume(p, TokenType::Comma, "Expected ',' between variant parameter types.");
+        }
+      }
+      consume(p, TokenType::RightParen, "Expected ')' after variant parameters.");
+    }
+    EnumVariant ev = EnumVariant { vn.lexeme, params };
+    variants.push(ev);
+    if (!check(p, TokenType::RightBrace)) {
+      consume(p, TokenType::Comma, "Expected ',' between enum variants.");
+    }
+    if (p.current == before) { advance_tok(p); }
+  }
+  consume(p, TokenType::RightBrace, "Expected '}' after enum body.");
+  return Decl::EnumDecl(name.lexeme, variants, is_pub, enum_tok.line, enum_tok.col);
+}
+
+bool is_function_declaration_start(Parser p) {
+  if (!is_type_start(peek_tok(p).type)) { return false; }
+  int pos = p.current + 1;
+  if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Less) {
+    int depth = 1;
+    pos = pos + 1;
+    while (pos < p.tokens.len() && depth > 0) {
+      TokenType t = p.tokens[pos].type;
+      if (t == TokenType::Less)         { depth = depth + 1; }
+      else if (t == TokenType::Greater) { depth = depth - 1; }
+      pos = pos + 1;
+    }
+  }
+  while (pos + 1 < p.tokens.len() && p.tokens[pos].type == TokenType::LeftBracket
+         && p.tokens[pos + 1].type == TokenType::RightBracket) {
+    pos = pos + 2;
+  }
+  if (pos >= p.tokens.len() || p.tokens[pos].type != TokenType::Identifier) { return false; }
+  pos = pos + 1;
+  if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Less) {
+    int depth = 1;
+    pos = pos + 1;
+    while (pos < p.tokens.len() && depth > 0) {
+      TokenType t = p.tokens[pos].type;
+      if (t == TokenType::Less)         { depth = depth + 1; }
+      else if (t == TokenType::Greater) { depth = depth - 1; }
+      pos = pos + 1;
+    }
+  }
+  if (pos >= p.tokens.len()) { return false; }
+  return p.tokens[pos].type == TokenType::LeftParen;
+}
+
+bool is_var_decl_start(Parser p) {
+  if (peek_tok(p).type == TokenType::Const) { return true; }
+  if (!is_type_start(peek_tok(p).type)) { return false; }
+  int pos = p.current + 1;
+  if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Less) {
+    int depth = 1;
+    pos = pos + 1;
+    while (pos < p.tokens.len() && depth > 0) {
+      TokenType t = p.tokens[pos].type;
+      if (t == TokenType::Less)         { depth = depth + 1; }
+      else if (t == TokenType::Greater) { depth = depth - 1; }
+      pos = pos + 1;
+    }
+  }
+  while (pos + 1 < p.tokens.len() && p.tokens[pos].type == TokenType::LeftBracket
+         && p.tokens[pos + 1].type == TokenType::RightBracket) {
+    pos = pos + 2;
+  }
+  return pos < p.tokens.len() && p.tokens[pos].type == TokenType::Identifier;
+}
+
+Decl parse_function_decl(Parser p, bool is_pub) {
+  Token start = peek_tok(p);
+  TypeExpr return_type = parse_type_expr(p);
+  Token name = consume(p, TokenType::Identifier, "Expected function name.");
+  string[] type_params = parse_type_params(p);
+  consume(p, TokenType::LeftParen, "Expected '(' after function name.");
+  Parameter[] params = parse_parameters(p);
+  consume(p, TokenType::RightParen, "Expected ')' after parameter list.");
+  Stmt body = parse_function_body(p);
+  return Decl::FunctionDecl(name.lexeme, return_type, type_params, params, body, is_pub, start.line, start.col);
+}
+
+Parameter[] parse_parameters(Parser p) {
+  Parameter[] params = [];
+  if (check(p, TokenType::RightParen)) { return params; }
+  TypeExpr t = parse_type_expr(p);
+  Token n = consume(p, TokenType::Identifier, "Expected parameter name.");
+  Parameter pp = Parameter { t, n.lexeme };
+  params.push(pp);
+  while (match_tt(p, TokenType::Comma)) {
+    TypeExpr t2 = parse_type_expr(p);
+    Token n2 = consume(p, TokenType::Identifier, "Expected parameter name.");
+    Parameter qq = Parameter { t2, n2.lexeme };
+    params.push(qq);
+  }
+  return params;
+}
+
+Stmt parse_function_body(Parser p) {
+  if (match_tt(p, TokenType::LeftBrace)) {
+    Token lb = previous(p);
+    return parse_block_after_brace(p, lb);
+  }
+  if (match_tt(p, TokenType::FatArrow)) {
+    if (match_tt(p, TokenType::LeftBrace)) {
+      Token lb = previous(p);
+      return parse_block_after_brace(p, lb);
+    }
+    Token start = peek_tok(p);
+    Expr v = expression(p);
+    consume(p, TokenType::Semicolon, "Expected ';' after expression body.");
+    return Stmt::ReturnStmt(v, start.line, start.col);
+  }
+  error_at(p, peek_tok(p), "Expected function body.");
+  Stmt[] empty = [];
+  return Stmt::Block(empty, peek_tok(p).line, peek_tok(p).col);
+}
+
+Stmt parse_block_after_brace(Parser p, Token lb) {
+  Stmt[] stmts = [];
+  while (!check(p, TokenType::RightBrace) && !is_at_end(p)) {
+    int before = p.current;
+    Stmt s = parse_statement(p);
+    stmts.push(s);
+    if (p.current == before) { advance_tok(p); }
+  }
+  consume(p, TokenType::RightBrace, "Expected '}' after block.");
+  return Stmt::Block(stmts, lb.line, lb.col);
+}
+
+Stmt parse_statement(Parser p) {
+  if (match_tt(p, TokenType::LeftBrace)) {
+    Token lb = previous(p);
+    return parse_block_after_brace(p, lb);
+  }
+  if (match_tt(p, TokenType::Return))   { return parse_return(p); }
+  if (match_tt(p, TokenType::If))       { return parse_if(p); }
+  if (match_tt(p, TokenType::Guard))    { return parse_guard(p); }
+  if (match_tt(p, TokenType::While))    { return parse_while(p); }
+  if (match_tt(p, TokenType::For))      { return parse_for(p); }
+  if (match_tt(p, TokenType::Break))    { return parse_break(p); }
+  if (match_tt(p, TokenType::Continue)) { return parse_continue(p); }
+  if (is_var_decl_start(p))             { return parse_var_decl(p); }
+  return parse_expression_statement(p);
+}
+
+Stmt parse_return(Parser p) {
+  Token rt = previous(p);
+  Expr value = Expr::None;
+  if (!check(p, TokenType::Semicolon)) {
+    value = expression(p);
+  }
+  consume(p, TokenType::Semicolon, "Expected ';' after return value.");
+  return Stmt::ReturnStmt(value, rt.line, rt.col);
+}
+
+Stmt parse_if(Parser p) {
+  Token it = previous(p);
+  Expr cond = parse_condition(p);
+  Stmt then_b = parse_statement(p);
+  Stmt else_b = Stmt::None;
+  if (match_tt(p, TokenType::Else)) {
+    else_b = parse_statement(p);
+  }
+  return Stmt::If(cond, then_b, else_b, it.line, it.col);
+}
+
+Stmt parse_guard(Parser p) {
+  Token gt = previous(p);
+  Expr cond = expression(p);
+  consume(p, TokenType::Else, "Expected 'else' after guard condition.");
+  consume(p, TokenType::LeftBrace, "Expected '{' after 'else' in guard statement.");
+  Token lb = previous(p);
+  Stmt else_body = parse_block_after_brace(p, lb);
+  return Stmt::Guard(cond, else_body, gt.line, gt.col);
+}
+
+Stmt parse_while(Parser p) {
+  Token wt = previous(p);
+  Expr cond = parse_condition(p);
+  Stmt body = parse_statement(p);
+  return Stmt::While(cond, body, wt.line, wt.col);
+}
+
+Stmt parse_for(Parser p) {
+  Token ft = previous(p);
+  consume(p, TokenType::LeftParen, "Expected '(' after 'for'.");
+  Stmt init = Stmt::None;
+  if (is_var_decl_start(p)) {
+    init = parse_var_decl(p);
+  } else if (!check(p, TokenType::Semicolon)) {
+    Token st = peek_tok(p);
+    Expr e = expression(p);
+    init = Stmt::ExprStmt(e, st.line, st.col);
+    consume(p, TokenType::Semicolon, "Expected ';' after for init.");
+  } else {
+    consume(p, TokenType::Semicolon, "Expected ';' after for init.");
+  }
+  Expr cond = Expr::None;
+  if (!check(p, TokenType::Semicolon)) {
+    cond = expression(p);
+  }
+  consume(p, TokenType::Semicolon, "Expected ';' after for condition.");
+  Stmt step = Stmt::None;
+  if (!check(p, TokenType::RightParen)) {
+    Token st = peek_tok(p);
+    Expr e = expression(p);
+    step = Stmt::ExprStmt(e, st.line, st.col);
+  }
+  consume(p, TokenType::RightParen, "Expected ')' after for clauses.");
+  Stmt body = parse_statement(p);
+  return Stmt::For(init, cond, step, body, ft.line, ft.col);
+}
+
+Stmt parse_break(Parser p) {
+  Token bt = previous(p);
+  consume(p, TokenType::Semicolon, "Expected ';' after 'break'.");
+  return Stmt::Break(bt.line, bt.col);
+}
+
+Stmt parse_continue(Parser p) {
+  Token ct = previous(p);
+  consume(p, TokenType::Semicolon, "Expected ';' after 'continue'.");
+  return Stmt::Continue(ct.line, ct.col);
+}
+
+Expr parse_condition(Parser p) {
+  if (match_tt(p, TokenType::LeftParen)) {
+    Expr c = expression(p);
+    consume(p, TokenType::RightParen, "Expected ')' after condition.");
+    return c;
+  }
+  return expression(p);
+}
+
+Stmt parse_var_decl(Parser p) {
+  Token start = peek_tok(p);
+  string storage = "";
+  if (match_tt(p, TokenType::Const)) {
+    storage = "const";
+    start = previous(p);
+  }
+  TypeExpr ty = parse_type_expr(p);
+  Token name = consume(p, TokenType::Identifier, "Expected variable name.");
+  Expr init = Expr::None;
+  if (match_tt(p, TokenType::Equal)) {
+    init = expression(p);
+  } else if (check(p, TokenType::LeftBrace) && ty.name != "Map" && ty.name != "Array") {
+    init = parse_struct_literal(p, ty, name);
+  }
+  consume(p, TokenType::Semicolon, "Expected ';' after variable declaration.");
+  return Stmt::VarDecl(storage, ty, name.lexeme, init, start.line, start.col);
+}
+
+Stmt parse_expression_statement(Parser p) {
+  Token start = peek_tok(p);
+  Expr e = expression(p);
+  consume(p, TokenType::Semicolon, "Expected ';' after expression.");
+  return Stmt::ExprStmt(e, start.line, start.col);
+}

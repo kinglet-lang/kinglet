@@ -7,8 +7,6 @@
 // Recursive nesting (Expr inside Expr, Stmt inside Stmt) relies on the
 // bootstrap compiler's forward-decl pre-pass.
 
-import "../lexer/token.kl" { Token, TokenType }
-
 pub enum BinaryOp {
   Add, Sub, Mul, Div, Mod,
   Eq, Neq, Lt, Gt, Le, Ge,
@@ -22,7 +20,7 @@ pub enum AssignOp { Assign, AddAssign, SubAssign, MulAssign, DivAssign, }
 
 pub struct TypeExpr {
   string name;
-  TypeExpr[] type_args;
+  string[] type_args;
 }
 
 pub TypeExpr make_type(string name) => TypeExpr { name, [] };
