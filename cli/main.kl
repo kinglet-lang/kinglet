@@ -4,94 +4,15 @@ using sys;
 
 import "../lexer/token.kl" { Token, TokenType }
 import "../lexer/scanner.kl" { scan }
+import "../lexer/keywords.kl" { KeywordEntry, all_keywords }
 
 string tt_name(TokenType t) {
-  if (t == TokenType::Auto)      { return "Auto"; }
-  if (t == TokenType::Int)       { return "Int"; }
-  if (t == TokenType::Float)     { return "Float"; }
-  if (t == TokenType::Double)    { return "Double"; }
-  if (t == TokenType::Bool)      { return "Bool"; }
-  if (t == TokenType::String)    { return "String"; }
-  if (t == TokenType::Void)      { return "Void"; }
-  if (t == TokenType::Byte)      { return "Byte"; }
-  if (t == TokenType::Const)     { return "Const"; }
-  if (t == TokenType::Return)    { return "Return"; }
-  if (t == TokenType::If)        { return "If"; }
-  if (t == TokenType::Else)      { return "Else"; }
-  if (t == TokenType::For)       { return "For"; }
-  if (t == TokenType::While)     { return "While"; }
-  if (t == TokenType::Break)     { return "Break"; }
-  if (t == TokenType::Continue)  { return "Continue"; }
-  if (t == TokenType::Guard)     { return "Guard"; }
-  if (t == TokenType::Match)     { return "Match"; }
-  if (t == TokenType::Let)       { return "Let"; }
-  if (t == TokenType::When)      { return "When"; }
-  if (t == TokenType::Pub)       { return "Pub"; }
-  if (t == TokenType::Import)    { return "Import"; }
-  if (t == TokenType::Export)    { return "Export"; }
-  if (t == TokenType::Namespace) { return "Namespace"; }
-  if (t == TokenType::Using)     { return "Using"; }
-  if (t == TokenType::Struct)    { return "Struct"; }
-  if (t == TokenType::Enum)      { return "Enum"; }
-  if (t == TokenType::Trait)     { return "Trait"; }
-  if (t == TokenType::Impl)      { return "Impl"; }
-  if (t == TokenType::Self_)     { return "Self"; }
-  if (t == TokenType::Spawn)     { return "Spawn"; }
-  if (t == TokenType::Select)    { return "Select"; }
-  if (t == TokenType::True)      { return "True"; }
-  if (t == TokenType::False)     { return "False"; }
-  if (t == TokenType::Null_)     { return "Null"; }
-
-  if (t == TokenType::Plus)         { return "Plus"; }
-  if (t == TokenType::Minus)        { return "Minus"; }
-  if (t == TokenType::Star)         { return "Star"; }
-  if (t == TokenType::Slash)        { return "Slash"; }
-  if (t == TokenType::Percent)      { return "Percent"; }
-  if (t == TokenType::Equal)        { return "Equal"; }
-  if (t == TokenType::EqualEqual)   { return "EqualEqual"; }
-  if (t == TokenType::BangEqual)    { return "BangEqual"; }
-  if (t == TokenType::Less)         { return "Less"; }
-  if (t == TokenType::Greater)      { return "Greater"; }
-  if (t == TokenType::LessEqual)    { return "LessEqual"; }
-  if (t == TokenType::GreaterEqual) { return "GreaterEqual"; }
-  if (t == TokenType::AmpAmp)       { return "AmpAmp"; }
-  if (t == TokenType::PipePipe)     { return "PipePipe"; }
-  if (t == TokenType::Bang)         { return "Bang"; }
-  if (t == TokenType::Amp)          { return "Amp"; }
-  if (t == TokenType::Pipe)         { return "Pipe"; }
-  if (t == TokenType::Caret)        { return "Caret"; }
-  if (t == TokenType::Tilde)        { return "Tilde"; }
-  if (t == TokenType::LessLess)     { return "LessLess"; }
-  if (t == TokenType::GreaterGreater) { return "GreaterGreater"; }
-  if (t == TokenType::PipeGreater)  { return "PipeGreater"; }
-  if (t == TokenType::Arrow)        { return "Arrow"; }
-  if (t == TokenType::FatArrow)     { return "FatArrow"; }
-  if (t == TokenType::Question)     { return "Question"; }
-  if (t == TokenType::ColonColon)   { return "ColonColon"; }
-  if (t == TokenType::Dot)          { return "Dot"; }
-  if (t == TokenType::DotDot)       { return "DotDot"; }
-  if (t == TokenType::DotDotDot)    { return "DotDotDot"; }
-  if (t == TokenType::PlusEqual)    { return "PlusEqual"; }
-  if (t == TokenType::MinusEqual)   { return "MinusEqual"; }
-  if (t == TokenType::StarEqual)    { return "StarEqual"; }
-  if (t == TokenType::SlashEqual)   { return "SlashEqual"; }
-
-  if (t == TokenType::LeftParen)    { return "LeftParen"; }
-  if (t == TokenType::RightParen)   { return "RightParen"; }
-  if (t == TokenType::LeftBrace)    { return "LeftBrace"; }
-  if (t == TokenType::RightBrace)   { return "RightBrace"; }
-  if (t == TokenType::LeftBracket)  { return "LeftBracket"; }
-  if (t == TokenType::RightBracket) { return "RightBracket"; }
-  if (t == TokenType::Comma)        { return "Comma"; }
-  if (t == TokenType::Semicolon)    { return "Semicolon"; }
-  if (t == TokenType::Colon)        { return "Colon"; }
-
-  if (t == TokenType::Integer)      { return "Integer"; }
-  if (t == TokenType::FloatLit)     { return "FloatLit"; }
-  if (t == TokenType::StringLit)    { return "StringLit"; }
-  if (t == TokenType::CharLit)      { return "CharLit"; }
-  if (t == TokenType::Identifier)   { return "Identifier"; }
-  if (t == TokenType::Eof)          { return "Eof"; }
+  KeywordEntry[] kws = all_keywords();
+  for (int i = 0; i < kws.len(); i = i + 1) {
+    if (kws[i].type == t) {
+      return kws[i].display;
+    }
+  }
   return "Error";
 }
 

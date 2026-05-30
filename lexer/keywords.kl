@@ -1,0 +1,109 @@
+import "token.kl" { TokenType }
+
+pub struct KeywordEntry {
+  string spelling;
+  TokenType type;
+  string display;
+}
+
+void push_kw(KeywordEntry[] arr, string sp, TokenType ty, string di) {
+  KeywordEntry e { sp, ty, di };
+  arr.push(e);
+}
+
+pub KeywordEntry[] all_keywords() {
+  KeywordEntry[] kws = [];
+
+  // keywords
+  push_kw(kws, "auto",      TokenType::Auto,      "Auto");
+  push_kw(kws, "int",       TokenType::Int,       "Int");
+  push_kw(kws, "float",     TokenType::Float,     "Float");
+  push_kw(kws, "double",    TokenType::Double,    "Double");
+  push_kw(kws, "bool",      TokenType::Bool,      "Bool");
+  push_kw(kws, "string",    TokenType::String,    "String");
+  push_kw(kws, "void",      TokenType::Void,      "Void");
+  push_kw(kws, "byte",      TokenType::Byte,      "Byte");
+  push_kw(kws, "const",     TokenType::Const,     "Const");
+  push_kw(kws, "return",    TokenType::Return,    "Return");
+  push_kw(kws, "if",        TokenType::If,        "If");
+  push_kw(kws, "else",      TokenType::Else,      "Else");
+  push_kw(kws, "for",       TokenType::For,       "For");
+  push_kw(kws, "while",     TokenType::While,     "While");
+  push_kw(kws, "break",     TokenType::Break,     "Break");
+  push_kw(kws, "continue",  TokenType::Continue,  "Continue");
+  push_kw(kws, "guard",     TokenType::Guard,     "Guard");
+  push_kw(kws, "match",     TokenType::Match,     "Match");
+  push_kw(kws, "let",       TokenType::Let,       "Let");
+  push_kw(kws, "when",      TokenType::When,      "When");
+  push_kw(kws, "export",    TokenType::Export,    "Export");
+  push_kw(kws, "import",    TokenType::Import,    "Import");
+  push_kw(kws, "pub",       TokenType::Pub,       "Pub");
+  push_kw(kws, "namespace", TokenType::Namespace, "Namespace");
+  push_kw(kws, "using",     TokenType::Using,     "Using");
+  push_kw(kws, "struct",    TokenType::Struct,    "Struct");
+  push_kw(kws, "enum",      TokenType::Enum,      "Enum");
+  push_kw(kws, "trait",     TokenType::Trait,     "Trait");
+  push_kw(kws, "impl",      TokenType::Impl,      "Impl");
+  push_kw(kws, "self",      TokenType::Self_,     "Self");
+  push_kw(kws, "spawn",     TokenType::Spawn,     "Spawn");
+  push_kw(kws, "select",    TokenType::Select,    "Select");
+  push_kw(kws, "true",      TokenType::True,      "True");
+  push_kw(kws, "false",     TokenType::False,     "False");
+  push_kw(kws, "null",      TokenType::Null_,     "Null");
+
+  // operators
+  push_kw(kws, "", TokenType::Plus,         "Plus");
+  push_kw(kws, "", TokenType::Minus,        "Minus");
+  push_kw(kws, "", TokenType::Star,         "Star");
+  push_kw(kws, "", TokenType::Slash,        "Slash");
+  push_kw(kws, "", TokenType::Percent,      "Percent");
+  push_kw(kws, "", TokenType::Equal,        "Equal");
+  push_kw(kws, "", TokenType::EqualEqual,   "EqualEqual");
+  push_kw(kws, "", TokenType::BangEqual,    "BangEqual");
+  push_kw(kws, "", TokenType::Less,         "Less");
+  push_kw(kws, "", TokenType::Greater,      "Greater");
+  push_kw(kws, "", TokenType::LessEqual,    "LessEqual");
+  push_kw(kws, "", TokenType::GreaterEqual, "GreaterEqual");
+  push_kw(kws, "", TokenType::AmpAmp,       "AmpAmp");
+  push_kw(kws, "", TokenType::PipePipe,     "PipePipe");
+  push_kw(kws, "", TokenType::Bang,         "Bang");
+  push_kw(kws, "", TokenType::Amp,          "Amp");
+  push_kw(kws, "", TokenType::Pipe,         "Pipe");
+  push_kw(kws, "", TokenType::Caret,        "Caret");
+  push_kw(kws, "", TokenType::Tilde,        "Tilde");
+  push_kw(kws, "", TokenType::LessLess,     "LessLess");
+  push_kw(kws, "", TokenType::GreaterGreater, "GreaterGreater");
+  push_kw(kws, "", TokenType::PipeGreater,  "PipeGreater");
+  push_kw(kws, "", TokenType::Arrow,        "Arrow");
+  push_kw(kws, "", TokenType::FatArrow,     "FatArrow");
+  push_kw(kws, "", TokenType::Question,     "Question");
+  push_kw(kws, "", TokenType::ColonColon,   "ColonColon");
+  push_kw(kws, "", TokenType::Dot,          "Dot");
+  push_kw(kws, "", TokenType::DotDot,       "DotDot");
+  push_kw(kws, "", TokenType::DotDotDot,    "DotDotDot");
+  push_kw(kws, "", TokenType::PlusEqual,    "PlusEqual");
+  push_kw(kws, "", TokenType::MinusEqual,   "MinusEqual");
+  push_kw(kws, "", TokenType::StarEqual,    "StarEqual");
+  push_kw(kws, "", TokenType::SlashEqual,   "SlashEqual");
+
+  // delimiters
+  push_kw(kws, "", TokenType::LeftParen,    "LeftParen");
+  push_kw(kws, "", TokenType::RightParen,   "RightParen");
+  push_kw(kws, "", TokenType::LeftBrace,    "LeftBrace");
+  push_kw(kws, "", TokenType::RightBrace,   "RightBrace");
+  push_kw(kws, "", TokenType::LeftBracket,  "LeftBracket");
+  push_kw(kws, "", TokenType::RightBracket, "RightBracket");
+  push_kw(kws, "", TokenType::Comma,        "Comma");
+  push_kw(kws, "", TokenType::Semicolon,    "Semicolon");
+  push_kw(kws, "", TokenType::Colon,        "Colon");
+
+  // literal types
+  push_kw(kws, "", TokenType::Integer,      "Integer");
+  push_kw(kws, "", TokenType::FloatLit,     "FloatLit");
+  push_kw(kws, "", TokenType::StringLit,    "StringLit");
+  push_kw(kws, "", TokenType::CharLit,      "CharLit");
+  push_kw(kws, "", TokenType::Identifier,   "Identifier");
+  push_kw(kws, "", TokenType::Eof,          "Eof");
+
+  return kws;
+}

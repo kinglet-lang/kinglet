@@ -1,4 +1,5 @@
 import "token.kl" { Token, TokenType }
+import "keywords.kl" { KeywordEntry, all_keywords }
 
 struct Scanner {
   string source;
@@ -66,41 +67,12 @@ Token make_error(Scanner s, string msg) {
 }
 
 TokenType keyword_type(string w) {
-  if (w == "auto")      { return TokenType::Auto; }
-  if (w == "int")       { return TokenType::Int; }
-  if (w == "float")     { return TokenType::Float; }
-  if (w == "double")    { return TokenType::Double; }
-  if (w == "bool")      { return TokenType::Bool; }
-  if (w == "string")    { return TokenType::String; }
-  if (w == "void")      { return TokenType::Void; }
-  if (w == "byte")      { return TokenType::Byte; }
-  if (w == "const")     { return TokenType::Const; }
-  if (w == "return")    { return TokenType::Return; }
-  if (w == "if")        { return TokenType::If; }
-  if (w == "else")      { return TokenType::Else; }
-  if (w == "for")       { return TokenType::For; }
-  if (w == "while")     { return TokenType::While; }
-  if (w == "break")     { return TokenType::Break; }
-  if (w == "continue")  { return TokenType::Continue; }
-  if (w == "guard")     { return TokenType::Guard; }
-  if (w == "match")     { return TokenType::Match; }
-  if (w == "let")       { return TokenType::Let; }
-  if (w == "when")      { return TokenType::When; }
-  if (w == "export")    { return TokenType::Export; }
-  if (w == "import")    { return TokenType::Import; }
-  if (w == "pub")       { return TokenType::Pub; }
-  if (w == "namespace") { return TokenType::Namespace; }
-  if (w == "using")     { return TokenType::Using; }
-  if (w == "struct")    { return TokenType::Struct; }
-  if (w == "enum")      { return TokenType::Enum; }
-  if (w == "trait")     { return TokenType::Trait; }
-  if (w == "impl")      { return TokenType::Impl; }
-  if (w == "self")      { return TokenType::Self_; }
-  if (w == "spawn")     { return TokenType::Spawn; }
-  if (w == "select")    { return TokenType::Select; }
-  if (w == "true")      { return TokenType::True; }
-  if (w == "false")     { return TokenType::False; }
-  if (w == "null")      { return TokenType::Null_; }
+  KeywordEntry[] kws = all_keywords();
+  for (int i = 0; i < kws.len(); i = i + 1) {
+    if (kws[i].spelling == w && kws[i].spelling != "") {
+      return kws[i].type;
+    }
+  }
   return TokenType::Identifier;
 }
 
