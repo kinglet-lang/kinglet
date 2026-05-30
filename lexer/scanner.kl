@@ -58,11 +58,11 @@ MatchResult match_char(Scanner s, string expected) {
 
 Token make_token(Scanner s, TokenType type) {
   string lexeme = s.source.slice(s.start, s.current);
-  return Token { type, lexeme, s.token_line, s.token_col, 0, 0.0 };
+  return Token { type, lexeme, s.token_line, s.token_col, 0, 0.0, "" };
 }
 
 Token make_error(Scanner s, string msg) {
-  return Token { TokenType::Error, msg, s.token_line, s.token_col, 0, 0.0 };
+  return Token { TokenType::Error, msg, s.token_line, s.token_col, 0, 0.0, "" };
 }
 
 TokenType keyword_type(string w) {
@@ -254,18 +254,39 @@ ScanResult scan_number(Scanner s) {
   return ScanResult { s, tok };
 }
 
+// Returns the unescape replacement for a backslash-prefixed character.
+// Returns the original character for unknown escapes (lenient).
+string unescape_char(string c) {
+  if (c == "n")  { return "\n"; }
+  if (c == "r")  { return "\r"; }
+  if (c == "t")  { return "\t"; }
+  if (c == "\\") { return "\\"; }
+  if (c == "\"") { return "\""; }
+  if (c == "'")  { return "'"; }
+  if (c == "0")  { return "\0"; }
+  return c;
+}
+
 ScanResult scan_string(Scanner s) {
+  string value = "";
   while (!at_end(s)) {
     string c = peek(s);
     if (c == "\"") {
       AdvResult r = advance(s); s = r.sc;
-      return ScanResult { s, make_token(s, TokenType::StringLit) };
+      Token tok = make_token(s, TokenType::StringLit);
+      tok.string_value = value;
+      return ScanResult { s, tok };
     }
     if (c == "\\") {
       AdvResult r1 = advance(s); s = r1.sc;
-      if (!at_end(s)) { AdvResult r2 = advance(s); s = r2.sc; }
+      if (at_end(s)) {
+        return ScanResult { s, make_error(s, "Unterminated string literal.") };
+      }
+      AdvResult r2 = advance(s); s = r2.sc;
+      value = value + unescape_char(r2.ch);
     } else {
       AdvResult r = advance(s); s = r.sc;
+      value = value + r.ch;
     }
   }
   return ScanResult { s, make_error(s, "Unterminated string literal.") };

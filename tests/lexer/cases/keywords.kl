@@ -1,0 +1,5 @@
+// line comment
+struct S { int x; } /* block */
+enum E { A, B }
+if true { return; }
+match x { _ => 0 }

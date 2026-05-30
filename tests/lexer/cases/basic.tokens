@@ -1,0 +1,6 @@
+1:1 Int int
+1:5 Identifier x
+1:7 Equal =
+1:9 Integer 42 42
+1:11 Semicolon ;
+2:1 Eof

@@ -1,0 +1,28 @@
+2:1 Struct struct
+2:8 Identifier S
+2:10 LeftBrace {
+2:12 Int int
+2:16 Identifier x
+2:17 Semicolon ;
+2:19 RightBrace }
+3:1 Enum enum
+3:6 Identifier E
+3:8 LeftBrace {
+3:10 Identifier A
+3:11 Comma ,
+3:13 Identifier B
+3:15 RightBrace }
+4:1 If if
+4:4 True true
+4:9 LeftBrace {
+4:11 Return return
+4:17 Semicolon ;
+4:19 RightBrace }
+5:1 Match match
+5:7 Identifier x
+5:9 LeftBrace {
+5:11 Identifier _
+5:13 FatArrow =>
+5:16 Integer 0 0
+5:18 RightBrace }
+6:1 Eof

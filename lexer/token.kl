@@ -42,4 +42,5 @@ pub struct Token {
   int col;
   int int_value;
   float float_value;
+  string string_value;
 }

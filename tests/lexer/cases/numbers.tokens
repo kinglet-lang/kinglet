@@ -1,0 +1,13 @@
+1:1 Integer 0xFF 255
+1:5 Semicolon ;
+2:1 Integer 0b1010 10
+2:7 Semicolon ;
+3:1 FloatLit 3.14 3.14
+3:5 Semicolon ;
+4:1 FloatLit 1e3 1000
+4:4 Semicolon ;
+5:1 FloatLit 2.5e-2 0.025
+5:7 Semicolon ;
+6:1 Integer 1_000 1000
+6:6 Semicolon ;
+7:1 Eof
