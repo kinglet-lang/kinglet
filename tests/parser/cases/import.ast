@@ -1,0 +1,12 @@
+Program
+  using io
+  using fs
+  ImportDecl "../lib/util.kl"
+  ImportDecl "../lib/math.kl" as m
+  ImportDecl "../lib/text.kl"
+    symbol trim
+    symbol lower
+  FunctionDecl int main
+    Block
+      Return
+        IntLit 0

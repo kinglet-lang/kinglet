@@ -1,0 +1,32 @@
+Program
+  StructDecl Point
+    field int x
+    field int y
+  EnumDecl Shape
+    variant Circle
+      param int
+    variant Rect
+      param int
+      param int
+    variant Empty
+  FunctionDecl int main
+    Block
+      VarDecl Point p
+        StructLit Point
+          field
+            IntLit 1
+          field
+            IntLit 2
+      VarDecl Shape s
+        Call
+          NsAccess Shape::Rect
+          IntLit 3
+          IntLit 4
+      VarDecl int sum
+        Binary +
+          FieldAccess .x
+            Ident p
+          FieldAccess .y
+            Ident p
+      Return
+        Ident sum

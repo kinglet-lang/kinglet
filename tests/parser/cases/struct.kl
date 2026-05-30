@@ -1,0 +1,17 @@
+struct Point {
+  int x;
+  int y;
+}
+
+enum Shape {
+  Circle(int),
+  Rect(int, int),
+  Empty,
+}
+
+int main() {
+  Point p = Point { 1, 2 };
+  Shape s = Shape::Rect(3, 4);
+  int sum = p.x + p.y;
+  return sum;
+}
