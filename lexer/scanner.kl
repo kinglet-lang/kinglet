@@ -1,6 +1,4 @@
-import "/Users/bytedance/Code/KPL/kinglet/lexer/token.kl" { Token, TokenType }
-
-// ── Scanner state ──────────────────────────────────────────────────
+import "token.kl" { Token, TokenType }
 
 struct Scanner {
   string source;
@@ -14,15 +12,11 @@ struct Scanner {
 
 Scanner make_scanner(string source) => Scanner { source, 0, 0, 1, 1, 1, 1 };
 
-// ── character helpers ──────────────────────────────────────────────
-
 bool is_digit(string c)  => c >= "0" && c <= "9";
 bool is_alpha(string c)  => (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_";
 bool is_alnum(string c)  => is_alpha(c) || is_digit(c);
 bool is_hex(string c)    => is_digit(c) || (c >= "a" && c <= "f") || (c >= "A" && c <= "F");
 bool is_binary(string c) => c == "0" || c == "1";
-
-// ── low-level primitives ───────────────────────────────────────────
 
 bool at_end(Scanner s) => s.current >= s.source.len();
 
@@ -62,8 +56,6 @@ MatchResult match_char(Scanner s, string expected) {
   return MatchResult { r.sc, true };
 }
 
-// ── token factories ────────────────────────────────────────────────
-
 Token make_token(Scanner s, TokenType type) {
   string lexeme = s.source.slice(s.start, s.current);
   return Token { type, lexeme, s.token_line, s.token_col, 0, 0.0 };
@@ -73,35 +65,44 @@ Token make_error(Scanner s, string msg) {
   return Token { TokenType::Error, msg, s.token_line, s.token_col, 0, 0.0 };
 }
 
-// ── keyword table ──────────────────────────────────────────────────
-
-TokenType keyword_type(string word) {
-  {string: TokenType} kw = {
-    "auto": TokenType::Auto, "int": TokenType::Int,
-    "float": TokenType::Float, "double": TokenType::Double,
-    "bool": TokenType::Bool, "string": TokenType::String,
-    "void": TokenType::Void, "byte": TokenType::Byte,
-    "const": TokenType::Const, "return": TokenType::Return,
-    "if": TokenType::If, "else": TokenType::Else,
-    "for": TokenType::For, "while": TokenType::While,
-    "break": TokenType::Break, "continue": TokenType::Continue,
-    "guard": TokenType::Guard, "match": TokenType::Match,
-    "let": TokenType::Let, "when": TokenType::When,
-    "export": TokenType::Export, "import": TokenType::Import,
-    "pub": TokenType::Pub, "namespace": TokenType::Namespace,
-    "using": TokenType::Using, "struct": TokenType::Struct,
-    "enum": TokenType::Enum, "trait": TokenType::Trait,
-    "impl": TokenType::Impl, "self": TokenType::Self_,
-    "spawn": TokenType::Spawn, "select": TokenType::Select,
-    "true": TokenType::True, "false": TokenType::False,
-    "null": TokenType::Null_,
-  };
-  TokenType t = kw[word];
-  if (t == null) { return TokenType::Identifier; }
-  return t;
+TokenType keyword_type(string w) {
+  if (w == "auto")      { return TokenType::Auto; }
+  if (w == "int")       { return TokenType::Int; }
+  if (w == "float")     { return TokenType::Float; }
+  if (w == "double")    { return TokenType::Double; }
+  if (w == "bool")      { return TokenType::Bool; }
+  if (w == "string")    { return TokenType::String; }
+  if (w == "void")      { return TokenType::Void; }
+  if (w == "byte")      { return TokenType::Byte; }
+  if (w == "const")     { return TokenType::Const; }
+  if (w == "return")    { return TokenType::Return; }
+  if (w == "if")        { return TokenType::If; }
+  if (w == "else")      { return TokenType::Else; }
+  if (w == "for")       { return TokenType::For; }
+  if (w == "while")     { return TokenType::While; }
+  if (w == "break")     { return TokenType::Break; }
+  if (w == "continue")  { return TokenType::Continue; }
+  if (w == "guard")     { return TokenType::Guard; }
+  if (w == "match")     { return TokenType::Match; }
+  if (w == "let")       { return TokenType::Let; }
+  if (w == "when")      { return TokenType::When; }
+  if (w == "export")    { return TokenType::Export; }
+  if (w == "import")    { return TokenType::Import; }
+  if (w == "pub")       { return TokenType::Pub; }
+  if (w == "namespace") { return TokenType::Namespace; }
+  if (w == "using")     { return TokenType::Using; }
+  if (w == "struct")    { return TokenType::Struct; }
+  if (w == "enum")      { return TokenType::Enum; }
+  if (w == "trait")     { return TokenType::Trait; }
+  if (w == "impl")      { return TokenType::Impl; }
+  if (w == "self")      { return TokenType::Self_; }
+  if (w == "spawn")     { return TokenType::Spawn; }
+  if (w == "select")    { return TokenType::Select; }
+  if (w == "true")      { return TokenType::True; }
+  if (w == "false")     { return TokenType::False; }
+  if (w == "null")      { return TokenType::Null_; }
+  return TokenType::Identifier;
 }
-
-// ── skip whitespace & comments ─────────────────────────────────────
 
 Scanner skip(Scanner s) {
   while (!at_end(s)) {
@@ -130,8 +131,6 @@ Scanner skip(Scanner s) {
   return s;
 }
 
-// ── identifier ─────────────────────────────────────────────────────
-
 struct ScanResult { Scanner sc; Token tok; }
 
 ScanResult scan_identifier(Scanner s) {
@@ -142,111 +141,118 @@ ScanResult scan_identifier(Scanner s) {
   return ScanResult { s, make_token(s, keyword_type(word)) };
 }
 
-// ── number ─────────────────────────────────────────────────────────
+int digit_value(string c) => c.code() - "0".code();
 
-string strip_sep(string src, int from, int to) {
-  string[] parts = src.slice(from, to).split("_");
-  string r = "";
-  int i = 0;
-  while (i < parts.len()) { r = r + parts[i]; i = i + 1; }
-  return r;
+int hex_digit_value(string c) {
+  if (c >= "0" && c <= "9") { return c.code() - "0".code(); }
+  if (c >= "a" && c <= "f") { return c.code() - "a".code() + 10; }
+  return c.code() - "A".code() + 10;
 }
 
 ScanResult scan_number(Scanner s) {
   string first = char_at(s, s.start);
 
-  // Hex: 0x...
   if (first == "0" && (peek(s) == "x" || peek(s) == "X")) {
     AdvResult rx = advance(s); s = rx.sc;
     if (!is_hex(peek(s))) {
       return ScanResult { s, make_error(s, "Expected hex digit after 0x.") };
     }
-    while (!at_end(s) && (is_hex(peek(s)) || peek(s) == "_")) {
-      AdvResult r = advance(s); s = r.sc;
-    }
-    string raw = strip_sep(s.source, s.start + 2, s.current);
     int val = 0;
-    string[] chars = raw.split("");
-    int i = 0;
-    while (i < chars.len()) {
-      string hc = chars[i];
-      int d = 0;
-      if (hc >= "0" && hc <= "9")      { d = hc.code() - "0".code(); }
-      else if (hc >= "a" && hc <= "f") { d = hc.code() - "a".code() + 10; }
-      else                              { d = hc.code() - "A".code() + 10; }
-      val = val * 16 + d;
-      i = i + 1;
+    while (!at_end(s) && (is_hex(peek(s)) || peek(s) == "_")) {
+      string c = peek(s);
+      if (c != "_") { val = val * 16 + hex_digit_value(c); }
+      AdvResult r = advance(s); s = r.sc;
     }
     Token tok = make_token(s, TokenType::Integer);
     tok.int_value = val;
     return ScanResult { s, tok };
   }
 
-  // Binary: 0b...
   if (first == "0" && (peek(s) == "b" || peek(s) == "B")) {
     AdvResult rb = advance(s); s = rb.sc;
     if (!is_binary(peek(s))) {
       return ScanResult { s, make_error(s, "Expected binary digit after 0b.") };
     }
-    while (!at_end(s) && (is_binary(peek(s)) || peek(s) == "_")) {
-      AdvResult r = advance(s); s = r.sc;
-    }
-    string raw = strip_sep(s.source, s.start + 2, s.current);
     int val = 0;
-    string[] bits = raw.split("");
-    int i = 0;
-    while (i < bits.len()) {
-      int bit = 0;
-      if (bits[i] == "1") { bit = 1; }
-      val = (val << 1) | bit;
-      i = i + 1;
+    while (!at_end(s) && (is_binary(peek(s)) || peek(s) == "_")) {
+      string c = peek(s);
+      if (c != "_") {
+        int bit = 0;
+        if (c == "1") { bit = 1; }
+        val = (val << 1) | bit;
+      }
+      AdvResult r = advance(s); s = r.sc;
     }
     Token tok = make_token(s, TokenType::Integer);
     tok.int_value = val;
     return ScanResult { s, tok };
   }
 
-  // Decimal / float
-  bool is_float = false;
+  int int_val = digit_value(first);
   while (!at_end(s) && (is_digit(peek(s)) || peek(s) == "_")) {
+    string c = peek(s);
+    if (c != "_") { int_val = int_val * 10 + digit_value(c); }
     AdvResult r = advance(s); s = r.sc;
   }
+
+  bool is_float = false;
+  float frac_val = 0.0;
   if (peek(s) == "." && is_digit(peek_next(s))) {
     is_float = true;
     AdvResult rd = advance(s); s = rd.sc;
+    float scale = 0.1;
     while (!at_end(s) && (is_digit(peek(s)) || peek(s) == "_")) {
+      string c = peek(s);
+      if (c != "_") {
+        frac_val = frac_val + scale * digit_value(c);
+        scale = scale * 0.1;
+      }
       AdvResult r = advance(s); s = r.sc;
     }
   }
+
+  bool has_exp = false;
+  int exp_val = 0;
+  int exp_sign = 1;
   if (peek(s) == "e" || peek(s) == "E") {
     is_float = true;
+    has_exp = true;
     AdvResult re = advance(s); s = re.sc;
-    if (peek(s) == "+" || peek(s) == "-") { AdvResult rs = advance(s); s = rs.sc; }
+    if (peek(s) == "+") {
+      AdvResult rs = advance(s); s = rs.sc;
+    } else if (peek(s) == "-") {
+      exp_sign = -1;
+      AdvResult rs = advance(s); s = rs.sc;
+    }
     if (!is_digit(peek(s))) {
       return ScanResult { s, make_error(s, "Expected digit in exponent.") };
     }
     while (!at_end(s) && (is_digit(peek(s)) || peek(s) == "_")) {
+      string c = peek(s);
+      if (c != "_") { exp_val = exp_val * 10 + digit_value(c); }
       AdvResult r = advance(s); s = r.sc;
     }
   }
 
-  string raw = strip_sep(s.source, s.start, s.current);
   if (is_float) {
-    float fv = raw.to_float();
-    if (fv == null) { return ScanResult { s, make_error(s, "Invalid float literal.") }; }
+    float v = int_val + frac_val;
+    if (has_exp) {
+      int n = exp_val;
+      if (exp_sign > 0) {
+        while (n > 0) { v = v * 10.0; n = n - 1; }
+      } else {
+        while (n > 0) { v = v / 10.0; n = n - 1; }
+      }
+    }
     Token tok = make_token(s, TokenType::FloatLit);
-    tok.float_value = fv;
-    return ScanResult { s, tok };
-  } else {
-    int iv = raw.to_int();
-    if (iv == null) { return ScanResult { s, make_error(s, "Invalid integer literal.") }; }
-    Token tok = make_token(s, TokenType::Integer);
-    tok.int_value = iv;
+    tok.float_value = v;
     return ScanResult { s, tok };
   }
-}
 
-// ── string literal ─────────────────────────────────────────────────
+  Token tok = make_token(s, TokenType::Integer);
+  tok.int_value = int_val;
+  return ScanResult { s, tok };
+}
 
 ScanResult scan_string(Scanner s) {
   while (!at_end(s)) {
@@ -264,8 +270,6 @@ ScanResult scan_string(Scanner s) {
   }
   return ScanResult { s, make_error(s, "Unterminated string literal.") };
 }
-
-// ── char literal ───────────────────────────────────────────────────
 
 ScanResult scan_char(Scanner s) {
   if (at_end(s) || peek(s) == "\n") {
@@ -300,8 +304,6 @@ ScanResult scan_char(Scanner s) {
   tok.int_value = value;
   return ScanResult { s, tok };
 }
-
-// ── scan_token ─────────────────────────────────────────────────────
 
 ScanResult scan_token(Scanner s) {
   s = skip(s);
@@ -409,8 +411,6 @@ ScanResult scan_token(Scanner s) {
 
   return ScanResult { s, make_error(s, "Unexpected character.") };
 }
-
-// ── public entry point ─────────────────────────────────────────────
 
 pub Token[] scan(string source) {
   Scanner s = make_scanner(source);
