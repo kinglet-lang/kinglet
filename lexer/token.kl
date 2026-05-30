@@ -1,0 +1,45 @@
+pub enum TokenType {
+  // Keywords
+  Auto, Int, Float, Double, Bool, String, Void, Byte,
+  Const,
+  Return, If, Else, For, While, Break, Continue, Guard,
+  Match, Let, When,
+  Pub, Import, Export, Namespace, Using,
+  Struct, Enum, Trait, Impl, Self_,
+  Spawn, Select,
+  True, False, Null_,
+
+  // Operators
+  Plus, Minus, Star, Slash, Percent,
+  Equal, EqualEqual, BangEqual,
+  Less, Greater, LessEqual, GreaterEqual,
+  AmpAmp, PipePipe, Bang,
+  Amp, Pipe, Caret, Tilde, LessLess, GreaterGreater, PipeGreater,
+  Arrow, FatArrow, Question, ColonColon, Dot, DotDot, DotDotDot,
+  PlusEqual, MinusEqual, StarEqual, SlashEqual,
+
+  // Delimiters
+  LeftParen, RightParen,
+  LeftBrace, RightBrace,
+  LeftBracket, RightBracket,
+  Comma, Semicolon, Colon,
+
+  // Literals
+  Integer, FloatLit, StringLit, CharLit,
+
+  // Identifier
+  Identifier,
+
+  // Special
+  Eof,
+  Error,
+}
+
+pub struct Token {
+  TokenType type;
+  string lexeme;
+  int line;
+  int col;
+  int int_value;   // INTEGER / CHAR_LIT
+  float float_value; // FLOAT_LIT
+}
