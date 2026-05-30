@@ -1,0 +1,147 @@
+// AST nodes for the self-hosted Kinglet parser.
+//
+// Tagged unions are encoded as enums with payload variants (Kinglet has no
+// `union` keyword). Variant params are positional types; field meaning is
+// fixed by position and documented per variant below.
+//
+// Recursive nesting (Expr inside Expr, Stmt inside Stmt) relies on the
+// bootstrap compiler's forward-decl pre-pass.
+
+import "../lexer/token.kl" { Token, TokenType }
+
+pub enum BinaryOp {
+  Add, Sub, Mul, Div, Mod,
+  Eq, Neq, Lt, Gt, Le, Ge,
+  And, Or,
+  BitAnd, BitOr, BitXor, Shl, Shr,
+}
+
+pub enum UnaryOp { Neg, Not, BitNot, }
+
+pub enum AssignOp { Assign, AddAssign, SubAssign, MulAssign, DivAssign, }
+
+pub struct TypeExpr {
+  string name;
+  TypeExpr[] type_args;
+}
+
+pub TypeExpr make_type(string name) => TypeExpr { name, [] };
+
+// Expression node. Variant payloads, in order:
+//
+//   IntLit(value, line, col)
+//   FloatLit(value, line, col)
+//   StringLit(value, line, col)
+//   BoolLit(value, line, col)
+//   Ident(name, line, col)
+//   Unary(op, right, line, col)
+//   Binary(left, op, right, line, col)
+//   Assign(name, op, value, line, col)
+//   Call(callee, type_args, args, line, col)
+//   BindingPat(name, line, col)              // `let x` inside a match pattern
+//   ArrayPat(elements, line, col)            // `[a, b, c]` pattern
+//   EnumPat(enum_name, variant, fields, line, col)
+//   Match(value, arms, line, col)
+//   Cast(target, value, fallback, line, col) // fallback may be Expr::None
+//   NsAccess(ns, member, line, col)          // io::out
+//   FieldAccess(object, field, line, col)
+//   Index(object, index, line, col)
+//   StructLit(struct_type, fields, line, col)
+//   ArrayLit(elements, line, col)
+//   None                                     // sentinel for "no expression"
+pub enum Expr {
+  IntLit(int, int, int),
+  FloatLit(float, int, int),
+  StringLit(string, int, int),
+  BoolLit(bool, int, int),
+  Ident(string, int, int),
+  Unary(UnaryOp, Expr, int, int),
+  Binary(Expr, BinaryOp, Expr, int, int),
+  Assign(string, AssignOp, Expr, int, int),
+  Call(Expr, TypeExpr[], Expr[], int, int),
+  BindingPat(string, int, int),
+  ArrayPat(Expr[], int, int),
+  EnumPat(string, string, Expr[], int, int),
+  Match(Expr, MatchArm[], int, int),
+  Cast(TypeExpr, Expr, Expr, int, int),
+  NsAccess(string, string, int, int),
+  FieldAccess(Expr, string, int, int),
+  Index(Expr, Expr, int, int),
+  StructLit(TypeExpr, FieldInit[], int, int),
+  ArrayLit(Expr[], int, int),
+  None,
+}
+
+pub struct MatchArm {
+  Expr pattern;
+  Expr guard_expr;
+  Expr body;
+}
+
+pub struct FieldInit {
+  string name;
+  Expr value;
+}
+
+pub struct Parameter {
+  TypeExpr type;
+  string name;
+}
+
+// Statement node. Variant payloads, in order:
+//
+//   ExprStmt(expr, line, col)
+//   ReturnStmt(value, line, col)             // value may be Expr::None
+//   VarDecl(storage, type, name, init, line, col)
+//   Block(statements, line, col)
+//   If(condition, then_branch, else_branch, line, col)  // else_branch may be Stmt::None
+//   Guard(condition, else_body, line, col)
+//   While(condition, body, line, col)
+//   For(init, condition, step, body, line, col)         // any of init/condition/step may be None
+//   Break(line, col)
+//   Continue(line, col)
+//   None                                                 // sentinel for "no statement"
+pub enum Stmt {
+  ExprStmt(Expr, int, int),
+  ReturnStmt(Expr, int, int),
+  VarDecl(string, TypeExpr, string, Expr, int, int),
+  Block(Stmt[], int, int),
+  If(Expr, Stmt, Stmt, int, int),
+  Guard(Expr, Stmt, int, int),
+  While(Expr, Stmt, int, int),
+  For(Stmt, Expr, Stmt, Stmt, int, int),
+  Break(int, int),
+  Continue(int, int),
+  None,
+}
+
+pub struct FieldDef {
+  TypeExpr type;
+  string name;
+}
+
+pub struct EnumVariant {
+  string name;
+  TypeExpr[] param_types;
+}
+
+// Declaration node. Variant payloads, in order:
+//
+//   FunctionDecl(name, return_type, type_params, params, body, is_public, line, col)
+//   StructDecl(name, type_params, fields, is_public, line, col)
+//   EnumDecl(name, variants, is_public, line, col)
+//   ImportDecl(path, alias, selected, line, col)
+//   UsingDecl(namespace_name, is_namespace, line, col)
+//   TopLevelStmt(stmt, line, col)
+pub enum Decl {
+  FunctionDecl(string, TypeExpr, string[], Parameter[], Stmt, bool, int, int),
+  StructDecl(string, string[], FieldDef[], bool, int, int),
+  EnumDecl(string, EnumVariant[], bool, int, int),
+  ImportDecl(string, string, string[], int, int),
+  UsingDecl(string, bool, int, int),
+  TopLevelStmt(Stmt, int, int),
+}
+
+pub struct Program {
+  Decl[] declarations;
+}
