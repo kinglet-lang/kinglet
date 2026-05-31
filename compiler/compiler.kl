@@ -202,6 +202,17 @@ void emit_binary(Compiler co, Expr lhs, BinaryOp op, Expr rhs, int line, int col
     BinaryOp::Mul => bytecode::write_op(co.chunk, OpCode::Multiply, line, col),
     BinaryOp::Div => bytecode::write_op(co.chunk, OpCode::Divide, line, col),
     BinaryOp::Mod => bytecode::write_op(co.chunk, OpCode::Modulo, line, col),
+    BinaryOp::Eq  => bytecode::write_op(co.chunk, OpCode::Eq, line, col),
+    BinaryOp::Neq => bytecode::write_op(co.chunk, OpCode::Neq, line, col),
+    BinaryOp::Lt  => bytecode::write_op(co.chunk, OpCode::Lt, line, col),
+    BinaryOp::Gt  => bytecode::write_op(co.chunk, OpCode::Gt, line, col),
+    BinaryOp::Le  => bytecode::write_op(co.chunk, OpCode::Le, line, col),
+    BinaryOp::Ge  => bytecode::write_op(co.chunk, OpCode::Ge, line, col),
+    BinaryOp::BitAnd => bytecode::write_op(co.chunk, OpCode::BitAnd, line, col),
+    BinaryOp::BitOr  => bytecode::write_op(co.chunk, OpCode::BitOr, line, col),
+    BinaryOp::BitXor => bytecode::write_op(co.chunk, OpCode::BitXor, line, col),
+    BinaryOp::Shl    => bytecode::write_op(co.chunk, OpCode::Shl, line, col),
+    BinaryOp::Shr    => bytecode::write_op(co.chunk, OpCode::Shr, line, col),
     _ => compile_error(co, line, col, "Unsupported binary operator in VM compiler."),
   };
 }
