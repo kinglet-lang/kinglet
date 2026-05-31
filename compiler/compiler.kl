@@ -1,0 +1,377 @@
+// Self-host bytecode compiler — minimum subset.
+// Mirrors kinglet-bootstrap/src/compiler/compiler.cc for the slice we
+// support: int/bool literals, identifiers (locals), arithmetic +/-/*/%,
+// var-decls with init, return, function decls, function calls.
+//
+// Anything outside this subset is reported as `compile error: Unsupported
+// X` so a goldens diff against the C++ compiler stays meaningful — we
+// don't silently emit half-correct bytecode.
+//
+// The bootstrap compiler has two quirks we have to mirror byte-for-byte:
+//   * Every emit of a function constant adds a fresh pool entry (no dedup).
+//     See emit_constant in compiler.cc:1597 — it just calls write_constant.
+//   * Call sequence is: <args>...; Constant <function-value>; Call argc.
+//     Args are pushed *before* the function constant.
+//   * VarDecl emits StoreLocal + Pop; StoreLocal copies (does not pop).
+//   * The preamble is: function_constant(main) ; Call 0 ; Return — emitted
+//     *before* any function body, at instruction 0..2.
+//   * Each function body ends with `Null ; Return` as a fallthrough guard,
+//     after the user's body has been compiled.
+
+import "bytecode.kl"
+import "../parser/ast.kl"
+
+using io;
+
+// ---------- compiler state -------------------------------------------------
+
+pub struct Local {
+  string name;
+  int slot;
+  int scope_depth;
+}
+
+pub struct FuncEntry {
+  string name;
+  int func_index;     // index into chunk.functions[]
+  int const_index;    // index into chunk.constants[] (Function_ value)
+  int param_count;
+}
+
+pub struct CompileError {
+  int line;
+  int col;
+  string message;
+}
+
+pub struct Compiler {
+  Chunk chunk;
+  Local[] locals;
+  int[] scope_starts;     // locals.len() at each push_scope()
+  int scope_depth;
+  FuncEntry[] funcs;      // function table mirrored alongside chunk.functions
+  CompileError[] errors;
+}
+
+pub Compiler make_compiler() {
+  Chunk c = bytecode::make_chunk();
+  Local[] ls = [];
+  int[] ss = [];
+  FuncEntry[] fs = [];
+  CompileError[] es = [];
+  return Compiler { c, ls, ss, 0, fs, es };
+}
+
+void compile_error(Compiler co, int line, int col, string msg) {
+  CompileError e = CompileError { line, col, msg };
+  co.errors.push(e);
+}
+
+// ---------- scope / locals -------------------------------------------------
+// Renamed away from the obvious push_scope/pop_scope to avoid colliding with
+// the typechecker's helpers in cli/main.kl — the bootstrap registers every
+// function by bare name globally, last write wins, so a generic name from
+// the entry module silently shadows ours.
+
+void compiler_push_scope(Compiler co) {
+  co.scope_starts.push(co.locals.len());
+  co.scope_depth = co.scope_depth + 1;
+}
+
+void compiler_pop_scope(Compiler co) {
+  if (co.scope_starts.len() == 0) { return; }
+  int start = co.scope_starts[co.scope_starts.len() - 1];
+  co.scope_starts.pop();
+  while (co.locals.len() > start) {
+    co.locals.pop();
+  }
+  co.scope_depth = co.scope_depth - 1;
+}
+
+int declare_local(Compiler co, string name) {
+  int slot = co.locals.len();
+  Local l = Local { name, slot, co.scope_depth };
+  co.locals.push(l);
+  return slot;
+}
+
+int resolve_local(Compiler co, string name) {
+  int i = co.locals.len() - 1;
+  while (i >= 0) {
+    if (co.locals[i].name == name) { return co.locals[i].slot; }
+    i = i - 1;
+  }
+  return -1;
+}
+
+int resolve_function(Compiler co, string name) {
+  for (int i = 0; i < co.funcs.len(); i = i + 1) {
+    if (co.funcs[i].name == name) { return i; }
+  }
+  return -1;
+}
+
+int callee_ident_line(Expr callee, int fallback) {
+  return callee match {
+    Expr::Ident(let _n, let l, let _c) => l,
+    _ => fallback,
+  };
+}
+
+int callee_ident_col(Expr callee, int fallback) {
+  return callee match {
+    Expr::Ident(let _n, let _l, let c) => c,
+    _ => fallback,
+  };
+}
+
+// ---------- expression compilation ----------------------------------------
+
+void compile_expr(Compiler co, Expr e) {
+  e match {
+    Expr::IntLit(let v, let l, let c)    => emit_int(co, v, l, c),
+    Expr::BoolLit(let v, let l, let c)   => emit_bool(co, v, l, c),
+    Expr::Ident(let n, let l, let c)     => emit_ident(co, n, l, c),
+    Expr::Binary(let lhs, let op, let rhs, let l, let c) => emit_binary(co, lhs, op, rhs, l, c),
+    Expr::Assign(let n, let op, let v, let l, let c) => emit_assign(co, n, op, v, l, c),
+    Expr::Call(let callee, let _ta, let args, let l, let c) => emit_call(co, callee, args, l, c),
+    _ => compile_error(co, 0, 0, "Unsupported expression in VM compiler."),
+  };
+}
+
+void emit_int(Compiler co, int v, int line, int col) {
+  bytecode::write_constant(co.chunk, bytecode::const_int(v), line, col);
+}
+
+void emit_bool(Compiler co, bool v, int line, int col) {
+  if (v) {
+    bytecode::write_op(co.chunk, OpCode::True_, line, col);
+  } else {
+    bytecode::write_op(co.chunk, OpCode::False_, line, col);
+  }
+}
+
+void emit_ident(Compiler co, string name, int line, int col) {
+  int slot = resolve_local(co, name);
+  if (slot < 0) {
+    compile_error(co, line, col, "Use of undeclared variable '" + name + "'.");
+    return;
+  }
+  bytecode::write_operand(co.chunk, OpCode::LoadLocal, slot, line, col);
+}
+
+void emit_binary(Compiler co, Expr lhs, BinaryOp op, Expr rhs, int line, int col) {
+  compile_expr(co, lhs);
+  compile_expr(co, rhs);
+  op match {
+    BinaryOp::Add => bytecode::write_op(co.chunk, OpCode::Add, line, col),
+    BinaryOp::Sub => bytecode::write_op(co.chunk, OpCode::Subtract, line, col),
+    BinaryOp::Mul => bytecode::write_op(co.chunk, OpCode::Multiply, line, col),
+    BinaryOp::Div => bytecode::write_op(co.chunk, OpCode::Divide, line, col),
+    BinaryOp::Mod => bytecode::write_op(co.chunk, OpCode::Modulo, line, col),
+    _ => compile_error(co, line, col, "Unsupported binary operator in VM compiler."),
+  };
+}
+
+// Plain `x = expr` only — compound +=/-= etc. not yet supported. Value of
+// the assignment expression is the new value (StoreLocal copies, doesn't pop),
+// so callers in expression context get a value on stack.
+void emit_assign(Compiler co, string name, AssignOp op, Expr v, int line, int col) {
+  bool is_plain = op match {
+    AssignOp::Assign => true,
+    _ => false,
+  };
+  if (!is_plain) {
+    compile_error(co, line, col, "Compound assignment not supported in VM compiler.");
+    return;
+  }
+  int slot = resolve_local(co, name);
+  if (slot < 0) {
+    compile_error(co, line, col, "Assignment to undeclared variable '" + name + "'.");
+    return;
+  }
+  compile_expr(co, v);
+  bytecode::write_operand(co.chunk, OpCode::StoreLocal, slot, line, col);
+}
+
+void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
+  // The C++ compiler stamps Call instructions with the callee's source
+  // location, not the '('. Our parser puts '(' on the Call node, so patch
+  // line/col from the callee Ident here.
+  int cl = callee_ident_line(callee, line);
+  int cc = callee_ident_col(callee, col);
+  string callee_name = callee match {
+    Expr::Ident(let n, let _l, let _c) => n,
+    _ => "",
+  };
+  if (callee_name.len() == 0) {
+    compile_error(co, cl, cc, "Only direct function calls supported in VM compiler.");
+    return;
+  }
+  int fi = resolve_function(co, callee_name);
+  if (fi < 0) {
+    compile_error(co, cl, cc, "Use of undeclared variable '" + callee_name + "'.");
+    return;
+  }
+  for (int i = 0; i < args.len(); i = i + 1) {
+    compile_expr(co, args[i]);
+  }
+  // Mirror chunk_.add_constant(Value::function_value(idx)) + emit Constant —
+  // a fresh pool entry every call site, no dedup (matches compiler.cc:1142).
+  Constant fc = Constant {
+    ConstKind::Function_,
+    0, 0.0, false, "",
+    co.funcs[fi].func_index, 0,
+  };
+  bytecode::write_constant(co.chunk, fc, cl, cc);
+  bytecode::write_operand(co.chunk, OpCode::Call, args.len(), cl, cc);
+}
+
+// ---------- statement compilation -----------------------------------------
+
+void compile_stmt(Compiler co, Stmt s) {
+  s match {
+    Stmt::Block(let stmts, let _l, let _c)         => compile_block(co, stmts),
+    Stmt::ReturnStmt(let v, let l, let c)          => compile_return(co, v, l, c),
+    Stmt::VarDecl(let _stor, let _t, let n, let init, let l, let c) => compile_var_decl(co, n, init, l, c),
+    Stmt::ExprStmt(let e, let l, let c)            => compile_expr_stmt(co, e, l, c),
+    _ => compile_error(co, 0, 0, "Unsupported statement in VM compiler."),
+  };
+}
+
+void compile_block(Compiler co, Stmt[] stmts) {
+  compiler_push_scope(co);
+  bool returned = false;
+  for (int i = 0; i < stmts.len(); i = i + 1) {
+    if (returned) { i = stmts.len(); }
+    if (!returned) {
+      compile_stmt(co, stmts[i]);
+      returned = stmts[i] match {
+        Stmt::ReturnStmt(let _v, let _l, let _c) => true,
+        _ => false,
+      };
+    }
+  }
+  compiler_pop_scope(co);
+}
+
+void compile_return(Compiler co, Expr v, int line, int col) {
+  bool has_value = v match { Expr::None => false, _ => true, };
+  if (has_value) {
+    compile_expr(co, v);
+  } else {
+    bytecode::write_op(co.chunk, OpCode::Null_, line, col);
+  }
+  bytecode::write_op(co.chunk, OpCode::Return_, line, col);
+}
+
+void compile_var_decl(Compiler co, string name, Expr init, int line, int col) {
+  int slot = declare_local(co, name);
+  bool has_init = init match { Expr::None => false, _ => true, };
+  if (has_init) {
+    compile_expr(co, init);
+  } else {
+    bytecode::write_op(co.chunk, OpCode::Null_, line, col);
+  }
+  bytecode::write_operand(co.chunk, OpCode::StoreLocal, slot, line, col);
+  bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+}
+
+void compile_expr_stmt(Compiler co, Expr e, int line, int col) {
+  compile_expr(co, e);
+  bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+}
+
+// ---------- function & program --------------------------------------------
+
+void register_compiler_function(Compiler co, string name, int param_count) {
+  // Allocate function table slot (entry to be patched once body emits).
+  FunctionInfo info = FunctionInfo { name, 0, param_count };
+  co.chunk.functions.push(info);
+  int func_index = co.chunk.functions.len() - 1;
+  // Every function gets a Function_ constant, even at decl time. Mirrors
+  // compiler.cc:130 chunk_.add_constant(Value::function_value(idx)).
+  Constant fc = Constant {
+    ConstKind::Function_,
+    0, 0.0, false, "",
+    func_index, 0,
+  };
+  co.chunk.constants.push(fc);
+  int const_index = co.chunk.constants.len() - 1;
+  FuncEntry fe = FuncEntry { name, func_index, const_index, param_count };
+  co.funcs.push(fe);
+}
+
+void compile_function_body(Compiler co, string name, Parameter[] params, Stmt body, int line, int col) {
+  int fi = resolve_function(co, name);
+  if (fi < 0) {
+    compile_error(co, line, col, "Internal: function '" + name + "' not registered.");
+    return;
+  }
+  // Patch entry to current instruction count, mirroring compile_function in
+  // compiler.cc:393.
+  co.chunk.functions[co.funcs[fi].func_index].entry = co.chunk.instructions.len();
+  // Reset locals; params take slots 0..N-1 at depth 1.
+  while (co.locals.len() > 0) { co.locals.pop(); }
+  while (co.scope_starts.len() > 0) { co.scope_starts.pop(); }
+  co.scope_depth = 0;
+  compiler_push_scope(co);
+  for (int i = 0; i < params.len(); i = i + 1) {
+    Parameter p = params[i];
+    declare_local(co, p.name);
+  }
+  compile_stmt(co, body);
+  // Fallthrough safety: every body ends with Null + Return in case the user
+  // forgot. Matches compiler.cc:424.
+  if (co.errors.len() == 0) {
+    bytecode::write_op(co.chunk, OpCode::Null_, line, col);
+    bytecode::write_op(co.chunk, OpCode::Return_, line, col);
+  }
+  compiler_pop_scope(co);
+}
+
+pub int compile_program(Compiler co, Program prog) {
+  // Pass 1: register every top-level function, in source order.
+  int main_fi = -1;
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    Decl d = prog.declarations[i];
+    d match {
+      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _body, let _is_pub, let _l, let _c) =>
+        register_top_function(co, n, params),
+      _ => skip_decl(co),
+    };
+    if (co.errors.len() > 0) { return co.errors.len(); }
+  }
+  main_fi = resolve_function(co, "main");
+  if (main_fi < 0) {
+    compile_error(co, 1, 0, "Expected a main function.");
+    return co.errors.len();
+  }
+  // Preamble: load function-value(main); Call 0; Return.
+  // Source location is hardcoded to 1:0 to match C++'s preamble_loc{1, 0}.
+  Constant main_fc = Constant {
+    ConstKind::Function_,
+    0, 0.0, false, "",
+    co.funcs[main_fi].func_index, 0,
+  };
+  bytecode::write_constant(co.chunk, main_fc, 1, 0);
+  bytecode::write_operand(co.chunk, OpCode::Call, 0, 1, 0);
+  bytecode::write_op(co.chunk, OpCode::Return_, 1, 0);
+  // Pass 2: compile each function body, in source order.
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    Decl d = prog.declarations[i];
+    d match {
+      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let body, let _is_pub, let l, let c) =>
+        compile_function_body(co, n, params, body, l, c),
+      _ => skip_decl(co),
+    };
+    if (co.errors.len() > 0) { return co.errors.len(); }
+  }
+  return 0;
+}
+
+void register_top_function(Compiler co, string name, Parameter[] params) {
+  register_compiler_function(co, name, params.len());
+}
+
+void skip_decl(Compiler co) { return; }

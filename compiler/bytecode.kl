@@ -1,0 +1,184 @@
+// Bytecode data definitions — Kinglet mirror of kinglet-bootstrap/src/vm/chunk.h.
+//
+// Pure data: opcodes, instructions, the constant pool, and the per-function /
+// per-type metadata tables. No emit logic, no execution. The companion module
+// compiler/disasm.kl reads these to produce the human-readable text the C++
+// `--bytecode` flag emits, which is our golden oracle.
+//
+// Layout decisions, to keep the self-host bytecode byte-compatible with the
+// bootstrap compiler:
+//   - OpCode order matches chunk.h line-by-line (so OpCode::Constant is index 0,
+//     OpCode::MapLen is index 79).
+//   - Each Instruction carries a single int operand (mirrors int32_t on the C++
+//     side). Operand meaning is opcode-dependent — see disasm.kl for the table.
+//   - The constant pool stores tagged scalars only. Arrays/Maps/Structs/Enums
+//     are never placed in the pool by the bootstrap compiler; they are built at
+//     runtime via dedicated opcodes. We model the union for completeness so that
+//     disasm can print whatever Value::operator<< would produce.
+
+pub enum OpCode {
+  // constants
+  Constant, Null_, True_, False_,
+  // arithmetic
+  Add, Subtract, Multiply, Divide, Modulo,
+  // unary
+  Negate, Not_, BitNot,
+  // bitwise
+  BitAnd, BitOr, BitXor, Shl, Shr,
+  // locals / stack
+  LoadLocal, StoreLocal, Pop, Dup,
+  // misc
+  IsNull, CastTo,
+  // calls / control
+  Call, Return_, Jmp, JmpFalse,
+  // comparison
+  Eq, Neq, Lt, Gt, Le, Ge,
+  // native intrinsics (io / fs / sys)
+  NativeOut, NativeOutLn, NativeErr, NativeErrLn,
+  NativeIn, NativeInSecret,
+  NativeFsRead, NativeFsWrite, NativeSysArgs,
+  // structs
+  StructNew, FieldGet, FieldSet,
+  // enums
+  EnumVariant_,
+  // arrays
+  ArrayNew, IndexGet, IndexSet,
+  ArrayLen, ArrayPush, ArrayResize, ArrayPop, ArrayRemove,
+  ArrayContains, ArrayClear, ArrayInsert, ArrayIndexOf,
+  ArraySlice, ArrayReverse,
+  // strings
+  StringStartsWith, StringEndsWith, StringReplace, StringSplit,
+  StringTrim, StringToUpper, StringToLower,
+  StringToInt, StringToFloat,
+  StringCode, StringCodeAt,
+  // enum payloads
+  EnumVariantPayload, EnumPayloadGet,
+  // maps
+  MapNew, MapGet, MapSet, MapHas, MapRemove, MapKeys, MapLen,
+}
+
+// Constant pool entry. Tag dispatches which storage field to read.
+//
+// The bootstrap compiler only places scalars in the constant pool: ints,
+// doubles, booleans (rare — usually emitted via OP_True/OP_False), null
+// (emitted via OP_Null), and strings. Function/Struct/Enum/Array/Map
+// values are runtime-only. We carry a shape for them anyway so disasm
+// has a place to render Value::operator<< for any unexpected entry.
+pub enum ConstKind {
+  Int_,
+  Double_,
+  Bool_,
+  Null_,
+  String_,
+  Function_,
+  Struct_,
+  Enum_,
+  Array_,
+  Map_,
+  NativeFn_,
+}
+
+pub struct Constant {
+  ConstKind kind;
+  int int_value;
+  float double_value;
+  bool bool_value;
+  string string_value;
+  // For Function: function table index. For Struct: type_index.
+  // For Enum: encoded as enum_type_index * 1000 + variant_index (debug only).
+  int aux1;
+  int aux2;
+}
+
+pub Constant const_int(int v)    => Constant { ConstKind::Int_,    v, 0.0, false, "",  0, 0 };
+pub Constant const_double(float v) => Constant { ConstKind::Double_, 0,  v,  false, "",  0, 0 };
+pub Constant const_bool(bool v)  => Constant { ConstKind::Bool_,   0, 0.0, v,     "",  0, 0 };
+pub Constant const_null()         => Constant { ConstKind::Null_,   0, 0.0, false, "",  0, 0 };
+pub Constant const_string(string v) => Constant { ConstKind::String_, 0, 0.0, false, v,   0, 0 };
+
+pub struct Instruction {
+  OpCode op;
+  int operand;   // index / slot / jump-distance / argc / cast-tag — opcode-dependent
+  int line;
+  int col;
+}
+
+pub Instruction make_insn(OpCode op, int operand, int line, int col) {
+  return Instruction { op, operand, line, col };
+}
+
+// Function table entry. `entry` is an instruction index (not byte offset).
+pub struct FunctionInfo {
+  string name;
+  int entry;
+  int param_count;
+}
+
+pub struct StructMeta {
+  string name;
+  string[] field_names;
+}
+
+pub struct EnumMeta {
+  string name;
+  string[] variants;
+  int[] variant_param_counts;
+}
+
+// The whole compiled program. Instructions are a flat stream; functions
+// table maps names to entry indices in that stream. Mirrors `class Chunk`
+// in chunk.h.
+pub struct Chunk {
+  Constant[] constants;
+  Instruction[] instructions;
+  FunctionInfo[] functions;
+  StructMeta[] struct_metas;
+  EnumMeta[] enum_metas;
+}
+
+pub Chunk make_chunk() {
+  Constant[] cs = [];
+  Instruction[] is = [];
+  FunctionInfo[] fs = [];
+  StructMeta[] ss = [];
+  EnumMeta[] es = [];
+  return Chunk { cs, is, fs, ss, es };
+}
+
+// Append a constant; return its pool index. Mirrors Chunk::add_constant.
+pub int add_constant(Chunk c, Constant v) {
+  c.constants.push(v);
+  return c.constants.len() - 1;
+}
+
+// Append an instruction with no operand. Mirrors Chunk::write.
+pub void write_op(Chunk c, OpCode op, int line, int col) {
+  c.instructions.push(Instruction { op, 0, line, col });
+}
+
+// Append an instruction with operand. Mirrors Chunk::write_operand.
+pub void write_operand(Chunk c, OpCode op, int operand, int line, int col) {
+  c.instructions.push(Instruction { op, operand, line, col });
+}
+
+// Push constant + emit OP_Constant referring to it. Mirrors Chunk::write_constant.
+pub void write_constant(Chunk c, Constant v, int line, int col) {
+  c.constants.push(v);
+  int idx = c.constants.len() - 1;
+  c.instructions.push(Instruction { OpCode::Constant, idx, line, col });
+}
+
+pub int add_function(Chunk c, FunctionInfo info) {
+  c.functions.push(info);
+  return c.functions.len() - 1;
+}
+
+pub int add_struct_meta(Chunk c, StructMeta meta) {
+  c.struct_metas.push(meta);
+  return c.struct_metas.len() - 1;
+}
+
+pub int add_enum_meta(Chunk c, EnumMeta meta) {
+  c.enum_metas.push(meta);
+  return c.enum_metas.len() - 1;
+}

@@ -5,6 +5,9 @@ using sys;
 import "../lexer/scanner.kl" { scan }
 import "../lexer/keywords.kl" { KeywordEntry, all_keywords }
 import "../parser/parser.kl"
+import "../compiler/compiler.kl"
+import "../compiler/disasm.kl"
+import "../compiler/bytecode.kl"
 
 // AST type definitions are duplicated here from parser/ast.kl so that the
 // entry-module pre-pass in the bootstrap typechecker registers stubs
@@ -1024,26 +1027,54 @@ int run_check(string source) {
   return 0;
 }
 
+int run_bytecode(string source) {
+  Token[] tokens = scan(source);
+  Parser p = parser::make_parser(tokens);
+  Program prog = parser::parse_program(p);
+  if (p.errors.len() > 0) {
+    for (int i = 0; i < p.errors.len(); i = i + 1) {
+      ParseError e = p.errors[i];
+      io::err.line("{}:{}: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  Compiler co = compiler::make_compiler();
+  int errs = compiler::compile_program(co, prog);
+  if (errs > 0) {
+    for (int i = 0; i < co.errors.len(); i = i + 1) {
+      CompileError e = co.errors[i];
+      io::err.line("{}:{}: compile error: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  string out = disasm::disassemble(co.chunk);
+  io::out(out);
+  return 0;
+}
+
 int main() {
   string[] argv = sys::args();
   if (argv.len() < 1) {
-    io::err.line("usage: kinglet cli/main.kl [--ast] [--check] <source.kl>");
+    io::err.line("usage: kinglet cli/main.kl [--ast | --check | --bytecode] <source.kl>");
     return 64;
   }
   bool dump_ast = false;
   bool do_check = false;
+  bool dump_bc = false;
   string path = "";
   for (int i = 0; i < argv.len(); i = i + 1) {
     if (argv[i] == "--ast") {
       dump_ast = true;
     } else if (argv[i] == "--check") {
       do_check = true;
+    } else if (argv[i] == "--bytecode") {
+      dump_bc = true;
     } else {
       path = argv[i];
     }
   }
   if (path.len() == 0) {
-    io::err.line("usage: kinglet cli/main.kl [--ast] [--check] <source.kl>");
+    io::err.line("usage: kinglet cli/main.kl [--ast | --check | --bytecode] <source.kl>");
     return 64;
   }
   string source = fs::__read(path);
@@ -1056,6 +1087,9 @@ int main() {
   }
   if (do_check) {
     return run_check(source);
+  }
+  if (dump_bc) {
+    return run_bytecode(source);
   }
   return run_tokens(source);
 }
