@@ -54,6 +54,7 @@ pub struct Compiler {
   int[] loop_breaks;      // jump offsets to patch at loop exit
   int[] loop_continues;   // jump offsets to patch to loop start
   int loop_depth;          // number of active loops (for break/continue validation)
+  string[] usings;         // active `using` namespaces (io, fs, sys)
 }
 
 pub Compiler make_compiler() {
@@ -64,7 +65,8 @@ pub Compiler make_compiler() {
   CompileError[] es = [];
   int[] lbs = [];
   int[] lcs = [];
-  return Compiler { c, ls, ss, 0, fs, es, lbs, lcs, 0 };
+  string[] us = [];
+  return Compiler { c, ls, ss, 0, fs, es, lbs, lcs, 0, us };
 }
 
 // --- jump backpatching --------------------------------------------------
@@ -279,6 +281,21 @@ void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
     Expr::Ident(let n, let _l, let _c) => n,
     _ => "",
   };
+  // Handle io::out / io::err / io::in native calls via NsAccess
+  if (callee_name.len() == 0 || callee match { Expr::NsAccess(let _ns, let _m, let _l, let _c) => true, _ => false, }) {
+    callee match {
+      Expr::NsAccess(let ns, let m, let nl, let nc) => {
+        if (!has_using(co, ns)) {
+          compile_error(co, nl, nc, "Namespace '" + ns + "' not in scope. Add `using " + ns + ";`.");
+          return;
+        }
+        if (emit_native_call(co, ns, m, args, nl, nc)) { return; }
+        compile_error(co, nl, nc, "Unknown native '" + ns + "::" + m + "'.");
+        return;
+      },
+      _ => {},
+    };
+  }
   if (callee_name.len() == 0) {
     compile_error(co, cl, cc, "Only direct function calls supported in VM compiler.");
     return;
@@ -501,6 +518,15 @@ void compile_function_body(Compiler co, string name, Parameter[] params, Stmt bo
 }
 
 pub int compile_program(Compiler co, Program prog) {
+  // Pass 0: collect `using` declarations.
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    Decl d = prog.declarations[i];
+    d match {
+      Decl::UsingDecl(let n, let _is_ns, let _l, let _c) =>
+        co.usings.push(n),
+      _ => skip_decl(co),
+    };
+  }
   // Pass 1: register every top-level function, in source order.
   int main_fi = -1;
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
@@ -545,3 +571,41 @@ void register_top_function(Compiler co, string name, Parameter[] params) {
 }
 
 void skip_decl(Compiler co) { return; }
+
+// --- native intrinsic helpers --------------------------------------------
+
+bool has_using(Compiler co, string ns) {
+  for (int i = 0; i < co.usings.len(); i = i + 1) {
+    if (co.usings[i] == ns) { return true; }
+  }
+  return false;
+}
+
+bool emit_native_call(Compiler co, string ns, string member, Expr[] args, int line, int col) {
+  if (ns == "io") {
+    if (member == "out")      { return emit_native_io(co, OpCode::NativeOut, args, line, col); }
+    if (member == "outln")    { return emit_native_io(co, OpCode::NativeOut, args, line, col); }
+    if (member == "err")      { return emit_native_io(co, OpCode::NativeErr, args, line, col); }
+    if (member == "errln")    { return emit_native_io(co, OpCode::NativeErr, args, line, col); }
+    if (member == "in")       { return emit_native_io(co, OpCode::NativeIn, args, line, col); }
+    return false;
+  }
+  if (ns == "fs") {
+    if (member == "__read")   { return emit_native_io(co, OpCode::NativeFsRead, args, line, col); }
+    if (member == "__write")  { return emit_native_io(co, OpCode::NativeFsWrite, args, line, col); }
+    return false;
+  }
+  if (ns == "sys") {
+    if (member == "args")     { return emit_native_io(co, OpCode::NativeSysArgs, args, line, col); }
+    return false;
+  }
+  return false;
+}
+
+bool emit_native_io(Compiler co, OpCode op, Expr[] args, int line, int col) {
+  for (int i = 0; i < args.len(); i = i + 1) {
+    compile_expr(co, args[i]);
+  }
+  bytecode::write_operand(co.chunk, op, args.len(), line, col);
+  return true;
+}
