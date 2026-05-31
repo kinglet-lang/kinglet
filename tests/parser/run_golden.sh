@@ -19,7 +19,7 @@ FAILURES=0
 # Documented bugs the suite skips with SKIP_KNOWN rather than blocking
 # unrelated regressions. When the underlying issue is fixed, remove from
 # this list and the case will start running again.
-SKIP_KNOWN=(struct)
+SKIP_KNOWN=()
 
 # Per-case wall-clock cap. The default fast path is ~70-90ms per case,
 # so 30s is a generous safety net that still catches regressions.

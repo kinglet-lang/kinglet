@@ -19,11 +19,13 @@
 //   stores private function indices keyed by unqualified name, so a
 //   collision silently rewires scanner's calls into parser's body.
 //
-// - The cli driver MUST NOT do `import "ast.kl"` after `import "parser.kl"`.
-//   The duplicate ast.kl import re-registers ast.kl's pub functions
-//   (notably make_type) under a fresh function index whose entry never
-//   gets patched, so calling make_type jumps to byte 0 and re-enters main.
-//   parser.kl already pulls ast.kl in transitively.
+// - Until kinglet-bootstrap a130ff5, the cli driver could NOT do
+//   `import "ast.kl"` after `import "parser.kl"`. The duplicate
+//   ast.kl import re-registered ast.kl's pub functions (notably
+//   make_type) under a fresh function index whose entry never got
+//   patched, so calling make_type jumped to byte 0 and re-entered main.
+//   The bootstrap now dedups imports by resolved path, but historical
+//   context is preserved here as a warning if the fix ever regresses.
 //
 // Implementation notes
 //
