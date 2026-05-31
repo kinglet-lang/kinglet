@@ -157,6 +157,7 @@ void compile_expr(Compiler co, Expr e) {
     Expr::Binary(let lhs, let op, let rhs, let l, let c) => emit_binary(co, lhs, op, rhs, l, c),
     Expr::Assign(let n, let op, let v, let l, let c) => emit_assign(co, n, op, v, l, c),
     Expr::Call(let callee, let _ta, let args, let l, let c) => emit_call(co, callee, args, l, c),
+    Expr::Unary(let op, let r, let l, let c)  => emit_unary(co, op, r, l, c),
     Expr::None                           => emit_null(co),
     _ => compile_error(co, 0, 0, "Unsupported expression in VM compiler."),
   };
@@ -194,6 +195,15 @@ void emit_string(Compiler co, string raw, int line, int col) {
 
 void emit_null(Compiler co) {
   bytecode::write_op(co.chunk, OpCode::Null_, 0, 0);
+}
+
+void emit_unary(Compiler co, UnaryOp op, Expr r, int line, int col) {
+  compile_expr(co, r);
+  op match {
+    UnaryOp::Neg    => bytecode::write_op(co.chunk, OpCode::Negate, line, col),
+    UnaryOp::Not    => bytecode::write_op(co.chunk, OpCode::Not_, line, col),
+    UnaryOp::BitNot => bytecode::write_op(co.chunk, OpCode::BitNot, line, col),
+  };
 }
 
 void emit_bool(Compiler co, bool v, int line, int col) {
