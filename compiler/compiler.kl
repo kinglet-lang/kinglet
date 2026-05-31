@@ -131,11 +131,13 @@ void compile_expr(Compiler co, Expr e) {
   e match {
     Expr::IntLit(let v, let l, let c)    => emit_int(co, v, l, c),
     Expr::FloatLit(let v, let l, let c)  => emit_float(co, v, l, c),
+    Expr::StringLit(let v, let l, let c) => emit_string(co, v, l, c),
     Expr::BoolLit(let v, let l, let c)   => emit_bool(co, v, l, c),
     Expr::Ident(let n, let l, let c)     => emit_ident(co, n, l, c),
     Expr::Binary(let lhs, let op, let rhs, let l, let c) => emit_binary(co, lhs, op, rhs, l, c),
     Expr::Assign(let n, let op, let v, let l, let c) => emit_assign(co, n, op, v, l, c),
     Expr::Call(let callee, let _ta, let args, let l, let c) => emit_call(co, callee, args, l, c),
+    Expr::None                           => emit_null(co),
     _ => compile_error(co, 0, 0, "Unsupported expression in VM compiler."),
   };
 }
@@ -146,6 +148,32 @@ void emit_int(Compiler co, int v, int line, int col) {
 
 void emit_float(Compiler co, float v, int line, int col) {
   bytecode::write_constant(co.chunk, bytecode::const_double(v), line, col);
+}
+
+void emit_string(Compiler co, string raw, int line, int col) {
+  // Mirror compiler.cc:656-693 escape semantics exactly.
+  string unescaped = "";
+  int i = 0;
+  while (i < raw.len()) {
+    string c = raw.slice(i, i + 1);
+    if (c == "\\" && i + 1 < raw.len()) {
+      string next = raw.slice(i + 1, i + 2);
+      if (next == "n")      { unescaped = unescaped + "\n"; i = i + 2; }
+      else if (next == "t") { unescaped = unescaped + "\t"; i = i + 2; }
+      else if (next == "r") { unescaped = unescaped + "\r"; i = i + 2; }
+      else if (next == "\\") { unescaped = unescaped + "\\"; i = i + 2; }
+      else if (next == "\"") { unescaped = unescaped + "\""; i = i + 2; }
+      else                  { unescaped = unescaped + c; i = i + 1; }
+    } else {
+      unescaped = unescaped + c;
+      i = i + 1;
+    }
+  }
+  bytecode::write_constant(co.chunk, bytecode::const_string(unescaped), line, col);
+}
+
+void emit_null(Compiler co) {
+  bytecode::write_op(co.chunk, OpCode::Null_, 0, 0);
 }
 
 void emit_bool(Compiler co, bool v, int line, int col) {
