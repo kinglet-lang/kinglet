@@ -130,6 +130,7 @@ int callee_ident_col(Expr callee, int fallback) {
 void compile_expr(Compiler co, Expr e) {
   e match {
     Expr::IntLit(let v, let l, let c)    => emit_int(co, v, l, c),
+    Expr::FloatLit(let v, let l, let c)  => emit_float(co, v, l, c),
     Expr::BoolLit(let v, let l, let c)   => emit_bool(co, v, l, c),
     Expr::Ident(let n, let l, let c)     => emit_ident(co, n, l, c),
     Expr::Binary(let lhs, let op, let rhs, let l, let c) => emit_binary(co, lhs, op, rhs, l, c),
@@ -141,6 +142,10 @@ void compile_expr(Compiler co, Expr e) {
 
 void emit_int(Compiler co, int v, int line, int col) {
   bytecode::write_constant(co.chunk, bytecode::const_int(v), line, col);
+}
+
+void emit_float(Compiler co, float v, int line, int col) {
+  bytecode::write_constant(co.chunk, bytecode::const_double(v), line, col);
 }
 
 void emit_bool(Compiler co, bool v, int line, int col) {
