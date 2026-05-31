@@ -51,6 +51,8 @@ pub struct Compiler {
   int scope_depth;
   FuncEntry[] funcs;      // function table mirrored alongside chunk.functions
   CompileError[] errors;
+  int[] loop_breaks;      // jump offsets to patch at loop exit
+  int[] loop_continues;   // jump offsets to patch to loop start
 }
 
 pub Compiler make_compiler() {
@@ -59,7 +61,25 @@ pub Compiler make_compiler() {
   int[] ss = [];
   FuncEntry[] fs = [];
   CompileError[] es = [];
-  return Compiler { c, ls, ss, 0, fs, es };
+  int[] lbs = [];
+  int[] lcs = [];
+  return Compiler { c, ls, ss, 0, fs, es, lbs, lcs };
+}
+
+// --- jump backpatching --------------------------------------------------
+
+int emit_jump(Compiler co, OpCode op, int line, int col) {
+  bytecode::write_operand(co.chunk, op, 0, line, col);
+  return co.chunk.instructions.len() - 1;
+}
+
+void patch_jump(Compiler co, int offset) {
+  int jump = co.chunk.instructions.len() - offset - 1;
+  co.chunk.instructions[offset].operand = jump;
+}
+
+void patch_jump_to(Compiler co, int offset, int target) {
+  co.chunk.instructions[offset].operand = target - offset - 1;
 }
 
 void compile_error(Compiler co, int line, int col, string msg) {
@@ -279,6 +299,8 @@ void compile_stmt(Compiler co, Stmt s) {
     Stmt::ReturnStmt(let v, let l, let c)          => compile_return(co, v, l, c),
     Stmt::VarDecl(let _stor, let _t, let n, let init, let l, let c) => compile_var_decl(co, n, init, l, c),
     Stmt::ExprStmt(let e, let l, let c)            => compile_expr_stmt(co, e, l, c),
+    Stmt::If(let cond, let th, let el, let l, let c) => compile_if(co, cond, th, el, l, c),
+    Stmt::While(let cond, let body, let l, let c)     => compile_while(co, cond, body, l, c),
     _ => compile_error(co, 0, 0, "Unsupported statement in VM compiler."),
   };
 }
@@ -324,6 +346,31 @@ void compile_var_decl(Compiler co, string name, Expr init, int line, int col) {
 void compile_expr_stmt(Compiler co, Expr e, int line, int col) {
   compile_expr(co, e);
   bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+}
+
+void compile_if(Compiler co, Expr cond, Stmt th, Stmt el, int line, int col) {
+  compile_expr(co, cond);
+  int then_jump = emit_jump(co, OpCode::JmpFalse, line, col);
+  compile_stmt(co, th);
+  bool has_else = el match { Stmt::None => false, _ => true, };
+  if (has_else) {
+    int else_jump = emit_jump(co, OpCode::Jmp, line, col);
+    patch_jump(co, then_jump);
+    compile_stmt(co, el);
+    patch_jump(co, else_jump);
+  } else {
+    patch_jump(co, then_jump);
+  }
+}
+
+void compile_while(Compiler co, Expr cond, Stmt body, int line, int col) {
+  int loop_start = co.chunk.instructions.len();
+  compile_expr(co, cond);
+  int exit_jump = emit_jump(co, OpCode::JmpFalse, line, col);
+  compile_stmt(co, body);
+  int loop_jump = emit_jump(co, OpCode::Jmp, line, col);
+  patch_jump_to(co, loop_jump, loop_start);
+  patch_jump(co, exit_jump);
 }
 
 // ---------- function & program --------------------------------------------
