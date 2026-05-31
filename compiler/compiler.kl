@@ -53,6 +53,7 @@ pub struct Compiler {
   CompileError[] errors;
   int[] loop_breaks;      // jump offsets to patch at loop exit
   int[] loop_continues;   // jump offsets to patch to loop start
+  int loop_depth;          // number of active loops (for break/continue validation)
 }
 
 pub Compiler make_compiler() {
@@ -63,7 +64,7 @@ pub Compiler make_compiler() {
   CompileError[] es = [];
   int[] lbs = [];
   int[] lcs = [];
-  return Compiler { c, ls, ss, 0, fs, es, lbs, lcs };
+  return Compiler { c, ls, ss, 0, fs, es, lbs, lcs, 0 };
 }
 
 // --- jump backpatching --------------------------------------------------
@@ -311,6 +312,9 @@ void compile_stmt(Compiler co, Stmt s) {
     Stmt::ExprStmt(let e, let l, let c)            => compile_expr_stmt(co, e, l, c),
     Stmt::If(let cond, let th, let el, let l, let c) => compile_if(co, cond, th, el, l, c),
     Stmt::While(let cond, let body, let l, let c)     => compile_while(co, cond, body, l, c),
+    Stmt::For(let init, let cond, let step, let body, let l, let c) => compile_for(co, init, cond, step, body, l, c),
+    Stmt::Break(let l, let c)                          => compile_break(co, l, c),
+    Stmt::Continue(let l, let c)                       => compile_continue(co, l, c),
     _ => compile_error(co, 0, 0, "Unsupported statement in VM compiler."),
   };
 }
@@ -377,10 +381,75 @@ void compile_while(Compiler co, Expr cond, Stmt body, int line, int col) {
   int loop_start = co.chunk.instructions.len();
   compile_expr(co, cond);
   int exit_jump = emit_jump(co, OpCode::JmpFalse, line, col);
+  co.loop_depth = co.loop_depth + 1;
   compile_stmt(co, body);
+  co.loop_depth = co.loop_depth - 1;
+  // Patch continue jumps to loop_start
+  while (co.loop_continues.len() > 0) {
+    int idx = co.loop_continues.len() - 1;
+    patch_jump_to(co, co.loop_continues[idx], loop_start);
+    co.loop_continues.pop();
+  }
   int loop_jump = emit_jump(co, OpCode::Jmp, line, col);
   patch_jump_to(co, loop_jump, loop_start);
+  // Patch break to after loop
+  while (co.loop_breaks.len() > 0) {
+    int idx = co.loop_breaks.len() - 1;
+    patch_jump(co, co.loop_breaks[idx]);
+    co.loop_breaks.pop();
+  }
   patch_jump(co, exit_jump);
+}
+
+void compile_for(Compiler co, Stmt init, Expr cond, Stmt step, Stmt body, int line, int col) {
+  compiler_push_scope(co);
+  bool has_init = init match { Stmt::None => false, _ => true, };
+  if (has_init) { compile_stmt(co, init); }
+  int loop_start = co.chunk.instructions.len();
+  int exit_jump = -1;
+  bool has_cond = cond match { Expr::None => false, _ => true, };
+  if (has_cond) {
+    compile_expr(co, cond);
+    exit_jump = emit_jump(co, OpCode::JmpFalse, line, col);
+  }
+  co.loop_depth = co.loop_depth + 1;
+  compile_stmt(co, body);
+  co.loop_depth = co.loop_depth - 1;
+  // Patch break/continue jumps
+  int continue_target = co.chunk.instructions.len();
+  while (co.loop_continues.len() > 0) {
+    int idx = co.loop_continues.len() - 1;
+    patch_jump_to(co, co.loop_continues[idx], continue_target);
+    co.loop_continues.pop();
+  }
+  bool has_step = step match { Stmt::None => false, _ => true, };
+  if (has_step) { compile_stmt(co, step); }
+  int loop_jump = emit_jump(co, OpCode::Jmp, line, col);
+  patch_jump_to(co, loop_jump, loop_start);
+  // Patch break to after loop
+  while (co.loop_breaks.len() > 0) {
+    int idx = co.loop_breaks.len() - 1;
+    patch_jump(co, co.loop_breaks[idx]);
+    co.loop_breaks.pop();
+  }
+  if (exit_jump >= 0) { patch_jump(co, exit_jump); }
+  compiler_pop_scope(co);
+}
+
+void compile_break(Compiler co, int line, int col) {
+  if (co.loop_depth == 0) {
+    compile_error(co, line, col, "break must be inside a loop.");
+    return;
+  }
+  co.loop_breaks.push(emit_jump(co, OpCode::Jmp, line, col));
+}
+
+void compile_continue(Compiler co, int line, int col) {
+  if (co.loop_depth == 0) {
+    compile_error(co, line, col, "continue must be inside a loop.");
+    return;
+  }
+  co.loop_continues.push(emit_jump(co, OpCode::Jmp, line, col));
 }
 
 // ---------- function & program --------------------------------------------
