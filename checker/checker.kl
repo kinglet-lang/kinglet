@@ -23,6 +23,8 @@
 // trait/impl, etc.) is walked but produces type_unknown(), so the checker
 // is permissive rather than exhaustively wrong.
 
+using io;
+
 // --- AST mirror (kept in sync with parser/ast.kl by position) -------------
 
 enum BinaryOp {
@@ -581,4 +583,8 @@ pub int check_program(Checker c, Program prog) {
   }
   pop_scope(c);
   return c.errors.len();
+}
+
+pub int run_checker(Program prog) {
+  return check_program(make_checker("check"), prog);
 }
