@@ -281,21 +281,18 @@ void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
     Expr::Ident(let n, let _l, let _c) => n,
     _ => "",
   };
-  // Handle io::out / io::err / io::in native calls via NsAccess
-  if (callee_name.len() == 0 || callee match { Expr::NsAccess(let _ns, let _m, let _l, let _c) => true, _ => false, }) {
+  // Handle io::out / io::err / io::in native calls via NsAccess.
+  // Use sequential if instead of nested match to avoid parser bug with
+  // match-arm bodies that start with '{' inside a match-in-if-condition.
+  bool is_ns = callee match { Expr::NsAccess(let _ns, let _m, let _l, let _c) => true, _ => false, };
+  if (callee_name.len() == 0 || is_ns) {
     callee match {
-      Expr::NsAccess(let ns, let m, let nl, let nc) => {
-        if (!has_using(co, ns)) {
-          compile_error(co, nl, nc, "Namespace '" + ns + "' not in scope. Add `using " + ns + ";`.");
-          return;
-        }
-        if (emit_native_call(co, ns, m, args, nl, nc)) { return; }
-        compile_error(co, nl, nc, "Unknown native '" + ns + "::" + m + "'.");
-        return;
-      },
+      Expr::NsAccess(let ns, let m, let nl, let nc) =>
+        handle_ns_call(co, ns, m, args, nl, nc),
       _ => {},
     };
   }
+  if (is_ns) { return; }
   if (callee_name.len() == 0) {
     compile_error(co, cl, cc, "Only direct function calls supported in VM compiler.");
     return;
@@ -573,6 +570,15 @@ void register_top_function(Compiler co, string name, Parameter[] params) {
 void skip_decl(Compiler co) { return; }
 
 // --- native intrinsic helpers --------------------------------------------
+
+void handle_ns_call(Compiler co, string ns, string m, Expr[] args, int nl, int nc) {
+  if (!has_using(co, ns)) {
+    compile_error(co, nl, nc, "Namespace '" + ns + "' not in scope. Add `using " + ns + ";`.");
+    return;
+  }
+  if (emit_native_call(co, ns, m, args, nl, nc)) { return; }
+  compile_error(co, nl, nc, "Unknown native '" + ns + "::" + m + "'.");
+}
 
 bool has_using(Compiler co, string ns) {
   for (int i = 0; i < co.usings.len(); i = i + 1) {
