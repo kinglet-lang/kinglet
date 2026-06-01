@@ -249,6 +249,54 @@ TypeExpr parse_type_expr(Parser p) {
   return t;
 }
 
+// --- position helpers: extract line/col from any Expr variant ---
+
+int expr_line(Expr e) => e match {
+  Expr::IntLit(_, let l, _) => l,
+  Expr::FloatLit(_, let l, _) => l,
+  Expr::StringLit(_, let l, _) => l,
+  Expr::BoolLit(_, let l, _) => l,
+  Expr::Ident(_, let l, _) => l,
+  Expr::Unary(_, _, let l, _) => l,
+  Expr::Binary(_, _, _, let l, _) => l,
+  Expr::Assign(_, _, _, let l, _) => l,
+  Expr::Call(_, _, _, let l, _) => l,
+  Expr::BindingPat(_, let l, _) => l,
+  Expr::ArrayPat(_, let l, _) => l,
+  Expr::EnumPat(_, _, _, let l, _) => l,
+  Expr::Match(_, _, let l, _) => l,
+  Expr::Cast(_, _, _, let l, _) => l,
+  Expr::NsAccess(_, _, let l, _) => l,
+  Expr::FieldAccess(_, _, let l, _) => l,
+  Expr::Index(_, _, let l, _) => l,
+  Expr::StructLit(_, _, let l, _) => l,
+  Expr::ArrayLit(_, let l, _) => l,
+  Expr::None => -1,
+};
+
+int expr_col(Expr e) => e match {
+  Expr::IntLit(_, _, let c) => c,
+  Expr::FloatLit(_, _, let c) => c,
+  Expr::StringLit(_, _, let c) => c,
+  Expr::BoolLit(_, _, let c) => c,
+  Expr::Ident(_, _, let c) => c,
+  Expr::Unary(_, _, _, let c) => c,
+  Expr::Binary(_, _, _, _, let c) => c,
+  Expr::Assign(_, _, _, _, let c) => c,
+  Expr::Call(_, _, _, _, let c) => c,
+  Expr::BindingPat(_, _, let c) => c,
+  Expr::ArrayPat(_, _, let c) => c,
+  Expr::EnumPat(_, _, _, _, let c) => c,
+  Expr::Match(_, _, _, let c) => c,
+  Expr::Cast(_, _, _, _, let c) => c,
+  Expr::NsAccess(_, _, _, let c) => c,
+  Expr::FieldAccess(_, _, _, let c) => c,
+  Expr::Index(_, _, _, let c) => c,
+  Expr::StructLit(_, _, _, let c) => c,
+  Expr::ArrayLit(_, _, let c) => c,
+  Expr::None => -1,
+};
+
 // --- expressions: precedence climbing matching the C++ parser ---
 
 Expr expression(Parser p) => assignment(p);
@@ -267,7 +315,7 @@ Expr assignment(Parser p) {
     Expr value = assignment(p);
     AssignOp aop = token_to_assign_op(op.type);
     string name = assign_target_name(left);
-    return Expr::Assign(name, aop, value, op.line, op.col);
+    return Expr::Assign(name, aop, value, expr_line(left), expr_col(left));
   }
   return left;
 }
@@ -400,8 +448,9 @@ Expr unary(Parser p) {
 Expr call_chain(Parser p) {
   Expr expr = primary(p);
   while (true) {
+    int el = expr_line(expr);
+    int ec = expr_col(expr);
     if (match_tt(p, TokenType::LeftParen)) {
-      Token lp = previous(p);
       Expr[] args = [];
       if (!check(p, TokenType::RightParen)) {
         args.push(expression(p));
@@ -411,15 +460,14 @@ Expr call_chain(Parser p) {
       }
       consume(p, TokenType::RightParen, "Expected ')' after arguments.");
       TypeExpr[] ta = [];
-      expr = Expr::Call(expr, ta, args, lp.line, lp.col);
+      expr = Expr::Call(expr, ta, args, el, ec);
     } else if (match_tt(p, TokenType::Dot)) {
       Token field = consume(p, TokenType::Identifier, "Expected field name after '.'.");
-      expr = Expr::FieldAccess(expr, field.lexeme, field.line, field.col);
+      expr = Expr::FieldAccess(expr, field.lexeme, el, ec);
     } else if (match_tt(p, TokenType::LeftBracket)) {
-      Token lb = previous(p);
       Expr index = expression(p);
       consume(p, TokenType::RightBracket, "Expected ']' after index.");
-      expr = Expr::Index(expr, index, lb.line, lb.col);
+      expr = Expr::Index(expr, index, el, ec);
     } else if (match_tt(p, TokenType::Match)) {
       expr = match_expression(p, expr);
     } else {
