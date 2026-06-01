@@ -165,6 +165,7 @@ void compile_expr(Compiler co, Expr e) {
     Expr::Index(let obj, let idx, let l, let c) => emit_index_get(co, obj, idx, l, c),
     Expr::FieldAccess(let obj, let field, let l, let c) => emit_field_get(co, obj, field, l, c),
     Expr::StructLit(let t, let fields, let l, let c) => emit_struct_lit(co, t, fields, l, c),
+    Expr::Cast(let t, let v, let fb, let l, let c) => emit_cast(co, t, v, fb, l, c),
     Expr::None                           => emit_null(co),
     _ => compile_error(co, 0, 0, "Unsupported expression in VM compiler."),
   };
@@ -312,6 +313,25 @@ void emit_struct_lit(Compiler co, TypeExpr t, FieldInit[] fields, int line, int 
   bytecode::write_operand(co.chunk, OpCode::StructNew, operand, line, col);
 }
 
+void emit_cast(Compiler co, TypeExpr t, Expr v, Expr fb, int line, int col) {
+  compile_expr(co, v);
+  int target_kind = 0;
+  if (t.name == "int")    { target_kind = 0; }
+  if (t.name == "float")  { target_kind = 1; }
+  if (t.name == "string") { target_kind = 2; }
+  bytecode::write_operand(co.chunk, OpCode::CastTo, target_kind, line, col);
+  // Fallback: if cast result is null, execute fallback.
+  bool has_fb = fb match { Expr::None => false, _ => true, };
+  if (has_fb) {
+    bytecode::write_op(co.chunk, OpCode::Dup, line, col);
+    bytecode::write_op(co.chunk, OpCode::IsNull, line, col);
+    int skip_fb = emit_jump(co, OpCode::JmpFalse, line, col);
+    bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+    compile_expr(co, fb);
+    patch_jump(co, skip_fb);
+  }
+}
+
 // Plain `x = expr` only — compound +=/-= etc. not yet supported. Value of
 // the assignment expression is the new value (StoreLocal copies, doesn't pop),
 // so callers in expression context get a value on stack.
@@ -391,6 +411,7 @@ void compile_stmt(Compiler co, Stmt s) {
     Stmt::For(let init, let cond, let step, let body, let l, let c) => compile_for(co, init, cond, step, body, l, c),
     Stmt::Break(let l, let c)                          => compile_break(co, l, c),
     Stmt::Continue(let l, let c)                       => compile_continue(co, l, c),
+    Stmt::Guard(let cond, let body, let l, let c)      => compile_guard(co, cond, body, l, c),
     _ => compile_error(co, 0, 0, "Unsupported statement in VM compiler."),
   };
 }
@@ -526,6 +547,14 @@ void compile_continue(Compiler co, int line, int col) {
     return;
   }
   co.loop_continues.push(emit_jump(co, OpCode::Jmp, line, col));
+}
+
+// guard <cond> { <body> } => JmpFalse past body; body; patch.
+void compile_guard(Compiler co, Expr cond, Stmt body, int line, int col) {
+  compile_expr(co, cond);
+  int exit_jump = emit_jump(co, OpCode::JmpFalse, line, col);
+  compile_stmt(co, body);
+  patch_jump(co, exit_jump);
 }
 
 // ---------- function & program --------------------------------------------
