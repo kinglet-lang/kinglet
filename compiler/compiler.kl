@@ -161,6 +161,8 @@ void compile_expr(Compiler co, Expr e) {
     Expr::Assign(let n, let op, let v, let l, let c) => emit_assign(co, n, op, v, l, c),
     Expr::Call(let callee, let _ta, let args, let l, let c) => emit_call(co, callee, args, l, c),
     Expr::Unary(let op, let r, let l, let c)  => emit_unary(co, op, r, l, c),
+    Expr::ArrayLit(let elems, let l, let c)   => emit_array_lit(co, elems, l, c),
+    Expr::Index(let obj, let idx, let l, let c) => emit_index_get(co, obj, idx, l, c),
     Expr::None                           => emit_null(co),
     _ => compile_error(co, 0, 0, "Unsupported expression in VM compiler."),
   };
@@ -278,6 +280,19 @@ void emit_logical_or(Compiler co, Expr lhs, Expr rhs, int line, int col) {
   patch_jump(co, false_jump);
   compile_expr(co, rhs);
   patch_jump(co, end_jump);
+}
+
+void emit_array_lit(Compiler co, Expr[] elems, int line, int col) {
+  for (int i = 0; i < elems.len(); i = i + 1) {
+    compile_expr(co, elems[i]);
+  }
+  bytecode::write_operand(co.chunk, OpCode::ArrayNew, elems.len(), line, col);
+}
+
+void emit_index_get(Compiler co, Expr obj, Expr idx, int line, int col) {
+  compile_expr(co, obj);
+  compile_expr(co, idx);
+  bytecode::write_op(co.chunk, OpCode::IndexGet, line, col);
 }
 
 // Plain `x = expr` only — compound +=/-= etc. not yet supported. Value of
