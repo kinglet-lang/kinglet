@@ -414,7 +414,7 @@ Type check_expr(Checker c, Expr e) {
     Expr::Ident(let n, let l, let co)        => check_ident(c, n, l, co),
     Expr::Unary(let op, let r, let l, let co) => check_unary(c, op, r, l, co),
     Expr::Binary(let lhs, let op, let rhs, let l, let co) => check_binary(c, lhs, op, rhs, l, co),
-    Expr::Assign(let n, let _op, let v, let l, let co)    => check_assign(c, n, v, l, co),
+    Expr::Assign(let n, let op, let v, let l, let co)     => check_assign(c, n, op, v, l, co),
     Expr::Call(let callee, let _ta, let args, let l, let co)  => check_call(c, callee, args, l, co),
     Expr::NsAccess(let ns, let member, let l, let co)         => check_ns_access(c, ns, member, l, co),
     Expr::FieldAccess(let obj, let field, let l, let co)      => check_field_access(c, obj, field, l, co),
@@ -502,16 +502,30 @@ Type check_bitwise(Checker c, Type l, Type r, int line, int col) {
   return type_int();
 }
 
-Type check_assign(Checker c, string name, Expr value, int line, int col) {
+Type check_assign(Checker c, string name, AssignOp op, Expr value, int line, int col) {
   Type vt = check_expr(c, value);
   if (!var_exists(c, name)) {
     add_error(c, line, col, "Undeclared variable '" + name + "'.");
     return vt;
   }
   Type target = lookup_var(c, name);
-  if (!types_compatible(vt, target)) {
-    add_error(c, line, col,
-      "Cannot assign '" + type_name(vt) + "' to variable '" + name + "' of type '" + type_name(target) + "'.");
+  bool is_plain = op match { AssignOp::Assign => true, _ => false, };
+  if (is_plain) {
+    if (!types_compatible(vt, target)) {
+      add_error(c, line, col,
+        "Cannot assign '" + type_name(vt) + "' to variable '" + name + "' of type '" + type_name(target) + "'.");
+    }
+  } else {
+    // Compound assignment: both sides must support the arithmetic op.
+    // += allows string+string; all others require numeric.
+    bool is_add = op match { AssignOp::AddAssign => true, _ => false, };
+    if (is_add && target.kind == TypeKind::String && vt.kind == TypeKind::String) {
+      // string += string OK
+    } else if (!is_numeric(target) || !is_numeric(vt)) {
+      add_error(c, line, col,
+        "Compound assignment requires numeric operands, got '" +
+        type_name(target) + "' and '" + type_name(vt) + "'.");
+    }
   }
   return target;
 }

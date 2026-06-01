@@ -746,7 +746,7 @@ Type check_expr(Checker c, Expr e) {
     Expr::Ident(let n, let l, let co)        => check_ident(c, n, l, co),
     Expr::Unary(let op, let r, let l, let co) => check_unary(c, op, r, l, co),
     Expr::Binary(let lhs, let op, let rhs, let l, let co) => check_binary(c, lhs, op, rhs, l, co),
-    Expr::Assign(let n, let _op, let v, let l, let co)    => check_assign(c, n, v, l, co),
+    Expr::Assign(let n, let op, let v, let l, let co)     => check_assign(c, n, op, v, l, co),
     _ => type_unknown(),
   };
 }
@@ -824,16 +824,28 @@ Type check_bitwise(Checker c, Type l, Type r, int line, int col) {
   return type_int();
 }
 
-Type check_assign(Checker c, string name, Expr value, int line, int col) {
+Type check_assign(Checker c, string name, AssignOp op, Expr value, int line, int col) {
   Type vt = check_expr(c, value);
   if (!var_exists(c, name)) {
     add_error(c, line, col, "Undeclared variable '" + name + "'.");
     return vt;
   }
   Type target = lookup_var(c, name);
-  if (!types_compatible(vt, target)) {
-    add_error(c, line, col,
-      "Cannot assign '" + type_kind_name(vt) + "' to variable '" + name + "' of type '" + type_kind_name(target) + "'.");
+  bool is_plain = op match { AssignOp::Assign => true, _ => false, };
+  if (is_plain) {
+    if (!types_compatible(vt, target)) {
+      add_error(c, line, col,
+        "Cannot assign '" + type_kind_name(vt) + "' to variable '" + name + "' of type '" + type_kind_name(target) + "'.");
+    }
+  } else {
+    bool is_add = op match { AssignOp::AddAssign => true, _ => false, };
+    if (is_add && target.kind == TypeKind::String && vt.kind == TypeKind::String) {
+      // string += string OK
+    } else if (!is_numeric(target) || !is_numeric(vt)) {
+      add_error(c, line, col,
+        "Compound assignment requires numeric operands, got '" +
+        type_kind_name(target) + "' and '" + type_kind_name(vt) + "'.");
+    }
   }
   return target;
 }

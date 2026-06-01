@@ -362,21 +362,36 @@ void compile_try(Compiler co, Expr value, int line, int col) {
 // Plain `x = expr` only — compound +=/-= etc. not yet supported. Value of
 // the assignment expression is the new value (StoreLocal copies, doesn't pop),
 // so callers in expression context get a value on stack.
-void emit_assign(Compiler co, string name, AssignOp op, Expr v, int line, int col) {
-  bool is_plain = op match {
-    AssignOp::Assign => true,
-    _ => false,
+// Helper: map compound AssignOp to the corresponding binary OpCode.
+// Only called for non-plain compound ops; the wildcard is unreachable.
+OpCode compound_op(AssignOp op) {
+  return op match {
+    AssignOp::AddAssign => OpCode::Add,
+    AssignOp::SubAssign => OpCode::Subtract,
+    AssignOp::MulAssign => OpCode::Multiply,
+    AssignOp::DivAssign => OpCode::Divide,
+    _ => OpCode::Add,
   };
-  if (!is_plain) {
-    compile_error(co, line, col, "Compound assignment not supported in VM compiler.");
-    return;
-  }
+}
+
+void emit_assign(Compiler co, string name, AssignOp op, Expr v, int line, int col) {
   int slot = resolve_local(co, name);
   if (slot < 0) {
     compile_error(co, line, col, "Assignment to undeclared variable '" + name + "'.");
     return;
   }
-  compile_expr(co, v);
+  bool is_plain = op match {
+    AssignOp::Assign => true,
+    _ => false,
+  };
+  if (is_plain) {
+    compile_expr(co, v);
+  } else {
+    // Compound: load old value, compile RHS, apply binary op.
+    bytecode::write_operand(co.chunk, OpCode::LoadLocal, slot, line, col);
+    compile_expr(co, v);
+    bytecode::write_op(co.chunk, compound_op(op), line, col);
+  }
   bytecode::write_operand(co.chunk, OpCode::StoreLocal, slot, line, col);
 }
 
