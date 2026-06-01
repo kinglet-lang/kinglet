@@ -57,12 +57,14 @@ enum Expr {
   ArrayPat(Expr[], int, int),
   EnumPat(string, string, Expr[], int, int),
   Match(Expr, MatchArm[], int, int),
-  Cast(TypeExpr, Expr, Expr, int, int),
+  Cast(TypeExpr, Expr, int, int),
   NsAccess(string, string, int, int),
   FieldAccess(Expr, string, int, int),
   Index(Expr, Expr, int, int),
   StructLit(TypeExpr, FieldInit[], int, int),
   ArrayLit(Expr[], int, int),
+  NullCoalesce(Expr, string, Expr, int, int),
+  TryExpr(Expr, int, int),
   None,
 }
 
