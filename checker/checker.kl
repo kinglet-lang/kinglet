@@ -9,19 +9,8 @@
 // documented at the top of parser/parser.kl when ast.kl has already been
 // pulled in transitively.
 //
-// What this checker covers (intentionally a small subset of the C++
-// implementation at kinglet-bootstrap/src/checker/type_checker.cc):
-//   - Type-inferred and explicitly-typed variable declarations
-//   - Integer / float / bool / string literal types
-//   - Arithmetic, comparison, logical, and bitwise binary expressions
-//   - Variable references via a lexical scope stack
-//   - If / while / for / guard control-flow walks
-//   - Block "result" type = type of trailing expression
-//   - If branches as expressions: both branches must agree
-//
-// Anything not in that list (calls, casts, struct lits, match, namespaces,
-// trait/impl, etc.) is walked but produces type_unknown(), so the checker
-// is permissive rather than exhaustively wrong.
+// Phase 1 expansion: Char/Null/Function/Struct/Enum/Array/Map type kinds,
+// type detail storage, struct/enum/using declaration registration.
 
 using io;
 
@@ -125,27 +114,39 @@ struct Program {
 
 pub enum TypeKind {
   Int, Float, Bool, String, Void, Unknown,
+  Char, Null, Function, Struct, Enum, Array, Map,
 }
 
 pub struct Type {
   TypeKind kind;
+  string name;       // struct/enum/function name; "" for primitives
+  int type_id;       // index into Checker detail tables; 0 = no detail
 }
 
-pub Type type_int()     => Type { TypeKind::Int };
-pub Type type_float()   => Type { TypeKind::Float };
-pub Type type_bool()    => Type { TypeKind::Bool };
-pub Type type_string()  => Type { TypeKind::String };
-pub Type type_void()    => Type { TypeKind::Void };
-pub Type type_unknown() => Type { TypeKind::Unknown };
+pub Type type_int()     => Type { TypeKind::Int, "", 0 };
+pub Type type_float()   => Type { TypeKind::Float, "", 0 };
+pub Type type_bool()    => Type { TypeKind::Bool, "", 0 };
+pub Type type_string()  => Type { TypeKind::String, "", 0 };
+pub Type type_void()    => Type { TypeKind::Void, "", 0 };
+pub Type type_unknown() => Type { TypeKind::Unknown, "", 0 };
+pub Type type_char()    => Type { TypeKind::Char, "", 0 };
+pub Type type_null()    => Type { TypeKind::Null, "", 0 };
 
 pub string type_name(Type t) {
   return t.kind match {
-    TypeKind::Int     => "int",
-    TypeKind::Float   => "float",
-    TypeKind::Bool    => "bool",
-    TypeKind::String  => "string",
-    TypeKind::Void    => "void",
-    TypeKind::Unknown => "unknown",
+    TypeKind::Int      => "int",
+    TypeKind::Float    => "float",
+    TypeKind::Bool     => "bool",
+    TypeKind::String   => "string",
+    TypeKind::Void     => "void",
+    TypeKind::Unknown  => "unknown",
+    TypeKind::Char     => "char",
+    TypeKind::Null     => "null",
+    TypeKind::Function => t.name,
+    TypeKind::Struct   => t.name,
+    TypeKind::Enum     => t.name,
+    TypeKind::Array    => "array",
+    TypeKind::Map      => "map",
   };
 }
 
@@ -154,13 +155,38 @@ pub string type_name(Type t) {
 bool types_compatible(Type a, Type b) {
   if (a.kind == TypeKind::Unknown) { return true; }
   if (b.kind == TypeKind::Unknown) { return true; }
+  // Struct/Enum: name equality
+  if (a.kind == TypeKind::Struct && b.kind == TypeKind::Struct) {
+    return a.name == b.name;
+  }
+  if (a.kind == TypeKind::Enum && b.kind == TypeKind::Enum) {
+    return a.name == b.name;
+  }
   return a.kind == b.kind;
 }
 
 bool is_numeric(Type t) {
   if (t.kind == TypeKind::Int) { return true; }
   if (t.kind == TypeKind::Float) { return true; }
+  if (t.kind == TypeKind::Char) { return true; }
   return false;
+}
+
+// --- type detail storage --------------------------------------------------
+
+struct StructFieldInfo {
+  string name;
+  Type field_type;
+}
+
+struct EnumVariantInfo {
+  string name;
+  Type[] param_types;
+}
+
+struct FuncSignature {
+  Type[] param_types;
+  Type return_type;
 }
 
 // --- scope stack & checker state ------------------------------------------
@@ -178,17 +204,35 @@ pub struct CheckError {
 }
 
 pub struct Checker {
-  Binding[] bindings;     // flat stack across all open scopes
-  int[] scope_starts;     // bindings.len() snapshot at each push_scope()
+  Binding[] bindings;           // flat stack across all open scopes
+  int[] scope_starts;           // bindings.len() snapshot at each push_scope()
   CheckError[] errors;
   string file;
+
+  // Type detail tables, indexed by type_id (1-based).
+  // type_id 0 is reserved for "primitive, no detail needed".
+  string[] type_names;                  // type_names[type_id] = registered name
+  StructFieldInfo[][] struct_fields;    // struct_fields[type_id] = field list
+  EnumVariantInfo[][] enum_variants;    // enum_variants[type_id] = variant list
+  FuncSignature[] func_signatures;      // func_signatures[type_id] = signature
+  Type[] array_element_types;           // array_element_types[type_id] = element type
+  int next_type_id;                     // allocator counter, starts at 1
+
+  // Namespace tracking for `using` declarations.
+  string[] used_namespaces;             // "io", "fs", "sys"
 }
 
 pub Checker make_checker(string file) {
   Binding[] b = [];
   int[] s = [];
   CheckError[] e = [];
-  return Checker { b, s, e, file };
+  string[] tn = [];
+  StructFieldInfo[][] sf = [];
+  EnumVariantInfo[][] ev = [];
+  FuncSignature[] fs = [];
+  Type[] aet = [];
+  string[] un = [];
+  return Checker { b, s, e, file, tn, sf, ev, fs, aet, 1, un };
 }
 
 void push_scope(Checker c) {
@@ -244,6 +288,49 @@ Type lookup_var(Checker c, string name) {
   return type_unknown();
 }
 
+// --- type id allocation ---------------------------------------------------
+
+int alloc_type_id(Checker c) {
+  int id = c.next_type_id;
+  c.next_type_id = c.next_type_id + 1;
+  return id;
+}
+
+Type lookup_type_by_name(Checker c, string name) {
+  for (int i = 0; i < c.type_names.len(); i = i + 1) {
+    if (c.type_names[i] == name) {
+      int id = i + 1;  // type_ids are 1-based
+      // Determine kind by which detail table has data
+      if (id < c.struct_fields.len() + 1 && c.struct_fields[id].len() >= 0) {
+        // Could be struct — check if we have field data
+        return Type { TypeKind::Struct, name, id };
+      }
+      return type_unknown();
+    }
+  }
+  return type_unknown();
+}
+
+Type lookup_struct_type(Checker c, string name) {
+  for (int i = 0; i < c.type_names.len(); i = i + 1) {
+    if (c.type_names[i] == name) {
+      int id = i + 1;
+      return Type { TypeKind::Struct, name, id };
+    }
+  }
+  return type_unknown();
+}
+
+Type lookup_enum_type(Checker c, string name) {
+  for (int i = 0; i < c.type_names.len(); i = i + 1) {
+    if (c.type_names[i] == name) {
+      int id = i + 1;
+      return Type { TypeKind::Enum, name, id };
+    }
+  }
+  return type_unknown();
+}
+
 // --- type-expression resolution ------------------------------------------
 
 bool is_auto_type(TypeExpr t) {
@@ -251,8 +338,7 @@ bool is_auto_type(TypeExpr t) {
   return t.name == "auto";
 }
 
-Type resolve_type_expr(TypeExpr t) {
-  if (t.type_args.len() != 0) { return type_unknown(); }
+Type resolve_type_expr(Checker c, TypeExpr t) {
   if (t.name == "int")    { return type_int(); }
   if (t.name == "auto")   { return type_int(); }   // placeholder until inferred
   if (t.name == "float")  { return type_float(); }
@@ -260,6 +346,12 @@ Type resolve_type_expr(TypeExpr t) {
   if (t.name == "bool")   { return type_bool(); }
   if (t.name == "string") { return type_string(); }
   if (t.name == "void")   { return type_void(); }
+  if (t.name == "char")   { return type_char(); }
+  // User-defined types
+  Type st = lookup_struct_type(c, t.name);
+  if (st.kind != TypeKind::Unknown) { return st; }
+  Type et = lookup_enum_type(c, t.name);
+  if (et.kind != TypeKind::Unknown) { return et; }
   return type_unknown();
 }
 
@@ -446,7 +538,7 @@ void check_return(Checker c, Expr v) {
 }
 
 void check_var_decl(Checker c, TypeExpr t, string n, Expr init, int line, int col) {
-  Type declared = resolve_type_expr(t);
+  Type declared = resolve_type_expr(c, t);
   bool auto_typed = is_auto_type(t);
   Type final_type = declared;
   bool has_init = init match { Expr::None => false, _ => true, };
@@ -538,20 +630,88 @@ void check_for(Checker c, Stmt init, Expr cond, Stmt step, Stmt body) {
   pop_scope(c);
 }
 
-// --- declaration checking -------------------------------------------------
+// --- declaration registration ---------------------------------------------
 
 void register_decl(Checker c, Decl d) {
   d match {
-    Decl::FunctionDecl(let n, let rt, let _tps, let _params, let _body, let _is_pub, let line, let col) =>
-      register_function(c, n, rt, line, col),
+    Decl::FunctionDecl(let n, let rt, let _tps, let params, let _body, let _is_pub, let line, let col) =>
+      register_function(c, n, rt, params, line, col),
+    Decl::StructDecl(let n, let _tps, let fields, let _is_pub, let _l, let _co) =>
+      register_struct(c, n, fields),
+    Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _co) =>
+      register_enum(c, n, variants),
+    Decl::UsingDecl(let n, let _is_ns, let _l, let _co) =>
+      register_using(c, n),
     _ => check_void(),
   };
 }
 
-void register_function(Checker c, string n, TypeExpr rt, int line, int col) {
-  Type t = resolve_type_expr(rt);
-  declare_var(c, n, t, line, col);
+void register_function(Checker c, string n, TypeExpr rt, Parameter[] params, int line, int col) {
+  int id = alloc_type_id(c);
+  Type ret = resolve_type_expr(c, rt);
+
+  // Build param types array
+  Type[] ptypes = [];
+  for (int i = 0; i < params.len(); i = i + 1) {
+    ptypes.push(resolve_type_expr(c, params[i].type));
+  }
+  FuncSignature sig = FuncSignature { ptypes, ret };
+  c.func_signatures.push(sig);
+  c.type_names.push(n);
+
+  Type fn_type = Type { TypeKind::Function, n, id };
+  declare_var(c, n, fn_type, line, col);
 }
+
+void register_struct(Checker c, string name, FieldDef[] fields) {
+  int id = alloc_type_id(c);
+
+  // Build field info
+  StructFieldInfo[] finfo = [];
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    Type ft = resolve_type_expr(c, fields[i].type);
+    finfo.push(StructFieldInfo { fields[i].name, ft });
+  }
+  c.struct_fields.push(finfo);
+  c.type_names.push(name);
+
+  // Register constructor function
+  Type[] ptypes = [];
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    ptypes.push(resolve_type_expr(c, fields[i].type));
+  }
+  Type struct_type = Type { TypeKind::Struct, name, id };
+  FuncSignature sig = FuncSignature { ptypes, struct_type };
+  c.func_signatures.push(sig);
+  Type fn_type = Type { TypeKind::Function, name, id };
+  declare_var(c, name, fn_type, 0, 0);
+}
+
+void register_enum(Checker c, string name, EnumVariant[] variants) {
+  int id = alloc_type_id(c);
+
+  // Build variant info
+  EnumVariantInfo[] vinfo = [];
+  for (int i = 0; i < variants.len(); i = i + 1) {
+    Type[] ptypes = [];
+    for (int j = 0; j < variants[i].param_types.len(); j = j + 1) {
+      ptypes.push(resolve_type_expr(c, variants[i].param_types[j]));
+    }
+    vinfo.push(EnumVariantInfo { variants[i].name, ptypes });
+  }
+  c.enum_variants.push(vinfo);
+  c.type_names.push(name);
+}
+
+void register_using(Checker c, string name) {
+  // Check for duplicate
+  for (int i = 0; i < c.used_namespaces.len(); i = i + 1) {
+    if (c.used_namespaces[i] == name) { return; }
+  }
+  c.used_namespaces.push(name);
+}
+
+// --- declaration checking -------------------------------------------------
 
 void check_decl(Checker c, Decl d) {
   d match {
@@ -566,7 +726,7 @@ void check_function(Checker c, Parameter[] params, Stmt body) {
   push_scope(c);
   for (int i = 0; i < params.len(); i = i + 1) {
     Parameter p = params[i];
-    Type pt = resolve_type_expr(p.type);
+    Type pt = resolve_type_expr(c, p.type);
     declare_var(c, p.name, pt, 0, 0);
   }
   check_stmt(c, body);
@@ -575,8 +735,7 @@ void check_function(Checker c, Parameter[] params, Stmt body) {
 
 pub int check_program(Checker c, Program prog) {
   push_scope(c);
-  // Pre-pass: register top-level function names so call-sites resolve in
-  // any order. Body checking happens afterwards.
+  // Pre-pass: register top-level names so references resolve in any order.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     register_decl(c, prog.declarations[i]);
   }
