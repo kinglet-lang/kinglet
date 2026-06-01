@@ -163,6 +163,8 @@ void compile_expr(Compiler co, Expr e) {
     Expr::Unary(let op, let r, let l, let c)  => emit_unary(co, op, r, l, c),
     Expr::ArrayLit(let elems, let l, let c)   => emit_array_lit(co, elems, l, c),
     Expr::Index(let obj, let idx, let l, let c) => emit_index_get(co, obj, idx, l, c),
+    Expr::FieldAccess(let obj, let field, let l, let c) => emit_field_get(co, obj, field, l, c),
+    Expr::StructLit(let t, let fields, let l, let c) => emit_struct_lit(co, t, fields, l, c),
     Expr::None                           => emit_null(co),
     _ => compile_error(co, 0, 0, "Unsupported expression in VM compiler."),
   };
@@ -293,6 +295,21 @@ void emit_index_get(Compiler co, Expr obj, Expr idx, int line, int col) {
   compile_expr(co, obj);
   compile_expr(co, idx);
   bytecode::write_op(co.chunk, OpCode::IndexGet, line, col);
+}
+
+void emit_field_get(Compiler co, Expr obj, string field, int line, int col) {
+  compile_expr(co, obj);
+  int field_const = bytecode::add_constant(co.chunk, bytecode::const_string(field));
+  bytecode::write_operand(co.chunk, OpCode::FieldGet, field_const, line, col);
+}
+
+void emit_struct_lit(Compiler co, TypeExpr t, FieldInit[] fields, int line, int col) {
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    compile_expr(co, fields[i].value);
+  }
+  // Encode: (type_idx << 16) | field_count. type_idx=0 for now.
+  int operand = fields.len();  // (0 << 16) | count
+  bytecode::write_operand(co.chunk, OpCode::StructNew, operand, line, col);
 }
 
 // Plain `x = expr` only — compound +=/-= etc. not yet supported. Value of
