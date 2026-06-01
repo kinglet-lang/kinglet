@@ -113,12 +113,12 @@ ScanResult scan_identifier(Scanner s) {
   return ScanResult { s, make_token(s, keyword_type(word)) };
 }
 
-int digit_value(string c) => c.code() - "0".code();
+int digit_value(string c) => int(c[0]) - int("0"[0]);
 
 int hex_digit_value(string c) {
-  if (c >= "0" && c <= "9") { return c.code() - "0".code(); }
-  if (c >= "a" && c <= "f") { return c.code() - "a".code() + 10; }
-  return c.code() - "A".code() + 10;
+  if (c >= "0" && c <= "9") { return int(c[0]) - int("0"[0]); }
+  if (c >= "a" && c <= "f") { return int(c[0]) - int("a"[0]) + 10; }
+  return int(c[0]) - int("A"[0]) + 10;
 }
 
 ScanResult scan_number(Scanner s) {
@@ -280,10 +280,10 @@ ScanResult scan_char(Scanner s) {
     else if (esc == "r") { value = 13; }
     else if (esc == "t") { value = 9; }
     else if (esc == "0") { value = 0; }
-    else                 { value = esc.code(); }
+    else                 { value = int(esc[0]); }
   } else {
     AdvResult r = advance(s); s = r.sc;
-    value = r.ch.code();
+    value = int(r.ch[0]);
   }
   if (peek(s) != "'") {
     while (!at_end(s) && peek(s) != "'" && peek(s) != "\n") {
