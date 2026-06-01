@@ -415,6 +415,16 @@ Type check_expr(Checker c, Expr e) {
     Expr::Unary(let op, let r, let l, let co) => check_unary(c, op, r, l, co),
     Expr::Binary(let lhs, let op, let rhs, let l, let co) => check_binary(c, lhs, op, rhs, l, co),
     Expr::Assign(let n, let _op, let v, let l, let co)    => check_assign(c, n, v, l, co),
+    Expr::Call(let callee, let _ta, let args, let l, let co)  => check_call(c, callee, args, l, co),
+    Expr::NsAccess(let ns, let member, let l, let co)         => check_ns_access(c, ns, member, l, co),
+    Expr::FieldAccess(let obj, let field, let l, let co)      => check_field_access(c, obj, field, l, co),
+    Expr::Index(let obj, let idx, let l, let co)              => check_index(c, obj, idx, l, co),
+    Expr::StructLit(let t, let fields, let l, let co)         => check_struct_lit(c, t, fields, l, co),
+    Expr::ArrayLit(let elems, let l, let co)                  => check_array_lit(c, elems, l, co),
+    Expr::Cast(let target, let value, let l, let co)          => check_cast(c, target, value, l, co),
+    Expr::NullCoalesce(let left, let _err, let right, let l, let co) =>
+      check_null_coalesce(c, left, right, l, co),
+    Expr::TryExpr(let value, let l, let co)                   => check_try_expr(c, value, l, co),
     _ => type_unknown(),
   };
 }
@@ -504,6 +514,316 @@ Type check_assign(Checker c, string name, Expr value, int line, int col) {
       "Cannot assign '" + type_name(vt) + "' to variable '" + name + "' of type '" + type_name(target) + "'.");
   }
   return target;
+}
+
+// --- call checking --------------------------------------------------------
+
+Type check_call(Checker c, Expr callee, Expr[] args, int line, int col) {
+  // callee is an Ident — direct function call
+  if (callee match { Expr::Ident(let _n, let _l, let _co) => true, _ => false, }) {
+    string name = callee match {
+      Expr::Ident(let n, let _l, let _co) => n,
+      _ => "",
+    };
+    if (!var_exists(c, name)) {
+      add_error(c, line, col, "Undeclared function '" + name + "'.");
+      return type_unknown();
+    }
+    Type fn_type = lookup_var(c, name);
+    return check_call_args(c, fn_type, args, line, col);
+  }
+  // callee is a FieldAccess — method call (obj.method(args))
+  if (callee match { Expr::FieldAccess(let _o, let _f, let _l, let _co) => true, _ => false, }) {
+    // Delegate: evaluate the FieldAccess as the callee type
+    Type ct = check_expr(c, callee);
+    return check_call_args(c, ct, args, line, col);
+  }
+  // callee is NsAccess — namespace function call
+  if (callee match { Expr::NsAccess(let _ns, let _mb, let _l, let _co) => true, _ => false, }) {
+    return type_unknown();  // stdlib intrinsics deferred
+  }
+  // Unknown callee form
+  return type_unknown();
+}
+
+Type check_call_args(Checker c, Type fn_type, Expr[] args, int line, int col) {
+  if (fn_type.kind == TypeKind::Unknown) { return type_unknown(); }
+  if (fn_type.kind != TypeKind::Function) {
+    add_error(c, line, col, "Cannot call non-function type '" + type_name(fn_type) + "'.");
+    return type_unknown();
+  }
+  int id = fn_type.type_id;
+  if (id < 1 || id > c.func_signatures.len()) {
+    return type_unknown();
+  }
+  FuncSignature sig = c.func_signatures[id - 1];
+  if (args.len() != sig.param_types.len()) {
+    add_error(c, line, col,
+      "Function '" + fn_type.name + "' expects " + int_to_string(sig.param_types.len()) +
+      " argument(s), got " + int_to_string(args.len()) + ".");
+    return sig.return_type;
+  }
+  for (int i = 0; i < args.len(); i = i + 1) {
+    Type at = check_expr(c, args[i]);
+    if (!types_compatible(at, sig.param_types[i])) {
+      add_error(c, line, col,
+        "Argument " + int_to_string(i + 1) + " of '" + fn_type.name +
+        "': expected '" + type_name(sig.param_types[i]) +
+        "', got '" + type_name(at) + "'.");
+    }
+  }
+  return sig.return_type;
+}
+
+// Helper: int to string for error messages
+string int_to_string(int n) {
+  if (n == 0) { return "0"; }
+  bool neg = n < 0;
+  if (neg) { n = 0 - n; }
+  string result = "";
+  while (n > 0) {
+    int d = n % 10;
+    string ch = d match {
+      0 => "0", 1 => "1", 2 => "2", 3 => "3", 4 => "4",
+      5 => "5", 6 => "6", 7 => "7", 8 => "8", 9 => "9",
+      _ => "?",
+    };
+    result = ch + result;
+    n = n / 10;
+  }
+  if (neg) { result = "-" + result; }
+  return result;
+}
+
+// --- namespace access checking --------------------------------------------
+
+Type check_ns_access(Checker c, string ns, string _member, int line, int col) {
+  // Check if namespace has been imported via using
+  bool found = false;
+  for (int i = 0; i < c.used_namespaces.len(); i = i + 1) {
+    if (c.used_namespaces[i] == ns) { found = true; }
+  }
+  if (!found) {
+    // Also check if it's a known enum type (enum::Variant access)
+    Type et = lookup_enum_type(c, ns);
+    if (et.kind != TypeKind::Unknown) { return et; }
+    add_error(c, line, col, "Unknown namespace '" + ns + "'.");
+  }
+  return type_unknown();  // stdlib intrinsics deferred
+}
+
+// --- field access checking ------------------------------------------------
+
+Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
+  Type ot = check_expr(c, obj);
+
+  // Struct field access
+  if (ot.kind == TypeKind::Struct) {
+    int id = ot.type_id;
+    if (id >= 1 && id <= c.struct_fields.len()) {
+      StructFieldInfo[] fields = c.struct_fields[id - 1];
+      for (int i = 0; i < fields.len(); i = i + 1) {
+        if (fields[i].name == field) { return fields[i].field_type; }
+      }
+      add_error(c, line, col,
+        "Struct '" + ot.name + "' has no field '" + field + "'.");
+    }
+    return type_unknown();
+  }
+
+  // String methods
+  if (ot.kind == TypeKind::String) {
+    return check_string_method(c, field, line, col);
+  }
+
+  // Array methods
+  if (ot.kind == TypeKind::Array) {
+    return check_array_method(c, ot, field, line, col);
+  }
+
+  // Unknown — permissive
+  if (ot.kind == TypeKind::Unknown) { return type_unknown(); }
+
+  add_error(c, line, col,
+    "Cannot access field '" + field + "' on type '" + type_name(ot) + "'.");
+  return type_unknown();
+}
+
+Type check_string_method(Checker c, string method, int line, int col) {
+  // String methods that return int
+  if (method == "len" || method == "index_of") { return type_int(); }
+  // String methods that return bool
+  if (method == "contains" || method == "starts_with" || method == "ends_with") { return type_bool(); }
+  // String methods that return string
+  if (method == "slice" || method == "replace" || method == "trim" ||
+      method == "to_upper" || method == "to_lower") { return type_string(); }
+  // split returns string[]
+  if (method == "split") { return type_unknown(); }  // array type deferred
+  add_error(c, line, col, "String has no method '" + method + "'.");
+  return type_unknown();
+}
+
+Type check_array_method(Checker c, Type arr_type, string method, int line, int col) {
+  // Array methods that return int
+  if (method == "len" || method == "index_of") { return type_int(); }
+  // Array methods that return bool
+  if (method == "contains") { return type_bool(); }
+  // Array methods that return void
+  if (method == "push" || method == "pop" || method == "remove" ||
+      method == "clear" || method == "insert" || method == "resize" ||
+      method == "reverse") { return type_void(); }
+  // slice returns same array type
+  if (method == "slice") { return arr_type; }
+  add_error(c, line, col, "Array has no method '" + method + "'.");
+  return type_unknown();
+}
+
+// --- index checking -------------------------------------------------------
+
+Type check_index(Checker c, Expr obj, Expr idx, int line, int col) {
+  Type ot = check_expr(c, obj);
+  Type it = check_expr(c, idx);
+
+  if (ot.kind == TypeKind::Array) {
+    if (it.kind != TypeKind::Int && it.kind != TypeKind::Unknown) {
+      add_error(c, line, col, "Array index must be 'int', got '" + type_name(it) + "'.");
+    }
+    int id = ot.type_id;
+    if (id >= 1 && id <= c.array_element_types.len()) {
+      return c.array_element_types[id - 1];
+    }
+    return type_unknown();
+  }
+
+  if (ot.kind == TypeKind::String) {
+    if (it.kind != TypeKind::Int && it.kind != TypeKind::Unknown) {
+      add_error(c, line, col, "String index must be 'int', got '" + type_name(it) + "'.");
+    }
+    return type_char();
+  }
+
+  if (ot.kind == TypeKind::Unknown) { return type_unknown(); }
+
+  add_error(c, line, col, "Cannot index type '" + type_name(ot) + "'.");
+  return type_unknown();
+}
+
+// --- struct literal checking ----------------------------------------------
+
+Type check_struct_lit(Checker c, TypeExpr t, FieldInit[] fields, int line, int col) {
+  Type st = lookup_struct_type(c, t.name);
+  if (st.kind == TypeKind::Unknown) {
+    add_error(c, line, col, "Unknown struct type '" + t.name + "'.");
+    return type_unknown();
+  }
+  int id = st.type_id;
+  if (id < 1 || id > c.struct_fields.len()) { return type_unknown(); }
+  StructFieldInfo[] expected = c.struct_fields[id - 1];
+  if (fields.len() != expected.len()) {
+    add_error(c, line, col,
+      "Struct '" + t.name + "' expects " + int_to_string(expected.len()) +
+      " fields, got " + int_to_string(fields.len()) + ".");
+    return st;
+  }
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    Type vt = check_expr(c, fields[i].value);
+    if (!types_compatible(vt, expected[i].field_type)) {
+      add_error(c, line, col,
+        "Field '" + fields[i].name + "' of '" + t.name +
+        "': expected '" + type_name(expected[i].field_type) +
+        "', got '" + type_name(vt) + "'.");
+    }
+  }
+  return st;
+}
+
+// --- array literal checking -----------------------------------------------
+
+Type check_array_lit(Checker c, Expr[] elems, int line, int col) {
+  if (elems.len() == 0) { return type_unknown(); }
+  Type first = check_expr(c, elems[0]);
+  for (int i = 1; i < elems.len(); i = i + 1) {
+    Type et = check_expr(c, elems[i]);
+    if (!types_compatible(first, et)) {
+      add_error(c, line, col,
+        "Array element type mismatch: '" + type_name(first) +
+        "' vs '" + type_name(et) + "'.");
+    }
+  }
+  // Allocate array type
+  int id = alloc_type_id(c);
+  c.array_element_types.push(first);
+  c.type_names.push("array");
+  return Type { TypeKind::Array, "", id };
+}
+
+// --- cast checking --------------------------------------------------------
+
+Type check_cast(Checker c, TypeExpr target, Expr value, int line, int col) {
+  Type vt = check_expr(c, value);
+  string t = target.name;
+
+  // Cast to int
+  if (t == "int") {
+    if (vt.kind == TypeKind::Int || vt.kind == TypeKind::Float ||
+        vt.kind == TypeKind::Char || vt.kind == TypeKind::String ||
+        vt.kind == TypeKind::Unknown) {
+      return type_int();
+    }
+    add_error(c, line, col, "Cannot cast '" + type_name(vt) + "' to 'int'.");
+    return type_int();
+  }
+  // Cast to float
+  if (t == "float" || t == "double") {
+    if (vt.kind == TypeKind::Int || vt.kind == TypeKind::Float ||
+        vt.kind == TypeKind::Char || vt.kind == TypeKind::String ||
+        vt.kind == TypeKind::Unknown) {
+      return type_float();
+    }
+    add_error(c, line, col, "Cannot cast '" + type_name(vt) + "' to 'float'.");
+    return type_float();
+  }
+  // Cast to string
+  if (t == "string") {
+    if (vt.kind == TypeKind::Int || vt.kind == TypeKind::Float ||
+        vt.kind == TypeKind::Char || vt.kind == TypeKind::String ||
+        vt.kind == TypeKind::Bool || vt.kind == TypeKind::Unknown) {
+      return type_string();
+    }
+    add_error(c, line, col, "Cannot cast '" + type_name(vt) + "' to 'string'.");
+    return type_string();
+  }
+  // Cast to char
+  if (t == "char") {
+    if (vt.kind == TypeKind::Int || vt.kind == TypeKind::Char ||
+        vt.kind == TypeKind::String || vt.kind == TypeKind::Unknown) {
+      return type_char();
+    }
+    add_error(c, line, col, "Cannot cast '" + type_name(vt) + "' to 'char'.");
+    return type_char();
+  }
+  // User-defined type cast — deferred
+  return type_unknown();
+}
+
+// --- null coalesce checking -----------------------------------------------
+
+Type check_null_coalesce(Checker c, Expr left, Expr right, int line, int col) {
+  Type lt = check_expr(c, left);
+  Type rt = check_expr(c, right);
+  // Both branches should be compatible
+  if (!types_compatible(lt, rt)) {
+    add_error(c, line, col,
+      "Null coalesce branches have incompatible types: '" +
+      type_name(lt) + "' vs '" + type_name(rt) + "'.");
+  }
+  return lt;
+}
+
+// --- try expr checking ----------------------------------------------------
+
+Type check_try_expr(Checker c, Expr value, int _line, int _col) {
+  return check_expr(c, value);
 }
 
 // --- statement checking ---------------------------------------------------
