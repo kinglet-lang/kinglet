@@ -15,7 +15,7 @@ pub enum TokenType {
   Less, Greater, LessEqual, GreaterEqual,
   AmpAmp, PipePipe, Bang,
   Amp, Pipe, Caret, Tilde, LessLess, GreaterGreater, PipeGreater,
-  Arrow, FatArrow, Question, ColonColon, Dot, DotDot, DotDotDot,
+  Arrow, FatArrow, Question, QuestionQuestion, ColonColon, Dot, DotDot, DotDotDot,
   PlusEqual, MinusEqual, StarEqual, SlashEqual,
 
   // delimiters

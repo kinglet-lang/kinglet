@@ -1,0 +1,46 @@
+using io;
+using fs;
+using sys;
+
+import "../parser/ast.kl"
+import "../parser/parser.kl"
+import "../compiler/compiler.kl"
+import "../compiler/disasm.kl"
+
+int main() {
+  string[] args = sys::args();
+  if (args.len() < 2) {
+    io::err.line("usage: kinglet test_runner.kl <test.kl>");
+    return 64;
+  }
+  string path = args[1];
+  string source = fs::__read(path);
+  if (source.len() == 0) {
+    io::err.line("cannot read: {}", path);
+    return 66;
+  }
+  // Tokenize + parse
+  Token[] tokens = parser::scan_tokens(source);
+  Parser p = parser::make_parser(tokens);
+  Program prog = parser::parse_program(p);
+  if (p.errors.len() > 0) {
+    for (int i = 0; i < p.errors.len(); i = i + 1) {
+      ParseError e = p.errors[i];
+      io::err.line("{}:{}: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  // Compile
+  Compiler co = compiler::make_compiler();
+  int errs = compiler::compile_program(co, prog);
+  if (errs > 0) {
+    for (int i = 0; i < co.errors.len(); i = i + 1) {
+      CompileError e = co.errors[i];
+      io::err.line("{}:{}: compile error: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  string out = disasm::disassemble(co.chunk);
+  io::out(out);
+  return 0;
+}

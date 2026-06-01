@@ -249,7 +249,9 @@ void print_expr(Expr e, int depth) {
     Expr::ArrayPat(let elems, let _l, let _c) => print_array_pat(elems, depth),
     Expr::EnumPat(let en, let v, let fields, let _l, let _c) => print_enum_pat(en, v, fields, depth),
     Expr::Match(let v, let arms, let _l, let _c) => print_match(v, arms, depth),
-    Expr::Cast(let t, let v, let fb, let _l, let _c) => print_cast(t, v, fb, depth),
+    Expr::Cast(let t, let v, let _l, let _c) => print_cast(t, v, depth),
+    Expr::NullCoalesce(let left, let eb, let right, let _l, let _c) => print_coalesce(left, eb, right, depth),
+    Expr::TryExpr(let value, let _l, let _c) => print_try(value, depth),
     Expr::NsAccess(let ns, let m, let _l, let _c) => io::out.line("{}NsAccess {}::{}", pad, ns, m),
     Expr::FieldAccess(let o, let f, let _l, let _c) => print_field_access(o, f, depth),
     Expr::Index(let o, let i, let _l, let _c) => print_index(o, i, depth),
@@ -312,10 +314,20 @@ void print_match(Expr v, MatchArm[] arms, int depth) {
   }
 }
 
-void print_cast(TypeExpr t, Expr v, Expr fb, int depth) {
+void print_cast(TypeExpr t, Expr v, int depth) {
   io::out.line("{}Cast {}", indent_str(depth), type_name(t));
   print_expr(v, depth + 1);
-  print_expr(fb, depth + 1);
+}
+
+void print_coalesce(Expr left, string err_binding, Expr right, int depth) {
+  io::out.line("{}?? {}", indent_str(depth), err_binding);
+  print_expr(left, depth + 1);
+  print_expr(right, depth + 1);
+}
+
+void print_try(Expr value, int depth) {
+  io::out.line("{}Try", indent_str(depth));
+  print_expr(value, depth + 1);
 }
 
 void print_field_access(Expr o, string f, int depth) {

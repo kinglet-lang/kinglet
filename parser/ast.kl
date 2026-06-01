@@ -40,13 +40,15 @@ pub TypeExpr make_type(string name) => TypeExpr { name, [] };
 //   ArrayPat(elements, line, col)            // `[a, b, c]` pattern
 //   EnumPat(enum_name, variant, fields, line, col)
 //   Match(value, arms, line, col)
-//   Cast(target, value, fallback, line, col) // fallback may be Expr::None
-//   NsAccess(ns, member, line, col)          // io::out
+//   Cast(target, value, line, col)             // fallback is now handled by ??
+//   NsAccess(ns, member, line, col)            // io::out
 //   FieldAccess(object, field, line, col)
 //   Index(object, index, line, col)
 //   StructLit(struct_type, fields, line, col)
 //   ArrayLit(elements, line, col)
-//   None                                     // sentinel for "no expression"
+//   NullCoalesce(left, err_binding, right, line, col)  // left ?? right  or  left ?? |e| right
+//   TryExpr(value, line, col)                   // try expr — Ok(v)→v, Err→early return
+//   None                                       // sentinel for "no expression"
 pub enum Expr {
   IntLit(int, int, int),
   FloatLit(float, int, int),
@@ -61,12 +63,14 @@ pub enum Expr {
   ArrayPat(Expr[], int, int),
   EnumPat(string, string, Expr[], int, int),
   Match(Expr, MatchArm[], int, int),
-  Cast(TypeExpr, Expr, Expr, int, int),
+  Cast(TypeExpr, Expr, int, int),
   NsAccess(string, string, int, int),
   FieldAccess(Expr, string, int, int),
   Index(Expr, Expr, int, int),
   StructLit(TypeExpr, FieldInit[], int, int),
   ArrayLit(Expr[], int, int),
+  NullCoalesce(Expr, string, Expr, int, int),
+  TryExpr(Expr, int, int),
   None,
 }
 

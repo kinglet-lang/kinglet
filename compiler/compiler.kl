@@ -59,6 +59,7 @@ pub struct Compiler {
 
 pub Compiler make_compiler() {
   Chunk c = bytecode::make_chunk();
+  bytecode::register_builtin_enums(c);
   Local[] ls = [];
   int[] ss = [];
   FuncEntry[] fs = [];
@@ -68,6 +69,15 @@ pub Compiler make_compiler() {
   string[] us = [];
   return Compiler { c, ls, ss, 0, fs, es, lbs, lcs, 0, us };
 }
+
+// Indices of pre-registered built-in enums (mirrors bytecode::register_builtin_enums
+// order). Used by Cast/??/try compilation to encode (type_idx, variant_idx) operands.
+int castError_type_idx() => 0;
+int intResult_type_idx() => 1;
+int floatResult_type_idx() => 2;
+int castError_variant_NotANumber() => 1;
+int result_variant_Ok() => 0;
+int result_variant_Err() => 1;
 
 // --- jump backpatching --------------------------------------------------
 
@@ -165,7 +175,9 @@ void compile_expr(Compiler co, Expr e) {
     Expr::Index(let obj, let idx, let l, let c) => emit_index_get(co, obj, idx, l, c),
     Expr::FieldAccess(let obj, let field, let l, let c) => emit_field_get(co, obj, field, l, c),
     Expr::StructLit(let t, let fields, let l, let c) => emit_struct_lit(co, t, fields, l, c),
-    Expr::Cast(let t, let v, let fb, let l, let c) => emit_cast(co, t, v, fb, l, c),
+    Expr::Cast(let t, let v, let l, let c) => emit_cast(co, t, v, l, c),
+    Expr::NullCoalesce(let left, let eb, let right, let l, let c) => compile_coalesce(co, left, eb, right, l, c),
+    Expr::TryExpr(let value, let l, let c) => compile_try(co, value, l, c),
     Expr::None                           => emit_null(co),
     _ => compile_error(co, 0, 0, "Unsupported expression in VM compiler."),
   };
@@ -313,23 +325,38 @@ void emit_struct_lit(Compiler co, TypeExpr t, FieldInit[] fields, int line, int 
   bytecode::write_operand(co.chunk, OpCode::StructNew, operand, line, col);
 }
 
-void emit_cast(Compiler co, TypeExpr t, Expr v, Expr fb, int line, int col) {
+void emit_cast(Compiler co, TypeExpr t, Expr v, int line, int col) {
   compile_expr(co, v);
   int target_kind = 0;
   if (t.name == "int")    { target_kind = 0; }
   if (t.name == "float")  { target_kind = 1; }
   if (t.name == "string") { target_kind = 2; }
   bytecode::write_operand(co.chunk, OpCode::CastTo, target_kind, line, col);
-  // Fallback: if cast result is null, execute fallback.
-  bool has_fb = fb match { Expr::None => false, _ => true, };
-  if (has_fb) {
-    bytecode::write_op(co.chunk, OpCode::Dup, line, col);
-    bytecode::write_op(co.chunk, OpCode::IsNull, line, col);
-    int skip_fb = emit_jump(co, OpCode::JmpFalse, line, col);
-    bytecode::write_op(co.chunk, OpCode::Pop, line, col);
-    compile_expr(co, fb);
-    patch_jump(co, skip_fb);
-  }
+}
+
+// lhs ?? rhs  or  lhs ?? |e| rhs
+// If lhs is null (from Cast failure) or Result::Err, evaluate rhs.
+// For now: null-based check only. Result-enum support deferred.
+void compile_coalesce(Compiler co, Expr left, string err_binding, Expr right, int line, int col) {
+  compile_expr(co, left);
+  bytecode::write_op(co.chunk, OpCode::Dup, line, col);
+  bytecode::write_op(co.chunk, OpCode::IsNull, line, col);
+  int skip_fb = emit_jump(co, OpCode::JmpFalse, line, col);
+  bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+  compile_expr(co, right);
+  patch_jump(co, skip_fb);
+}
+
+// try expr — if expr is null (Cast failure), early-return null.
+// For Result::Err propagation, return EnumVariant. Deferred.
+void compile_try(Compiler co, Expr value, int line, int col) {
+  compile_expr(co, value);
+  bytecode::write_op(co.chunk, OpCode::Dup, line, col);
+  bytecode::write_op(co.chunk, OpCode::IsNull, line, col);
+  int skip_ret = emit_jump(co, OpCode::JmpFalse, line, col);
+  bytecode::write_op(co.chunk, OpCode::Null_, line, col);
+  bytecode::write_op(co.chunk, OpCode::Return_, line, col);
+  patch_jump(co, skip_ret);
 }
 
 // Plain `x = expr` only — compound +=/-= etc. not yet supported. Value of

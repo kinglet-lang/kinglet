@@ -69,7 +69,7 @@ pub enum TokenType {
   Less, Greater, LessEqual, GreaterEqual,
   AmpAmp, PipePipe, Bang,
   Amp, Pipe, Caret, Tilde, LessLess, GreaterGreater, PipeGreater,
-  Arrow, FatArrow, Question, ColonColon, Dot, DotDot, DotDotDot,
+  Arrow, FatArrow, Question, QuestionQuestion, ColonColon, Dot, DotDot, DotDotDot,
   PlusEqual, MinusEqual, StarEqual, SlashEqual,
 
   LeftParen, RightParen,
@@ -265,12 +265,14 @@ int expr_line(Expr e) => e match {
   Expr::ArrayPat(_, let l, _) => l,
   Expr::EnumPat(_, _, _, let l, _) => l,
   Expr::Match(_, _, let l, _) => l,
-  Expr::Cast(_, _, _, let l, _) => l,
+  Expr::Cast(_, _, let l, _) => l,
   Expr::NsAccess(_, _, let l, _) => l,
   Expr::FieldAccess(_, _, let l, _) => l,
   Expr::Index(_, _, let l, _) => l,
   Expr::StructLit(_, _, let l, _) => l,
   Expr::ArrayLit(_, let l, _) => l,
+  Expr::NullCoalesce(_, _, _, let l, _) => l,
+  Expr::TryExpr(_, let l, _) => l,
   Expr::None => -1,
 };
 
@@ -288,12 +290,14 @@ int expr_col(Expr e) => e match {
   Expr::ArrayPat(_, _, let c) => c,
   Expr::EnumPat(_, _, _, _, let c) => c,
   Expr::Match(_, _, _, let c) => c,
-  Expr::Cast(_, _, _, _, let c) => c,
+  Expr::Cast(_, _, let c) => c,
   Expr::NsAccess(_, _, _, let c) => c,
   Expr::FieldAccess(_, _, _, let c) => c,
   Expr::Index(_, _, _, let c) => c,
   Expr::StructLit(_, _, _, let c) => c,
   Expr::ArrayLit(_, _, let c) => c,
+  Expr::NullCoalesce(_, _, _, _, let c) => c,
+  Expr::TryExpr(_, _, let c) => c,
   Expr::None => -1,
 };
 
@@ -309,7 +313,7 @@ string assign_target_name(Expr e) {
 }
 
 Expr assignment(Parser p) {
-  Expr left = pipeline(p);
+  Expr left = coalesce(p);
   if (is_assign_op(peek_tok(p).type)) {
     Token op = advance_tok(p);
     Expr value = assignment(p);
@@ -318,6 +322,22 @@ Expr assignment(Parser p) {
     return Expr::Assign(name, aop, value, expr_line(left), expr_col(left));
   }
   return left;
+}
+
+// lhs ?? rhs  and  lhs ?? |e| rhs  — right-associative.
+// Sits between assignment (above) and pipeline (below).
+Expr coalesce(Parser p) {
+  Expr left = pipeline(p);
+  if (!match_tt(p, TokenType::QuestionQuestion)) { return left; }
+  Token qq = previous(p);
+  string err_binding = "";
+  if (match_tt(p, TokenType::Pipe)) {
+    Token e = consume(p, TokenType::Identifier, "Expected error binding name after '|' in '?? |e|'.");
+    err_binding = e.lexeme;
+    consume(p, TokenType::Pipe, "Expected '|' to close '?? |e|' binding.");
+  }
+  Expr right = coalesce(p);
+  return Expr::NullCoalesce(left, err_binding, right, qq.line, qq.col);
 }
 
 Expr pipeline(Parser p) {
@@ -436,6 +456,12 @@ Expr factor(Parser p) {
 }
 
 Expr unary(Parser p) {
+  // try expr — soft keyword: if peek is Identifier "try", parse as TryExpr
+  if (check(p, TokenType::Identifier) && peek_tok(p).lexeme == "try") {
+    Token tt = advance_tok(p);
+    Expr value = unary(p);
+    return Expr::TryExpr(value, tt.line, tt.col);
+  }
   if (peek_tok(p).type == TokenType::Bang || peek_tok(p).type == TokenType::Minus ||
       peek_tok(p).type == TokenType::Tilde) {
     Token op = advance_tok(p);
@@ -492,11 +518,7 @@ Expr cast_expr(Parser p) {
   consume(p, TokenType::LeftParen, "Expected '(' in cast.");
   Expr value = expression(p);
   consume(p, TokenType::RightParen, "Expected ')' after cast value.");
-  Expr fallback = Expr::None;
-  if (match_tt(p, TokenType::Else)) {
-    fallback = expression(p);
-  }
-  return Expr::Cast(target, value, fallback, tt.line, tt.col);
+  return Expr::Cast(target, value, tt.line, tt.col);
 }
 
 bool first_char_is_upper(string s) {

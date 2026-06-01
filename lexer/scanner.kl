@@ -322,7 +322,11 @@ ScanResult scan_token(Scanner s) {
   if (c == "]") { return ScanResult { s, make_token(s, TokenType::RightBracket) }; }
   if (c == ",") { return ScanResult { s, make_token(s, TokenType::Comma) }; }
   if (c == ";") { return ScanResult { s, make_token(s, TokenType::Semicolon) }; }
-  if (c == "?") { return ScanResult { s, make_token(s, TokenType::Question) }; }
+  if (c == "?") {
+    MatchResult mr = match_char(s, "?"); s = mr.sc;
+    if (mr.matched) { return ScanResult { s, make_token(s, TokenType::QuestionQuestion) }; }
+    return ScanResult { s, make_token(s, TokenType::Question) };
+  }
   if (c == "~") { return ScanResult { s, make_token(s, TokenType::Tilde) }; }
   if (c == "^") { return ScanResult { s, make_token(s, TokenType::Caret) }; }
   if (c == "%") { return ScanResult { s, make_token(s, TokenType::Percent) }; }

@@ -1,0 +1,5 @@
+int main() {
+  string s = "42";
+  int n = int(s);
+  return n;
+}

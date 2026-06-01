@@ -1,0 +1,113 @@
+// Minimal test driver for self-host compiler. Avoids the struct dedup bug
+// by NOT importing parser.kl — instead, uses hardcoded AST nodes for specific
+// bytecode golden tests.
+//
+// Usage: kinglet test_compile.kl <test_name>
+//   test_name one of: logic_and, logic_or, array_lit, struct_lit
+
+using io;
+using sys;
+
+import "../compiler/compiler.kl"
+import "../compiler/disasm.kl"
+
+// --- AST type helpers (need to match compiler.kl's enum variant indices) ---
+
+// Helper: build an IntLit expression
+Expr int_lit(int v, int line, int col) => Expr::IntLit(v, line, col);
+
+// Helper: build a BoolLit
+Expr bool_lit(bool v, int line, int col) => Expr::BoolLit(v, line, col);
+
+// Helper: build an Ident
+Expr ident(string n, int line, int col) => Expr::Ident(n, line, col);
+
+// Helper: binary expr
+Expr binary(Expr lhs, BinaryOp op, Expr rhs, int line, int col) =>
+  Expr::Binary(lhs, op, rhs, line, col);
+
+// Helper: assign
+Expr assign(string n, Expr v, int line, int col) =>
+  Expr::Assign(n, AssignOp::Assign, v, line, col);
+
+// Helper: call
+Expr call(string n, Expr[] args, int line, int col) =>
+  Expr::Call(ident(n, line, col), [], args, line, col);
+
+// Helper: return stmt
+Stmt return_stmt(Expr v, int line, int col) => Stmt::ReturnStmt(v, line, col);
+
+// Helper: expr stmt  
+Stmt expr_stmt(Expr e, int line, int col) => Stmt::ExprStmt(e, line, col);
+
+// Helper: var decl
+Stmt var_decl(string n, Expr init, int line, int col) =>
+  Stmt::VarDecl("", TypeExpr { "auto", [] }, n, init, line, col);
+
+// --- test cases ---
+
+int test_logic_and() {
+  // fn main() { var x = true; var y = false; return x && y; }
+  Parameter[] params = [];
+  Stmt[] body_stmts = [];
+  body_stmts.push(var_decl("x", bool_lit(true, 1, 9), 1, 2));
+  body_stmts.push(var_decl("y", bool_lit(false, 1, 23), 1, 16));
+  body_stmts.push(return_stmt(
+    binary(ident("x", 1, 38), BinaryOp::And, ident("y", 1, 43), 1, 38),
+    1, 31
+  ));
+  Stmt body = Stmt::Block(body_stmts, 0, 0);
+  Decl fd = Decl::FunctionDecl("main", TypeExpr { "int", [] }, [], params, body, false, 1, 0);
+  Program prog = Program { [fd] };
+  Compiler co = compiler::make_compiler();
+  int errs = compiler::compile_program(co, prog);
+  if (errs > 0) {
+    for (int i = 0; i < co.errors.len(); i = i + 1) {
+      CompileError e = co.errors[i];
+      io::err.line("{}:{}: compile error: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  string out = disasm::disassemble(co.chunk);
+  io::out(out);
+  return 0;
+}
+
+int test_logic_or() {
+  // fn main() { var x = true; var y = false; return x || y; }
+  Parameter[] params = [];
+  Stmt[] body_stmts = [];
+  body_stmts.push(var_decl("x", bool_lit(true, 1, 9), 1, 2));
+  body_stmts.push(var_decl("y", bool_lit(false, 1, 23), 1, 16));
+  body_stmts.push(return_stmt(
+    binary(ident("x", 1, 38), BinaryOp::Or, ident("y", 1, 43), 1, 38),
+    1, 31
+  ));
+  Stmt body = Stmt::Block(body_stmts, 0, 0);
+  Decl fd = Decl::FunctionDecl("main", TypeExpr { "int", [] }, [], params, body, false, 1, 0);
+  Program prog = Program { [fd] };
+  Compiler co = compiler::make_compiler();
+  int errs = compiler::compile_program(co, prog);
+  if (errs > 0) {
+    for (int i = 0; i < co.errors.len(); i = i + 1) {
+      CompileError e = co.errors[i];
+      io::err.line("{}:{}: compile error: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  string out = disasm::disassemble(co.chunk);
+  io::out(out);
+  return 0;
+}
+
+int main() {
+  string[] args = sys::args();
+  if (args.len() < 2) {
+    io::err.line("usage: kinglet test_compile.kl <test_name>");
+    return 64;
+  }
+  string test = args[1];
+  if (test == "logic_and") { return test_logic_and(); }
+  if (test == "logic_or")  { return test_logic_or(); }
+  return 0;
+}
