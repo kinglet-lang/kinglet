@@ -227,6 +227,12 @@ void emit_ident(Compiler co, string name, int line, int col) {
 }
 
 void emit_binary(Compiler co, Expr lhs, BinaryOp op, Expr rhs, int line, int col) {
+  // Short-circuit logical operators (And / Or) need special handling
+  // before the generic left-right-emit pattern.
+  bool is_and = op match { BinaryOp::And => true, _ => false, };
+  bool is_or  = op match { BinaryOp::Or  => true, _ => false, };
+  if (is_and) { emit_logical_and(co, lhs, rhs, line, col); return; }
+  if (is_or)  { emit_logical_or(co, lhs, rhs, line, col);  return; }
   compile_expr(co, lhs);
   compile_expr(co, rhs);
   op match {
@@ -248,6 +254,30 @@ void emit_binary(Compiler co, Expr lhs, BinaryOp op, Expr rhs, int line, int col
     BinaryOp::Shr    => bytecode::write_op(co.chunk, OpCode::Shr, line, col),
     _ => compile_error(co, line, col, "Unsupported binary operator in VM compiler."),
   };
+}
+
+// a && b: compile a; JmpFalse past; compile b; Jmp past False; False; patch.
+// Result is b's value if a is truthy, otherwise False.
+void emit_logical_and(Compiler co, Expr lhs, Expr rhs, int line, int col) {
+  compile_expr(co, lhs);
+  int false_jump = emit_jump(co, OpCode::JmpFalse, line, col);
+  compile_expr(co, rhs);
+  int end_jump = emit_jump(co, OpCode::Jmp, line, col);
+  patch_jump(co, false_jump);
+  bytecode::write_op(co.chunk, OpCode::False_, line, col);
+  patch_jump(co, end_jump);
+}
+
+// a || b: compile a; JmpFalse skip; True; Jmp end; skip: compile b; patch end.
+// Result is True if a is truthy, otherwise b's value.
+void emit_logical_or(Compiler co, Expr lhs, Expr rhs, int line, int col) {
+  compile_expr(co, lhs);
+  int false_jump = emit_jump(co, OpCode::JmpFalse, line, col);
+  bytecode::write_op(co.chunk, OpCode::True_, line, col);
+  int end_jump = emit_jump(co, OpCode::Jmp, line, col);
+  patch_jump(co, false_jump);
+  compile_expr(co, rhs);
+  patch_jump(co, end_jump);
 }
 
 // Plain `x = expr` only — compound +=/-= etc. not yet supported. Value of
