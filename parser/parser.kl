@@ -465,6 +465,31 @@ Expr call_chain(Parser p) {
   return expr;
 }
 
+bool starts_type_method(Parser p) {
+  TokenType t = peek_tok(p).type;
+  if (t != TokenType::Int && t != TokenType::Float && t != TokenType::Double &&
+      t != TokenType::Bool && t != TokenType::String && t != TokenType::Byte) {
+    return false;
+  }
+  return check_at(p, 1, TokenType::ColonColon) && check_at(p, 2, TokenType::Identifier);
+}
+
+Expr type_method_expr(Parser p) {
+  Token tt = advance_tok(p);   // type keyword
+  advance_tok(p);              // ::
+  Token method = advance_tok(p); // method name
+  consume(p, TokenType::LeftParen, "Expected '(' after type-qualified method.");
+  Expr[] args = [];
+  if (!check(p, TokenType::RightParen)) {
+    args.push(expression(p));
+    while (match_tt(p, TokenType::Comma)) {
+      args.push(expression(p));
+    }
+  }
+  consume(p, TokenType::RightParen, "Expected ')' after type-qualified method arguments.");
+  return Expr::Call(Expr::NsAccess(tt.lexeme, method.lexeme, tt.line, tt.col), [], args, tt.line, tt.col);
+}
+
 bool starts_cast(Parser p) {
   TokenType t = peek_tok(p).type;
   if (t != TokenType::Int && t != TokenType::Float && t != TokenType::Double &&
@@ -511,6 +536,7 @@ Expr parse_struct_literal(Parser p, TypeExpr ty, Token start) {
 }
 
 Expr primary(Parser p) {
+  if (starts_type_method(p)) { return type_method_expr(p); }
   if (starts_cast(p)) { return cast_expr(p); }
   if (match_tt(p, TokenType::Integer) || match_tt(p, TokenType::CharLit)) {
     Token t = previous(p);

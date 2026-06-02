@@ -896,6 +896,14 @@ void emit_ns_call(Compiler co, string ns, string m, Expr[] args, int nl, int nc)
     bytecode::write_operand(co.chunk, OpCode::EnumVariantPayload, operand, nl, nc);
     return;
   }
+  // Type-qualified methods: int::bits(float)
+  if (ns == "int" && m == "bits") {
+    for (int i = 0; i < args.len(); i = i + 1) {
+      compile_expr(co, args[i]);
+    }
+    bytecode::write_operand(co.chunk, OpCode::FloatToBits, 0, nl, nc);
+    return;
+  }
   // Imported function call: scanner::scan(...), parser::parse_program(...), etc.
   if (is_imported_ns(co, ns)) {
     int fi = resolve_function(co, ns + "::" + m);

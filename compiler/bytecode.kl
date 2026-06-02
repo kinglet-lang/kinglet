@@ -30,7 +30,7 @@ pub enum OpCode {
   // locals / stack
   LoadLocal, StoreLocal, Pop, Dup,
   // misc
-  IsNull, CastTo,
+  IsNull, CastTo, FloatToBits,
   // calls / control
   Call, Return_, Jmp, JmpFalse,
   // comparison
@@ -300,9 +300,7 @@ pub string write_i64(string buf, int v) {
 }
 
 pub string write_f64(string buf, float v) {
-  // Double constants are extremely rare in the self-host compiler output.
-  // When needed, a float→int bit-cast mechanism must be added.
-  return write_i64(buf, 0);
+  return write_i64(buf, int::bits(v));
 }
 
 pub string write_str(string buf, string s) {
