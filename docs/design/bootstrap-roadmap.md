@@ -7,7 +7,37 @@
 
 Done. `+= -= *= /=` in compiler + checker + golden test.
 
-## Phase 1 — Enum variants
+## Phase 1 — Enum variants ✅
+
+Done. Enum registration, variant construction (with and without payload), 22 golden tests passing.
+
+## Phase 2 — Match expressions ✅
+
+Done. EnumPat, BindingPat, ArrayPat, wildcard, literal, and guard patterns all compiled.
+
+## Phase 3 — Built-in methods ✅
+
+Done. Array/string/map method calls dispatched to opcodes. io::out.line() supported.
+
+## Phase 4 — Imports & modules ⏳
+
+ImportDecl accepted without error. Full import loading deferred — requires the
+self-host compiler to have runtime access to fs::read and the parser at compile time.
+
+## Phase 5 — Self-hosting milestone ⏸
+
+Blocked by inline type checker errors in cli/main.kl (Void type mismatches in the
+duplicated scanner/parser/checker code). The compiler itself is feature-complete for
+the core language; the blocker is the checker, not the compiler.
+
+### Known remaining gaps for self-hosting
+
+- **Inline type checker Void errors** — the duplicated AST types in cli/main.kl cause
+  Void comparisons and assignments. Fix requires aligning the duplicated types with
+  the imported ones or fixing the inline checker's type resolution.
+- **Import compilation in the self-host compiler** — needs fs::read + scan + parse
+  at compile time. Architecturally feasible but requires compiler.kl to import scanner
+  and parser modules.
 
 **Why first.** Every source file constructs enum variants — `Expr::Binary(...)`,
 `Stmt::Block(...)`, `TypeKind::Int`, `BinaryOp::Add`. The compiler can't emit any
