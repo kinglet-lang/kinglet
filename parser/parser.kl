@@ -696,6 +696,8 @@ Decl parse_declaration(Parser p) {
 
   bool is_pub = match_tt(p, TokenType::Pub);
 
+  if (match_tt(p, TokenType::Trait))  { return parse_trait_decl(p, is_pub); }
+  if (match_tt(p, TokenType::Impl))   { return parse_impl_decl(p, is_pub); }
   if (match_tt(p, TokenType::Struct)) { return parse_struct_decl(p, is_pub); }
   if (match_tt(p, TokenType::Enum))   { return parse_enum_decl(p, is_pub); }
 
@@ -738,6 +740,82 @@ Decl parse_import(Parser p) {
   }
   match_tt(p, TokenType::Semicolon);
   return Decl::ImportDecl(path, alias, selected, import_tok.line, import_tok.col);
+}
+
+Decl parse_trait_decl(Parser p, bool is_pub) {
+  Token trait_tok = previous(p);
+  Token name = consume(p, TokenType::Identifier, "Expected trait name after 'trait'.");
+  consume(p, TokenType::LeftBrace, "Expected '{' after trait name.");
+
+  TraitMethod[] methods = [];
+  while (!check(p, TokenType::RightBrace) && peek_tok(p).type != TokenType::Eof) {
+    TypeExpr ret_ty = parse_type_expr(p);
+    Token meth_name = consume(p, TokenType::Identifier, "Expected method name.");
+    consume(p, TokenType::LeftParen, "Expected '(' after method name.");
+
+    // Self parameter
+    Parameter[] params = [];
+    if (match_tt(p, TokenType::Self_)) {
+      params.push(Parameter { TypeExpr { name.lexeme, [] }, "self" });
+      if (match_tt(p, TokenType::Comma)) { /* skip comma */ }
+    }
+    if (!check(p, TokenType::RightParen)) {
+      Parameter[] rest = parse_parameters(p);
+      for (int i = 0; i < rest.len(); i = i + 1) { params.push(rest[i]); }
+    }
+    consume(p, TokenType::RightParen, "Expected ')' after parameter list.");
+
+    // Optional default body or semicolon
+    if (check(p, TokenType::LeftBrace) || check(p, TokenType::FatArrow)) {
+      Stmt _body = parse_function_body(p);
+    } else {
+      consume(p, TokenType::Semicolon, "Expected ';' or '{' after trait method signature.");
+    }
+
+    methods.push(TraitMethod { ret_ty, meth_name.lexeme, params });
+  }
+  consume(p, TokenType::RightBrace, "Expected '}' after trait body.");
+
+  return Decl::TraitDecl(name.lexeme, methods, is_pub, trait_tok.line, trait_tok.col);
+}
+
+Decl parse_impl_decl(Parser p, bool is_pub) {
+  Token impl_tok = previous(p);
+  Token type_name = consume(p, TokenType::Identifier, "Expected type name after 'impl'.");
+  string target_type = type_name.lexeme;
+
+  string trait_name = "";
+  if (match_tt(p, TokenType::Colon)) {
+    Token tt = consume(p, TokenType::Identifier, "Expected trait name after ':'.");
+    trait_name = tt.lexeme;
+  }
+
+  consume(p, TokenType::LeftBrace, "Expected '{' after impl header.");
+
+  Decl[] methods = [];
+  while (!check(p, TokenType::RightBrace) && peek_tok(p).type != TokenType::Eof) {
+    TypeExpr ret_ty = parse_type_expr(p);
+    Token meth_name = consume(p, TokenType::Identifier, "Expected method name.");
+    consume(p, TokenType::LeftParen, "Expected '(' after method name.");
+
+    Parameter[] params = [];
+    if (match_tt(p, TokenType::Self_)) {
+      params.push(Parameter { TypeExpr { target_type, [] }, "self" });
+      if (match_tt(p, TokenType::Comma)) { /* skip comma */ }
+    }
+    if (!check(p, TokenType::RightParen)) {
+      Parameter[] rest = parse_parameters(p);
+      for (int i = 0; i < rest.len(); i = i + 1) { params.push(rest[i]); }
+    }
+    consume(p, TokenType::RightParen, "Expected ')' after parameter list.");
+
+    Stmt body = parse_function_body(p);
+
+    methods.push(Decl::FunctionDecl(meth_name.lexeme, ret_ty, [], params, body, false, meth_name.line, meth_name.col));
+  }
+  consume(p, TokenType::RightBrace, "Expected '}' after impl body.");
+
+  return Decl::ImplDecl(target_type, trait_name, methods, is_pub, impl_tok.line, impl_tok.col);
 }
 
 string[] parse_type_params(Parser p) {

@@ -1,0 +1,14 @@
+struct Point { int x; int y; }
+
+trait Printable {
+  string to_string(self);
+}
+
+impl Point : Printable {
+  string to_string(self) => "Point";
+}
+
+int main() {
+  Point p = Point { 1, 2 };
+  return 0;
+}
