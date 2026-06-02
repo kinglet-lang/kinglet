@@ -157,14 +157,5 @@ the C++ bootstrap:
 
 ### Design Decisions
 
-All significant design decisions are recorded in `decisions/`:
-- `0001-design-principles.md` — three pillars: value semantics, deterministic destruction, zero-cost abstraction
-- `0002-trait-system-redesign.md` — trait system direction (draft, direction TBD)
-- `0003-error-handling-unification.md` — ??, try, and Cast unification
-- `0004-backend-architecture.md` — KIR + dual backend proposal (draft)
-- `0005-kbc-format-evolution.md` — bytecode format optimization phases
-- `0006-stdlib-roadmap.md` — standard library plan (deferred)
-- `0007-lsp-roadmap.md` — LSP implementation plan (deferred)
-- `0008-pending-syntax-and-perf.md` — miscellaneous pending items
-
-When in doubt about direction, check `decisions/` first.
+All significant design decisions are recorded in `decisions/`, numbered by proposal date.
+See `decisions/README.md` for the full index.
