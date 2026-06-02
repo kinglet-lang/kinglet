@@ -47,17 +47,17 @@ Source (.kl)
 
 ## Language Quick Reference
 
-Kinglet is a C-family language with Rust/Kotlin influences:
+Kinglet is a C-family language designed as "C++ after completing worthwhile standard committee proposals." See `decisions/0001-design-principles.md` for the three design pillars: full value semantics, deterministic destruction, and zero-cost abstraction without ownership.
 
 ```kl
 // Types: int, float, double, bool, string, byte, void, auto
-// Structs, Enums (with payload variants), Traits
+// Structs, Enums (with payload variants)
 // match expressions, ?? (null coalesce), try (error propagation)
 // Import system: import "../path/module.kl" { sym1, sym2 }
 // Namespaces: io::out, io::err (built-in), user-defined via namespace
 // Built-in methods: .len(), .push(), .pop(), .slice(), .split(), etc.
 
-fn example(int x) -> string {
+int example(int x) {
   if x > 0 { return "positive"; }
   return "non-positive";
 }
@@ -76,7 +76,7 @@ fn example(int x) -> string {
 | 6 | Stdlib + FFI cleanup | Future |
 | 7 | Self-hosted VM | Future |
 
-See `docs/design/bootstrap-roadmap.md` for the full roadmap.
+See `decisions/README.md` for the full decision index.
 
 ## Development Conventions
 
@@ -140,15 +140,14 @@ When adding a feature:
   bootstrap compiler's struct-meta registration bug
 - AST enums are defined in `parser/ast.kl`; mirrors in `checker/checker.kl` and
   `cli/main.kl` must be kept in sync manually
-- Design documents live in `docs/design/`
+- Design documents live in `decisions/` (see `decisions/README.md` for index)
 
 ### Bootstrap Compiler Quirks
 
 When working on the self-host compiler, be aware of these constraints inherited from
 the C++ bootstrap:
 
-1. **Constant pool**: every `emit_constant` creates a fresh entry (no dedup). Mirrors
-   `compiler.cc:1597`.
+1. **Constant pool**: deduplication is implemented in both bs and sh `add_constant()` (see 0005 P1).
 2. **Call sequence**: args pushed before function constant, then `Call argc`.
 3. **Function preamble**: `Constant<main_fn>; Call 0; Return` at instruction offset 0-2.
 4. **Function fallthrough**: every function body ends with `Null; Return`.
@@ -156,11 +155,16 @@ the C++ bootstrap:
 6. **Import dedup**: the bootstrap dedups imports by resolved path, but transitive
    re-imports of the same module can still corrupt function indices in edge cases.
 
-### Design Documents
+### Design Decisions
 
-- `docs/design/bootstrap-roadmap.md` — phased self-hosting plan, current status
-- `docs/design/error-handling.md` — `??`, `try`, and Cast unification design
-- `docs/design/backend-architecture.md` — KIR (mid-level IR) + dual backend (VM/LLVM) proposal
+All significant design decisions are recorded in `decisions/`:
+- `0001-design-principles.md` — three pillars: value semantics, deterministic destruction, zero-cost abstraction
+- `0002-trait-system-redesign.md` — trait system direction (draft, direction TBD)
+- `0003-error-handling-unification.md` — ??, try, and Cast unification
+- `0004-backend-architecture.md` — KIR + dual backend proposal (draft)
+- `0005-kbc-format-evolution.md` — bytecode format optimization phases
+- `0006-stdlib-roadmap.md` — standard library plan (deferred)
+- `0007-lsp-roadmap.md` — LSP implementation plan (deferred)
+- `0008-pending-syntax-and-perf.md` — miscellaneous pending items
 
-When in doubt about direction, check these first. They capture decisions and open
-questions that would otherwise require re-deriving from code.
+When in doubt about direction, check `decisions/` first.
