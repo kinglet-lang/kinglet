@@ -1,0 +1,3 @@
+# GitHub Linguist: treat .kl files as Rust for syntax highlighting
+# until Kinglet is officially registered in Linguist.
+*.kl linguist-language=Rust
