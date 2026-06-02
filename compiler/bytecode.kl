@@ -145,8 +145,28 @@ pub Chunk make_chunk() {
   return Chunk { cs, is, fs, ss, es };
 }
 
-// Append a constant; return its pool index. Mirrors Chunk::add_constant.
+// Append a constant; return its pool index. Deduplicates identical values.
+// Mirrors Chunk::add_constant in the bootstrap compiler.
 pub int add_constant(Chunk c, Constant v) {
+  for (int i = 0; i < c.constants.len(); i += 1) {
+    Constant existing = c.constants[i];
+    if (existing.kind != v.kind) { continue; }
+    if (v.kind == ConstKind::Int_) {
+      if (existing.int_value == v.int_value) { return i; }
+    } else if (v.kind == ConstKind::Double_) {
+      if (existing.double_value == v.double_value) { return i; }
+    } else if (v.kind == ConstKind::Bool_) {
+      if (existing.bool_value == v.bool_value) { return i; }
+    } else if (v.kind == ConstKind::Null_) {
+      return i;
+    } else if (v.kind == ConstKind::String_) {
+      if (existing.string_value == v.string_value) { return i; }
+    } else if (v.kind == ConstKind::Function_) {
+      if (existing.aux1 == v.aux1) { return i; }
+    } else if (v.kind == ConstKind::Enum_) {
+      if (existing.aux1 == v.aux1 && existing.aux2 == v.aux2) { return i; }
+    }
+  }
   c.constants.push(v);
   return c.constants.len() - 1;
 }
@@ -161,10 +181,33 @@ pub void write_operand(Chunk c, OpCode op, int operand, int line, int col) {
   c.instructions.push(Instruction { op, operand, line, col });
 }
 
-// Push constant + emit OP_Constant referring to it. Mirrors Chunk::write_constant.
+// Push constant + emit OP_Constant referring to it. Deduplicates before adding.
+// Mirrors Chunk::write_constant.
 pub void write_constant(Chunk c, Constant v, int line, int col) {
-  c.constants.push(v);
-  int idx = c.constants.len() - 1;
+  int idx = -1;
+  for (int i = 0; i < c.constants.len(); i += 1) {
+    Constant existing = c.constants[i];
+    if (existing.kind != v.kind) { continue; }
+    if (v.kind == ConstKind::Int_) {
+      if (existing.int_value == v.int_value) { idx = i; break; }
+    } else if (v.kind == ConstKind::Double_) {
+      if (existing.double_value == v.double_value) { idx = i; break; }
+    } else if (v.kind == ConstKind::Bool_) {
+      if (existing.bool_value == v.bool_value) { idx = i; break; }
+    } else if (v.kind == ConstKind::Null_) {
+      idx = i; break;
+    } else if (v.kind == ConstKind::String_) {
+      if (existing.string_value == v.string_value) { idx = i; break; }
+    } else if (v.kind == ConstKind::Function_) {
+      if (existing.aux1 == v.aux1) { idx = i; break; }
+    } else if (v.kind == ConstKind::Enum_) {
+      if (existing.aux1 == v.aux1 && existing.aux2 == v.aux2) { idx = i; break; }
+    }
+  }
+  if (idx < 0) {
+    c.constants.push(v);
+    idx = c.constants.len() - 1;
+  }
   c.instructions.push(Instruction { OpCode::Constant, idx, line, col });
 }
 
