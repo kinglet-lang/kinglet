@@ -1053,7 +1053,7 @@ int run_check(string source) {
   return 0;
 }
 
-int run_bytecode(string source) {
+int run_bytecode(string source, string path) {
   Token[] tokens = scan(source);
   Parser p = parser::make_parser(tokens);
   Program prog = parser::parse_program(p);
@@ -1065,7 +1065,7 @@ int run_bytecode(string source) {
     return 65;
   }
   Compiler co = compiler::make_compiler();
-  int errs = compiler::compile_program(co, prog);
+  int errs = compiler::compile_program(co, prog, path);
   if (errs > 0) {
     for (int i = 0; i < co.errors.len(); i = i + 1) {
       CompileError e = co.errors[i];
@@ -1115,7 +1115,7 @@ int main() {
     return run_check(source);
   }
   if (dump_bc) {
-    return run_bytecode(source);
+    return run_bytecode(source, path);
   }
   return run_tokens(source);
 }

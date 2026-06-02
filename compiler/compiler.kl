@@ -23,6 +23,189 @@ import "../parser/ast.kl"
 
 using io;
 
+// ---------- path helpers ---------------------------------------------------
+
+string dir_of(string path) {
+  int i = path.len() - 1;
+  while (i >= 0) {
+    if (path.slice(i, i + 1) == "/") {
+      if (i == 0) { return "/"; }
+      return path.slice(0, i);
+    }
+    i = i - 1;
+  }
+  return ".";
+}
+
+string stem_of(string path) {
+  string name = path;
+  int i = path.len() - 1;
+  while (i >= 0) {
+    if (path.slice(i, i + 1) == "/") {
+      name = path.slice(i + 1, path.len());
+      break;
+    }
+    i = i - 1;
+  }
+  int dot = name.len() - 1;
+  while (dot >= 0) {
+    if (name.slice(dot, dot + 1) == ".") { return name.slice(0, dot); }
+    dot = dot - 1;
+  }
+  return name;
+}
+
+string resolve_import_path(string base_dir, string relative) {
+  string[] parts = relative.split("/");
+  string[] segments = base_dir.split("/");
+  for (int i = 0; i < parts.len(); i = i + 1) {
+    if (parts[i] == "..") {
+      if (segments.len() > 0) { segments.pop(); }
+    } else {
+      if (parts[i] != "." && parts[i].len() > 0) {
+        segments.push(parts[i]);
+      }
+    }
+  }
+  string result = "";
+  for (int i = 0; i < segments.len(); i = i + 1) {
+    if (i > 0) { result = result + "/"; }
+    result = result + segments[i];
+  }
+  return result;
+}
+
+// ---------- import helpers --------------------------------------------------
+
+bool str_arr_contains(string[] arr, string val) {
+  for (int i = 0; i < arr.len(); i = i + 1) {
+    if (arr[i] == val) { return true; }
+  }
+  return false;
+}
+
+bool func_exists(Compiler co, string name) {
+  for (int i = 0; i < co.funcs.len(); i = i + 1) {
+    if (co.funcs[i].name == name) { return true; }
+  }
+  return false;
+}
+
+bool struct_exists(Compiler co, string name) {
+  for (int i = 0; i < co.structs.len(); i = i + 1) {
+    if (co.structs[i].name == name) { return true; }
+  }
+  return false;
+}
+
+bool enum_exists(Compiler co, string name) {
+  for (int i = 0; i < co.enums.len(); i = i + 1) {
+    if (co.enums[i].name == name) { return true; }
+  }
+  return false;
+}
+
+bool is_imported_ns(Compiler co, string ns) {
+  for (int i = 0; i < co.imports.namespaces.len(); i = i + 1) {
+    if (co.imports.namespaces[i] == ns) { return true; }
+  }
+  return false;
+}
+
+void register_func_alias(Compiler co, string alias_name, int func_index, int const_index, int param_count) {
+  co.funcs.push(FuncEntry { alias_name, func_index, const_index, param_count });
+}
+
+void _reg_import_func(Compiler co, string ns, string n, Parameter[] params, Stmt body, bool is_pub, int dl, int dc, string[] selected, bool is_sel) {
+  if (is_pub && is_sel && !str_arr_contains(selected, n)) { return; }
+  string qualified = ns + "::" + n;
+  if (!func_exists(co, qualified)) {
+    register_compiler_function(co, qualified, params.len());
+    co.imports.pending.push(ImportedFunc { qualified, params, body, dl, dc });
+  }
+  int fi = resolve_function(co, qualified);
+  if (is_pub && is_sel && !func_exists(co, n)) {
+    register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len());
+  }
+  if (!is_pub && !func_exists(co, n)) {
+    register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len());
+  }
+}
+
+void _reg_import_struct(Compiler co, string n, FieldDef[] fields, bool is_pub, string[] selected, bool is_sel) {
+  if (is_sel && is_pub && !str_arr_contains(selected, n)) { return; }
+  if (!struct_exists(co, n)) { _register_struct_decl(co, n, fields); }
+}
+
+void _reg_import_enum(Compiler co, string n, EnumVariant[] variants, bool is_pub, string[] selected, bool is_sel) {
+  if (is_sel && is_pub && !str_arr_contains(selected, n)) { return; }
+  if (!enum_exists(co, n)) { _register_enum_decl(co, n, variants); }
+}
+
+void handle_import_decl(Compiler co, string path, string base_dir, string alias, string[] selected, int line, int col) {
+  string err = load_module(co, path, base_dir, alias, selected);
+  if (err.len() > 0) { compile_error(co, line, col, err); }
+}
+
+string load_module(Compiler co, string import_path, string importing_dir, string alias, string[] selected) {
+  string resolved = resolve_import_path(importing_dir, import_path);
+  if (str_arr_contains(co.imports.loading_paths, resolved)) {
+    return "Circular import: " + import_path;
+  }
+  if (str_arr_contains(co.imports.loaded_paths, resolved)) { return ""; }
+  string source = fs::__read(resolved);
+  if (source == null) { return "Cannot read: " + import_path; }
+  Token[] tokens = scan(source);
+  Parser p = parser::make_parser(tokens);
+  Program prog = parser::parse_program(p);
+  if (p.errors.len() > 0) { return "Parse error in " + import_path + ": " + p.errors[0].message; }
+  string ns = alias;
+  if (ns.len() == 0) { ns = stem_of(import_path); }
+  co.imports.loading_paths.push(resolved);
+  // Transitive imports
+  string mod_dir = dir_of(resolved);
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    prog.declarations[i] match {
+      Decl::ImportDecl(let ip, let ia, let isel, let _l, let _c) =>
+        _handle_transitive(co, ip, mod_dir, ia, isel),
+      _ => {},
+    };
+    if (co.errors.len() > 0) { co.imports.loading_paths.pop(); return "transitive error"; }
+  }
+  // Register declarations
+  bool is_sel = selected.len() > 0;
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    prog.declarations[i] match {
+      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let body, let is_pub, let dl, let dc) =>
+        _reg_import_func(co, ns, n, params, body, is_pub, dl, dc, selected, is_sel),
+      _ => {},
+    };
+  }
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    prog.declarations[i] match {
+      Decl::StructDecl(let n, let _tps, let fields, let is_pub, let _l, let _c) =>
+        _reg_import_struct(co, n, fields, is_pub, selected, is_sel),
+      _ => {},
+    };
+  }
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    prog.declarations[i] match {
+      Decl::EnumDecl(let n, let variants, let is_pub, let _l, let _c) =>
+        _reg_import_enum(co, n, variants, is_pub, selected, is_sel),
+      _ => {},
+    };
+  }
+  co.imports.loading_paths.pop();
+  co.imports.loaded_paths.push(resolved);
+  co.imports.namespaces.push(ns);
+  return "";
+}
+
+void _handle_transitive(Compiler co, string ip, string mod_dir, string ia, string[] isel) {
+  string err = load_module(co, ip, mod_dir, ia, isel);
+  if (err.len() > 0) { compile_error(co, 0, 0, err); }
+}
+
 // ---------- compiler state -------------------------------------------------
 
 pub struct Local {
@@ -54,34 +237,42 @@ pub struct CompileError {
   string message;
 }
 
+struct ImportedFunc {
+  string qualified_name;
+  Parameter[] params;
+  Stmt body;
+  int line;
+  int col;
+}
+
+struct ImportState {
+  string[] loaded_paths;
+  string[] loading_paths;
+  ImportedFunc[] pending;
+  string[] namespaces;
+}
+
 pub struct Compiler {
   Chunk chunk;
   Local[] locals;
-  int[] scope_starts;     // locals.len() at each push_scope()
+  int[] scope_starts;
   int scope_depth;
-  FuncEntry[] funcs;      // function table mirrored alongside chunk.functions
+  FuncEntry[] funcs;
   CompileError[] errors;
-  int[] loop_breaks;      // jump offsets to patch at loop exit
-  int[] loop_continues;   // jump offsets to patch to loop start
-  int loop_depth;          // number of active loops (for break/continue validation)
-  string[] usings;         // active `using` namespaces (io, fs, sys)
-  EnumEntry[] enums;       // enum name -> type_idx lookup (parallel array)
-  StructEntry[] structs;   // struct name -> type_idx lookup (parallel array)
+  int[] loop_breaks;
+  int[] loop_continues;
+  int loop_depth;
+  string[] usings;
+  EnumEntry[] enums;
+  StructEntry[] structs;
+  ImportState imports;
 }
 
 pub Compiler make_compiler() {
   Chunk c = bytecode::make_chunk();
   bytecode::register_builtin_enums(c);
-  Local[] ls = [];
-  int[] ss = [];
-  FuncEntry[] fs = [];
-  CompileError[] es = [];
-  int[] lbs = [];
-  int[] lcs = [];
-  string[] us = [];
-  EnumEntry[] ens = [];
-  StructEntry[] sts = [];
-  return Compiler { c, ls, ss, 0, fs, es, lbs, lcs, 0, us, ens, sts };
+  return Compiler { c, [], [], 0, [], [], [], [], 0, [], [], [],
+    ImportState { [], [], [], [] } };
 }
 
 // Indices of pre-registered built-in enums (mirrors bytecode::register_builtin_enums
@@ -703,11 +894,28 @@ void emit_ns_call(Compiler co, string ns, string m, Expr[] args, int nl, int nc)
     bytecode::write_operand(co.chunk, OpCode::EnumVariantPayload, operand, nl, nc);
     return;
   }
+  // Imported function call: scanner::scan(...), parser::parse_program(...), etc.
+  if (is_imported_ns(co, ns)) {
+    int fi = resolve_function(co, ns + "::" + m);
+    if (fi >= 0) {
+      for (int i = 0; i < args.len(); i = i + 1) {
+        compile_expr(co, args[i]);
+      }
+      Constant fc = Constant {
+        ConstKind::Function_,
+        0, 0.0, false, "",
+        co.funcs[fi].func_index, 0,
+      };
+      bytecode::write_constant(co.chunk, fc, nl, nc);
+      bytecode::write_operand(co.chunk, OpCode::Call, args.len(), nl, nc);
+      return;
+    }
+  }
   handle_ns_call(co, ns, m, args, nl, nc);
 }
 
-// Handle NsAccess in expression position: enum variant without payload.
-// E.g. Color::Red => EnumVariant_ with (type_idx << 16) | variant_idx.
+// Handle NsAccess in expression position: enum variant without payload,
+// or imported function reference.
 void emit_ns_access(Compiler co, string ns, string member, int line, int col) {
   int type_idx = resolve_enum(co, ns);
   if (type_idx >= 0) {
@@ -724,6 +932,19 @@ void emit_ns_access(Compiler co, string ns, string member, int line, int col) {
     int operand = (type_idx << 16) | variant_idx;
     bytecode::write_operand(co.chunk, OpCode::EnumVariant_, operand, line, col);
     return;
+  }
+  // Imported function reference
+  if (is_imported_ns(co, ns)) {
+    int fi = resolve_function(co, ns + "::" + member);
+    if (fi >= 0) {
+      Constant fc = Constant {
+        ConstKind::Function_,
+        0, 0.0, false, "",
+        co.funcs[fi].func_index, 0,
+      };
+      bytecode::write_constant(co.chunk, fc, line, col);
+      return;
+    }
   }
   compile_error(co, line, col, "Unsupported namespace access in VM compiler.");
 }
@@ -1042,7 +1263,7 @@ void compile_function_body(Compiler co, string name, Parameter[] params, Stmt bo
   compiler_pop_scope(co);
 }
 
-pub int compile_program(Compiler co, Program prog) {
+pub int compile_program(Compiler co, Program prog, string source_path) {
   // Pass 0: collect `using` declarations.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
@@ -1051,6 +1272,18 @@ pub int compile_program(Compiler co, Program prog) {
         co.usings.push(n),
       _ => skip_decl(co),
     };
+  }
+  // Pass 0a: process imports.
+  if (source_path.len() > 0) {
+    string base_dir = dir_of(source_path);
+    for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+      prog.declarations[i] match {
+        Decl::ImportDecl(let path, let alias, let selected, let line, let col) =>
+          handle_import_decl(co, path, base_dir, alias, selected, line, col),
+        _ => {},
+      };
+      if (co.errors.len() > 0) { return co.errors.len(); }
+    }
   }
   // Pass 0b: register struct and enum declarations.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
@@ -1097,6 +1330,12 @@ pub int compile_program(Compiler co, Program prog) {
         compile_function_body(co, n, params, body, l, c),
       _ => skip_decl(co),
     };
+    if (co.errors.len() > 0) { return co.errors.len(); }
+  }
+  // Pass 2b: compile imported function bodies.
+  for (int i = 0; i < co.imports.pending.len(); i = i + 1) {
+    ImportedFunc ifn = co.imports.pending[i];
+    compile_function_body(co, ifn.qualified_name, ifn.params, ifn.body, ifn.line, ifn.col);
     if (co.errors.len() > 0) { return co.errors.len(); }
   }
   return 0;

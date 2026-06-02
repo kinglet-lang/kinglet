@@ -19,25 +19,28 @@ Done. EnumPat, BindingPat, ArrayPat, wildcard, literal, and guard patterns all c
 
 Done. Array/string/map method calls dispatched to opcodes. io::out.line() supported.
 
-## Phase 4 — Imports & modules ⏳
+## Phase 4 — Imports & modules ✅
 
-ImportDecl accepted without error. Full import loading deferred — requires the
-self-host compiler to have runtime access to fs::read and the parser at compile time.
+The self-host compiler now handles `ImportDecl` end-to-end:
+- Loads imported files from disk via `fs::__read`
+- Scans and parses them using the compiled-in scanner/parser
+- Registers imported functions (qualified + bare names), structs, and enums
+- Handles transitive imports with circular-import detection
+- Compiles imported function bodies in Pass 2b
+- Supports selective imports (`{ sym1, sym2 }`) and aliased imports
 
-## Phase 5 — Self-hosting milestone ⏸
+Key changes: `compiler/compiler.kl` gained path helpers, `ImportState`/`ImportedFunc`
+structs, `load_module` recursive loader, namespace-aware `emit_ns_call`/`emit_ns_access`,
+and Pass 0a + Pass 2b in `compile_program`. `cli/main.kl` passes `source_path` to the
+compiler so imports resolve relative to the source file.
 
-Blocked by inline type checker errors in cli/main.kl (Void type mismatches in the
-duplicated scanner/parser/checker code). The compiler itself is feature-complete for
-the core language; the blocker is the checker, not the compiler.
+## Phase 5 — Self-hosting milestone ⏳
 
-### Known remaining gaps for self-hosting
-
-- **Inline type checker Void errors** — the duplicated AST types in cli/main.kl cause
-  Void comparisons and assignments. Fix requires aligning the duplicated types with
-  the imported ones or fixing the inline checker's type resolution.
-- **Import compilation in the self-host compiler** — needs fs::read + scan + parse
-  at compile time. Architecturally feasible but requires compiler.kl to import scanner
-  and parser modules.
+Previously blocked by type checker Void errors (fixed in kinglet-bootstrap `04caa6b`)
+and missing import compilation (now complete). The bootstrap compiler successfully
+compiles `cli/main.kl` → `cli_v1.kbc` (342KB, zero errors). Self-compilation
+(`cli_v1.kbc` compiling `cli/main.kl`) is in progress — the round-trip is expected
+to take significant time due to the size of the self-host codebase.
 
 **Why first.** Every source file constructs enum variants — `Expr::Binary(...)`,
 `Stmt::Block(...)`, `TypeKind::Int`, `BinaryOp::Add`. The compiler can't emit any
@@ -234,16 +237,16 @@ Once the VM runs on itself, the C++ bootstrap compiler is fully retired.
 
 ## Summary
 
-| Phase | What | Blocker for |
+| Phase | What | Status |
 |---|---|---|
-| 0 | Compound assignment | — ✅ |
-| **1** | **Enum variant construction** | Can't build enum values |
-| 2 | Match expressions | Can't branch on enums |
-| 3 | Built-in methods (.len/.push/.pop) | Can't use arrays dynamically |
-| 4 | Imports & modules | Can't load multi-file programs |
-| 5 | **Self-hosting** | The whole point |
-| 6 | Stdlib + FFI cleanup | Ecosystem |
-| 7 | Self-hosted VM | C++ retirement |
+| 0 | Compound assignment | ✅ |
+| 1 | Enum variant construction | ✅ |
+| 2 | Match expressions | ✅ |
+| 3 | Built-in methods (.len/.push/.pop) | ✅ |
+| 4 | Imports & modules | ✅ |
+| 5 | **Self-hosting** | ⏳ round-trip in progress |
+| 6 | Stdlib + FFI cleanup | Future |
+| 7 | Self-hosted VM | Future |
 
 Phase 1 is unblocked and ready to start: bytecode opcodes are defined, AST
 representation is settled, the only gap is the ~60 lines of compiler logic to
