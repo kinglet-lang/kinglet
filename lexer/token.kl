@@ -1,12 +1,11 @@
 pub enum TokenType {
   // keywords
-  Auto, Int, Float, Double, Bool, String, Void, Byte,
+  Auto, Int, Float, Double, Bool, String, Void, Byte, Char,
   Const,
   Return, If, Else, For, While, Break, Continue, Guard,
-  Match, Let, When,
+  Match, Let, When, Try, Catch,
   Pub, Import, Export, Namespace, Using,
   Struct, Enum, Trait, Impl, Self_,
-  Spawn, Select,
   True, False, Null_,
 
   // operators
@@ -15,7 +14,7 @@ pub enum TokenType {
   Less, Greater, LessEqual, GreaterEqual,
   AmpAmp, PipePipe, Bang,
   Amp, Pipe, Caret, Tilde, LessLess, GreaterGreater, PipeGreater,
-  Arrow, FatArrow, Question, QuestionQuestion, ColonColon, Dot, DotDot, DotDotDot,
+  Arrow, FatArrow, Question, QuestionQuestion, QuestionColon, ColonColon, Dot, DotDot, DotDotDot,
   PlusEqual, MinusEqual, StarEqual, SlashEqual,
 
   // delimiters

@@ -35,6 +35,8 @@ pub KeywordEntry[] all_keywords() {
   push_kw(kws, "match",     TokenType::Match,     "Match");
   push_kw(kws, "let",       TokenType::Let,       "Let");
   push_kw(kws, "when",      TokenType::When,      "When");
+  push_kw(kws, "try",       TokenType::Try,       "Try");
+  push_kw(kws, "catch",     TokenType::Catch,     "Catch");
   push_kw(kws, "export",    TokenType::Export,    "Export");
   push_kw(kws, "import",    TokenType::Import,    "Import");
   push_kw(kws, "pub",       TokenType::Pub,       "Pub");
@@ -45,8 +47,6 @@ pub KeywordEntry[] all_keywords() {
   push_kw(kws, "trait",     TokenType::Trait,     "Trait");
   push_kw(kws, "impl",      TokenType::Impl,      "Impl");
   push_kw(kws, "self",      TokenType::Self_,     "Self");
-  push_kw(kws, "spawn",     TokenType::Spawn,     "Spawn");
-  push_kw(kws, "select",    TokenType::Select,    "Select");
   push_kw(kws, "true",      TokenType::True,      "True");
   push_kw(kws, "false",     TokenType::False,     "False");
   push_kw(kws, "null",      TokenType::Null_,     "Null");
