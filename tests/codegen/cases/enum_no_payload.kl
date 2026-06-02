@@ -1,0 +1,6 @@
+enum Color { Red, Green, Blue }
+
+int main() {
+  Color c = Color::Green;
+  return 0;
+}

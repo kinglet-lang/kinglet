@@ -215,6 +215,7 @@ void compile_expr(Compiler co, Expr e) {
     Expr::Cast(let t, let v, let l, let c) => emit_cast(co, t, v, l, c),
     Expr::NullCoalesce(let left, let eb, let right, let l, let c) => compile_coalesce(co, left, eb, right, l, c),
     Expr::TryExpr(let value, let l, let c) => compile_try(co, value, l, c),
+    Expr::NsAccess(let ns, let member, let l, let c) => emit_ns_access(co, ns, member, l, c),
     Expr::None                           => emit_null(co),
     _ => compile_error(co, 0, 0, "Unsupported expression in VM compiler."),
   };
@@ -434,6 +435,48 @@ void emit_assign(Compiler co, string name, AssignOp op, Expr v, int line, int co
   bytecode::write_operand(co.chunk, OpCode::StoreLocal, slot, line, col);
 }
 
+// Handle NsAccess callee in call position. Dispatches to either enum variant
+// construction with payload, or native namespace calls (io, fs, sys).
+void emit_ns_call(Compiler co, string ns, string m, Expr[] args, int nl, int nc) {
+  int enum_ti = resolve_enum(co, ns);
+  if (enum_ti >= 0) {
+    int vi = resolve_variant(co, enum_ti, m);
+    if (vi < 0) {
+      compile_error(co, nl, nc, "Unknown enum variant '" + ns + "::" + m + "'.");
+      return;
+    }
+    for (int i = 0; i < args.len(); i = i + 1) {
+      compile_expr(co, args[i]);
+    }
+    int operand = (enum_ti << 16) | vi;
+    bytecode::write_operand(co.chunk, OpCode::EnumVariantPayload, operand, nl, nc);
+    return;
+  }
+  handle_ns_call(co, ns, m, args, nl, nc);
+}
+
+// Handle NsAccess in expression position: enum variant without payload.
+// E.g. Color::Red => EnumVariant_ with (type_idx << 16) | variant_idx.
+void emit_ns_access(Compiler co, string ns, string member, int line, int col) {
+  int type_idx = resolve_enum(co, ns);
+  if (type_idx >= 0) {
+    int variant_idx = resolve_variant(co, type_idx, member);
+    if (variant_idx < 0) {
+      compile_error(co, line, col, "Unknown enum variant '" + ns + "::" + member + "'.");
+      return;
+    }
+    EnumMeta meta = co.chunk.enum_metas[type_idx];
+    if (meta.variant_param_counts[variant_idx] > 0) {
+      compile_error(co, line, col, "Enum variant '" + member + "' requires arguments.");
+      return;
+    }
+    int operand = (type_idx << 16) | variant_idx;
+    bytecode::write_operand(co.chunk, OpCode::EnumVariant_, operand, line, col);
+    return;
+  }
+  compile_error(co, line, col, "Unsupported namespace access in VM compiler.");
+}
+
 void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
   // The C++ compiler stamps Call instructions with the callee's source
   // location, not the '('. Our parser puts '(' on the Call node, so patch
@@ -445,13 +488,14 @@ void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
     _ => "",
   };
   // Handle io::out / io::err / io::in native calls via NsAccess.
+  // Also handle enum variant construction with payload: Shape::Circle(1.0).
   // Use sequential if instead of nested match to avoid parser bug with
   // match-arm bodies that start with '{' inside a match-in-if-condition.
   bool is_ns = callee match { Expr::NsAccess(let _ns, let _m, let _l, let _c) => true, _ => false, };
-  if (callee_name.len() == 0 || is_ns) {
+  if (is_ns) {
     callee match {
       Expr::NsAccess(let ns, let m, let nl, let nc) =>
-        handle_ns_call(co, ns, m, args, nl, nc),
+        emit_ns_call(co, ns, m, args, nl, nc),
       _ => {},
     };
   }

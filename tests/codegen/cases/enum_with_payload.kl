@@ -1,0 +1,6 @@
+enum Shape { Circle(float), Square(float) }
+
+int main() {
+  Shape s = Shape::Circle(3.14);
+  return 0;
+}
