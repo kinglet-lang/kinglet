@@ -34,13 +34,12 @@ structs, `load_module` recursive loader, namespace-aware `emit_ns_call`/`emit_ns
 and Pass 0a + Pass 2b in `compile_program`. `cli/main.kl` passes `source_path` to the
 compiler so imports resolve relative to the source file.
 
-## Phase 5 — Self-hosting milestone ⏳
+## Phase 5 — Self-hosting milestone ✅
 
-Previously blocked by type checker Void errors (fixed in kinglet-bootstrap `04caa6b`)
-and missing import compilation (now complete). The bootstrap compiler successfully
-compiles `cli/main.kl` → `cli_v1.kbc` (342KB, zero errors). Self-compilation
-(`cli_v1.kbc` compiling `cli/main.kl`) is in progress — the round-trip is expected
-to take significant time due to the size of the self-host codebase.
+The self-host compiler can compile itself. Verified by round-trip:
+1. Bootstrap compiles `cli/main.kl` → `cli_v1.kbc` (342KB, zero errors)
+2. `cli_v1.kbc` compiles `cli/main.kl` → disassembly output (22,184 lines)
+3. Bootstrap's disassembly of the same source is **byte-identical** (`diff` reports no differences)
 
 **Why first.** Every source file constructs enum variants — `Expr::Binary(...)`,
 `Stmt::Block(...)`, `TypeKind::Int`, `BinaryOp::Add`. The compiler can't emit any
@@ -244,7 +243,7 @@ Once the VM runs on itself, the C++ bootstrap compiler is fully retired.
 | 2 | Match expressions | ✅ |
 | 3 | Built-in methods (.len/.push/.pop) | ✅ |
 | 4 | Imports & modules | ✅ |
-| 5 | **Self-hosting** | ⏳ round-trip in progress |
+| 5 | **Self-hosting** | ✅ round-trip verified |
 | 6 | Stdlib + FFI cleanup | Future |
 | 7 | Self-hosted VM | Future |
 
