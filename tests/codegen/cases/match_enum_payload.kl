@@ -1,0 +1,10 @@
+enum Option { Some(int), None }
+
+int main() {
+  Option o = Option::Some(42);
+  int result = o match {
+    Option::Some(let x) => x,
+    Option::None => 0,
+  };
+  return result;
+}

@@ -216,6 +216,7 @@ void compile_expr(Compiler co, Expr e) {
     Expr::NullCoalesce(let left, let eb, let right, let l, let c) => compile_coalesce(co, left, eb, right, l, c),
     Expr::TryExpr(let value, let l, let c) => compile_try(co, value, l, c),
     Expr::NsAccess(let ns, let member, let l, let c) => emit_ns_access(co, ns, member, l, c),
+    Expr::Match(let val, let arms, let l, let c) => compile_match(co, val, arms, l, c),
     Expr::None                           => emit_null(co),
     _ => compile_error(co, 0, 0, "Unsupported expression in VM compiler."),
   };
@@ -372,6 +373,256 @@ void emit_cast(Compiler co, TypeExpr t, Expr v, int line, int col) {
   if (t.name == "float")  { target_kind = 1; }
   if (t.name == "string") { target_kind = 2; }
   bytecode::write_operand(co.chunk, OpCode::CastTo, target_kind, line, col);
+}
+
+// ---------- match expression -----------------------------------------------
+// Mirrors compiler.cc:1202-1378.
+
+void compile_match(Compiler co, Expr value, MatchArm[] arms, int line, int col) {
+  // Compile the match value and store in a temp local.
+  compile_expr(co, value);
+  int temp_slot = co.locals.len();
+  co.locals.push(Local { "<match_value>", temp_slot, co.scope_depth });
+  bytecode::write_operand(co.chunk, OpCode::StoreLocal, temp_slot, line, col);
+
+  int[] end_jumps = [];
+
+  for (int arm_i = 0; arm_i < arms.len(); arm_i = arm_i + 1) {
+    MatchArm arm = arms[arm_i];
+
+    // Detect pattern type.
+    bool is_wildcard = arm.pattern match {
+      Expr::Ident(let n, let _l, let _c) => n == "_",
+      _ => false,
+    };
+    bool is_binding = arm.pattern match {
+      Expr::BindingPat(let _n, let _l, let _c) => true,
+      _ => false,
+    };
+    bool is_enum_pat = arm.pattern match {
+      Expr::EnumPat(let _en, let _vn, let _fs, let _l, let _c) => true,
+      _ => false,
+    };
+    bool is_array_pat = arm.pattern match {
+      Expr::ArrayPat(let _es, let _l, let _c) => true,
+      _ => false,
+    };
+
+    if (is_wildcard) {
+      // Wildcard _: pop the temp, compile body.
+      if (arm.guard_expr match { Expr::None => false, _ => true, }) {
+        // Guard on wildcard: check guard, JmpFalse to next arm.
+        compile_expr(co, arm.guard_expr);
+        int guard_jmp = emit_jump(co, OpCode::JmpFalse, line, col);
+        bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+        compile_expr(co, arm.body);
+        end_jumps.push(emit_jump(co, OpCode::Jmp, line, col));
+        patch_jump(co, guard_jmp);
+      } else {
+        bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+        compile_expr(co, arm.body);
+      }
+    } else if (is_binding) {
+      // BindingPat(let x): bind temp value to a new local.
+      string bind_name = arm.pattern match {
+        Expr::BindingPat(let n, let _l, let _c) => n,
+        _ => "",
+      };
+      int bind_slot = co.locals.len();
+      co.locals.push(Local { bind_name, bind_slot, co.scope_depth });
+      bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
+      bytecode::write_operand(co.chunk, OpCode::StoreLocal, bind_slot, line, col);
+      bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+      if (arm.guard_expr match { Expr::None => false, _ => true, }) {
+        compile_expr(co, arm.guard_expr);
+        int guard_jmp = emit_jump(co, OpCode::JmpFalse, line, col);
+        bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+        compile_expr(co, arm.body);
+        end_jumps.push(emit_jump(co, OpCode::Jmp, line, col));
+        patch_jump(co, guard_jmp);
+      } else {
+        compile_expr(co, arm.body);
+      }
+      // Pop the binding local after the arm.
+      co.locals.pop();
+    } else if (is_enum_pat) {
+      // EnumPat: match variant, extract payloads, compile body.
+      _compile_enum_arm(co, arm, temp_slot, line, col, end_jumps);
+    } else if (is_array_pat) {
+      // ArrayPat: destructure elements.
+      _compile_array_arm(co, arm, temp_slot, line, col, end_jumps);
+    } else {
+      // Literal/default pattern: LoadLocal temp, compile pattern, Eq, JmpFalse.
+      int[] fail_jumps = [];
+      bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
+      compile_expr(co, arm.pattern);
+      bytecode::write_op(co.chunk, OpCode::Eq, line, col);
+      fail_jumps.push(emit_jump(co, OpCode::JmpFalse, line, col));
+      if (arm.guard_expr match { Expr::None => false, _ => true, }) {
+        bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+        compile_expr(co, arm.guard_expr);
+        fail_jumps.push(emit_jump(co, OpCode::JmpFalse, line, col));
+      }
+      bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+      compile_expr(co, arm.body);
+      end_jumps.push(emit_jump(co, OpCode::Jmp, line, col));
+      // Patch all fail jumps to here (next arm).
+      for (int j = 0; j < fail_jumps.len(); j = j + 1) {
+        patch_jump(co, fail_jumps[j]);
+      }
+    }
+  }
+
+  // Fallthrough: emit Null for "no match" at runtime.
+  bytecode::write_op(co.chunk, OpCode::Null_, line, col);
+
+  // Patch all end jumps.
+  for (int j = 0; j < end_jumps.len(); j = j + 1) {
+    patch_jump(co, end_jumps[j]);
+  }
+
+  // Pop the temp local.
+  co.locals.pop();
+}
+
+void _compile_enum_arm(Compiler co, MatchArm arm, int temp_slot, int line, int col, int[] end_jumps) {
+  Expr[] no_fields = [];
+  string enum_name = arm.pattern match {
+    Expr::EnumPat(let en, let _vn, let _fs, let _l, let _c) => en,
+    _ => "",
+  };
+  string variant_name = arm.pattern match {
+    Expr::EnumPat(let _en, let vn, let _fs, let _l, let _c) => vn,
+    _ => "",
+  };
+  Expr[] fields = arm.pattern match {
+    Expr::EnumPat(let _en, let _vn, let fs, let _l, let _c) => fs,
+    _ => no_fields,
+  };
+
+  int[] fail_jumps = [];
+  int[] bind_slots = [];
+
+  int type_idx = resolve_enum(co, enum_name);
+  if (type_idx < 0) {
+    compile_error(co, line, col, "Unknown enum type '" + enum_name + "'.");
+    return;
+  }
+  int variant_idx = resolve_variant(co, type_idx, variant_name);
+  if (variant_idx < 0) {
+    compile_error(co, line, col, "Unknown enum variant '" + variant_name + "'.");
+    return;
+  }
+
+  // Check variant: LoadLocal temp, EnumVariant_ reference, Eq, JmpFalse.
+  bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
+  int operand = (type_idx << 16) | variant_idx;
+  bytecode::write_operand(co.chunk, OpCode::EnumVariant_, operand, line, col);
+  bytecode::write_op(co.chunk, OpCode::Eq, line, col);
+  fail_jumps.push(emit_jump(co, OpCode::JmpFalse, line, col));
+
+  // Extract payload bindings.
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    bool is_field_binding = fields[i] match {
+      Expr::BindingPat(let _n, let _l, let _c) => true,
+      _ => false,
+    };
+    if (is_field_binding) {
+      string field_name = fields[i] match {
+        Expr::BindingPat(let n, let _l, let _c) => n,
+        _ => "",
+      };
+      int slot = co.locals.len();
+      co.locals.push(Local { field_name, slot, co.scope_depth });
+      bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
+      bytecode::write_operand(co.chunk, OpCode::EnumPayloadGet, i, line, col);
+      bytecode::write_operand(co.chunk, OpCode::StoreLocal, slot, line, col);
+      bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+      bind_slots.push(slot);
+    }
+  }
+
+  // Guard check (if present).
+  if (arm.guard_expr match { Expr::None => false, _ => true, }) {
+    compile_expr(co, arm.guard_expr);
+    fail_jumps.push(emit_jump(co, OpCode::JmpFalse, line, col));
+  }
+
+  // Pop temp value, compile body, jump to end.
+  bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+  compile_expr(co, arm.body);
+  end_jumps.push(emit_jump(co, OpCode::Jmp, line, col));
+
+  // Patch all fail jumps to here (next arm).
+  for (int j = 0; j < fail_jumps.len(); j = j + 1) {
+    patch_jump(co, fail_jumps[j]);
+  }
+
+  // Pop binding locals.
+  for (int j = 0; j < bind_slots.len(); j = j + 1) {
+    co.locals.pop();
+  }
+}
+
+void _compile_array_arm(Compiler co, MatchArm arm, int temp_slot, int line, int col, int[] end_jumps) {
+  Expr[] no_elems = [];
+  Expr[] elements = arm.pattern match {
+    Expr::ArrayPat(let es, let _l, let _c) => es,
+    _ => no_elems,
+  };
+
+  int[] fail_jumps = [];
+  int[] bind_slots = [];
+
+  for (int i = 0; i < elements.len(); i = i + 1) {
+    bool is_elem_binding = elements[i] match {
+      Expr::BindingPat(let _n, let _l, let _c) => true,
+      _ => false,
+    };
+    bool is_elem_wildcard = elements[i] match {
+      Expr::Ident(let n, let _l, let _c) => n == "_",
+      _ => false,
+    };
+    if (is_elem_binding) {
+      string elem_name = elements[i] match {
+        Expr::BindingPat(let n, let _l, let _c) => n,
+        _ => "",
+      };
+      int slot = co.locals.len();
+      co.locals.push(Local { elem_name, slot, co.scope_depth });
+      bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
+      bytecode::write_constant(co.chunk, bytecode::const_int(i), line, col);
+      bytecode::write_op(co.chunk, OpCode::IndexGet, line, col);
+      bytecode::write_operand(co.chunk, OpCode::StoreLocal, slot, line, col);
+      bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+      bind_slots.push(slot);
+    } else if (!is_elem_wildcard) {
+      // Literal element: compare.
+      bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
+      bytecode::write_constant(co.chunk, bytecode::const_int(i), line, col);
+      bytecode::write_op(co.chunk, OpCode::IndexGet, line, col);
+      compile_expr(co, elements[i]);
+      bytecode::write_op(co.chunk, OpCode::Eq, line, col);
+      fail_jumps.push(emit_jump(co, OpCode::JmpFalse, line, col));
+    }
+  }
+
+  // Guard check.
+  if (arm.guard_expr match { Expr::None => false, _ => true, }) {
+    compile_expr(co, arm.guard_expr);
+    fail_jumps.push(emit_jump(co, OpCode::JmpFalse, line, col));
+  }
+
+  bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+  compile_expr(co, arm.body);
+  end_jumps.push(emit_jump(co, OpCode::Jmp, line, col));
+
+  for (int j = 0; j < fail_jumps.len(); j = j + 1) {
+    patch_jump(co, fail_jumps[j]);
+  }
+  for (int j = 0; j < bind_slots.len(); j = j + 1) {
+    co.locals.pop();
+  }
 }
 
 // lhs ?? rhs  or  lhs ?? |e| rhs
