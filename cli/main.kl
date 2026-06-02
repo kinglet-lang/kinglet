@@ -760,6 +760,7 @@ Type check_expr(Checker c, Expr e) {
 }
 
 Type check_ident(Checker c, string name, int line, int col) {
+  if (name == "null") { return type_unknown(); }
   if (!var_exists(c, name)) {
     add_error(c, line, col, "Undeclared variable '" + name + "'.");
     return type_unknown();
@@ -802,7 +803,7 @@ Type check_binary(Checker c, Expr lhs, BinaryOp op, Expr rhs, int line, int col)
 }
 
 Type check_arithmetic(Checker c, BinaryOp op, Type l, Type r, int line, int col) {
-  if (op_is_add(op) && l.kind == TypeKind::String && r.kind == TypeKind::String) {
+  if (op_is_add(op) && (l.kind == TypeKind::String || r.kind == TypeKind::String)) {
     return type_string();
   }
   if (l.kind == TypeKind::Unknown || r.kind == TypeKind::Unknown) { return type_int(); }
