@@ -1,0 +1,5 @@
+int main() {
+  string s = "hello world";
+  bool b = s.starts_with("hello");
+  return 0;
+}

@@ -728,6 +728,57 @@ void emit_ns_access(Compiler co, string ns, string member, int line, int col) {
   compile_error(co, line, col, "Unsupported namespace access in VM compiler.");
 }
 
+// Handle method calls: obj.method(args). Compiles the receiver first, then
+// dispatches on method name to emit the appropriate array/string/map opcode.
+// Mirrors compiler.cc:1015-1121.
+void emit_method_call(Compiler co, Expr obj, string method, Expr[] args, int line, int col) {
+  // Check for io::out.line(...), io::err.line(...), io::in.secret(...)
+  bool obj_is_ns = obj match { Expr::NsAccess(let _ns, let _m, let _l, let _c) => true, _ => false, };
+  if (obj_is_ns && has_using(co, "io")) {
+    string ns = obj match { Expr::NsAccess(let ns, let _m, let _l, let _c) => ns, _ => "", };
+    string member = obj match { Expr::NsAccess(let _ns, let m, let _l, let _c) => m, _ => "", };
+    if (ns == "io" && member == "out" && method == "line") {
+      for (int i = 0; i < args.len(); i = i + 1) { compile_expr(co, args[i]); }
+      bytecode::write_operand(co.chunk, OpCode::NativeOutLn, args.len(), line, col);
+      return;
+    }
+    if (ns == "io" && member == "err" && method == "line") {
+      for (int i = 0; i < args.len(); i = i + 1) { compile_expr(co, args[i]); }
+      bytecode::write_operand(co.chunk, OpCode::NativeErrLn, args.len(), line, col);
+      return;
+    }
+    if (ns == "io" && member == "in" && method == "secret") {
+      for (int i = 0; i < args.len(); i = i + 1) { compile_expr(co, args[i]); }
+      bytecode::write_operand(co.chunk, OpCode::NativeInSecret, args.len(), line, col);
+      return;
+    }
+  }
+  // Compile receiver onto stack.
+  compile_expr(co, obj);
+  // Dispatch on method name. Matches compiler.cc:1025-1121 exactly.
+  if (method == "len")      { bytecode::write_op(co.chunk, OpCode::ArrayLen, line, col); return; }
+  if (method == "push")     { compile_expr(co, args[0]); bytecode::write_op(co.chunk, OpCode::ArrayPush, line, col); return; }
+  if (method == "pop")      { bytecode::write_op(co.chunk, OpCode::ArrayPop, line, col); return; }
+  if (method == "remove")   { compile_expr(co, args[0]); bytecode::write_op(co.chunk, OpCode::ArrayRemove, line, col); return; }
+  if (method == "contains") { compile_expr(co, args[0]); bytecode::write_op(co.chunk, OpCode::ArrayContains, line, col); return; }
+  if (method == "clear")    { bytecode::write_op(co.chunk, OpCode::ArrayClear, line, col); return; }
+  if (method == "insert")   { compile_expr(co, args[0]); compile_expr(co, args[1]); bytecode::write_op(co.chunk, OpCode::ArrayInsert, line, col); return; }
+  if (method == "index_of") { compile_expr(co, args[0]); bytecode::write_op(co.chunk, OpCode::ArrayIndexOf, line, col); return; }
+  if (method == "slice")    { compile_expr(co, args[0]); compile_expr(co, args[1]); bytecode::write_op(co.chunk, OpCode::ArraySlice, line, col); return; }
+  if (method == "reverse")  { bytecode::write_op(co.chunk, OpCode::ArrayReverse, line, col); return; }
+  if (method == "resize")   { compile_expr(co, args[0]); compile_expr(co, args[1]); bytecode::write_op(co.chunk, OpCode::ArrayResize, line, col); return; }
+  if (method == "has")      { compile_expr(co, args[0]); bytecode::write_op(co.chunk, OpCode::MapHas, line, col); return; }
+  if (method == "keys")     { bytecode::write_op(co.chunk, OpCode::MapKeys, line, col); return; }
+  if (method == "starts_with") { compile_expr(co, args[0]); bytecode::write_op(co.chunk, OpCode::StringStartsWith, line, col); return; }
+  if (method == "ends_with")   { compile_expr(co, args[0]); bytecode::write_op(co.chunk, OpCode::StringEndsWith, line, col); return; }
+  if (method == "replace")     { compile_expr(co, args[0]); compile_expr(co, args[1]); bytecode::write_op(co.chunk, OpCode::StringReplace, line, col); return; }
+  if (method == "split")       { compile_expr(co, args[0]); bytecode::write_op(co.chunk, OpCode::StringSplit, line, col); return; }
+  if (method == "trim")        { bytecode::write_op(co.chunk, OpCode::StringTrim, line, col); return; }
+  if (method == "to_upper")    { bytecode::write_op(co.chunk, OpCode::StringToUpper, line, col); return; }
+  if (method == "to_lower")    { bytecode::write_op(co.chunk, OpCode::StringToLower, line, col); return; }
+  compile_error(co, line, col, "Unknown method '" + method + "' in VM compiler.");
+}
+
 void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
   // The C++ compiler stamps Call instructions with the callee's source
   // location, not the '('. Our parser puts '(' on the Call node, so patch
@@ -751,6 +802,16 @@ void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
     };
   }
   if (is_ns) { return; }
+  // Handle method calls: obj.method(args).
+  bool is_field = callee match { Expr::FieldAccess(let _o, let _f, let _l, let _c) => true, _ => false, };
+  if (is_field) {
+    callee match {
+      Expr::FieldAccess(let obj, let method, let fl, let fc) =>
+        emit_method_call(co, obj, method, args, fl, fc),
+      _ => {},
+    };
+    return;
+  }
   if (callee_name.len() == 0) {
     compile_error(co, cl, cc, "Only direct function calls supported in VM compiler.");
     return;
@@ -1090,9 +1151,9 @@ bool has_using(Compiler co, string ns) {
 bool emit_native_call(Compiler co, string ns, string member, Expr[] args, int line, int col) {
   if (ns == "io") {
     if (member == "out")      { return emit_native_io(co, OpCode::NativeOut, args, line, col); }
-    if (member == "outln")    { return emit_native_io(co, OpCode::NativeOut, args, line, col); }
+    if (member == "outln")    { return emit_native_io(co, OpCode::NativeOutLn, args, line, col); }
     if (member == "err")      { return emit_native_io(co, OpCode::NativeErr, args, line, col); }
-    if (member == "errln")    { return emit_native_io(co, OpCode::NativeErr, args, line, col); }
+    if (member == "errln")    { return emit_native_io(co, OpCode::NativeErrLn, args, line, col); }
     if (member == "in")       { return emit_native_io(co, OpCode::NativeIn, args, line, col); }
     return false;
   }
