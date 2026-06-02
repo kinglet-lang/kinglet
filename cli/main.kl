@@ -3,7 +3,7 @@ using fs;
 using sys;
 
 import "../lexer/scanner.kl" { scan }
-import "../lexer/keywords.kl" { KeywordEntry, all_keywords }
+import "../lexer/keywords.kl" { KeywordEntry }
 import "../parser/parser.kl"
 import "../compiler/compiler.kl"
 import "../compiler/disasm.kl"
@@ -123,12 +123,96 @@ struct Program {
 // --- token printer (existing --tokens / default behaviour) -----------------
 
 string tt_name(TokenType t) {
-  KeywordEntry[] kws = all_keywords();
-  for (int i = 0; i < kws.len(); i = i + 1) {
-    if (kws[i].type == t) {
-      return kws[i].display;
-    }
-  }
+  if (t == TokenType::Auto)            { return "Auto"; }
+  if (t == TokenType::Int)             { return "Int"; }
+  if (t == TokenType::Float)           { return "Float"; }
+  if (t == TokenType::Double)          { return "Double"; }
+  if (t == TokenType::Bool)            { return "Bool"; }
+  if (t == TokenType::String)          { return "String"; }
+  if (t == TokenType::Void)            { return "Void"; }
+  if (t == TokenType::Byte)            { return "Byte"; }
+  if (t == TokenType::Char)            { return "Char"; }
+  if (t == TokenType::Const)           { return "Const"; }
+  if (t == TokenType::Return)          { return "Return"; }
+  if (t == TokenType::If)              { return "If"; }
+  if (t == TokenType::Else)            { return "Else"; }
+  if (t == TokenType::For)             { return "For"; }
+  if (t == TokenType::While)           { return "While"; }
+  if (t == TokenType::Break)           { return "Break"; }
+  if (t == TokenType::Continue)        { return "Continue"; }
+  if (t == TokenType::Guard)           { return "Guard"; }
+  if (t == TokenType::Match)           { return "Match"; }
+  if (t == TokenType::Let)             { return "Let"; }
+  if (t == TokenType::When)            { return "When"; }
+  if (t == TokenType::Try)             { return "Try"; }
+  if (t == TokenType::Catch)           { return "Catch"; }
+  if (t == TokenType::Pub)             { return "Pub"; }
+  if (t == TokenType::Import)          { return "Import"; }
+  if (t == TokenType::Export)          { return "Export"; }
+  if (t == TokenType::Namespace)       { return "Namespace"; }
+  if (t == TokenType::Using)           { return "Using"; }
+  if (t == TokenType::Struct)          { return "Struct"; }
+  if (t == TokenType::Enum)            { return "Enum"; }
+  if (t == TokenType::Trait)           { return "Trait"; }
+  if (t == TokenType::Impl)            { return "Impl"; }
+  if (t == TokenType::Self_)           { return "Self"; }
+  if (t == TokenType::True)            { return "True"; }
+  if (t == TokenType::False)           { return "False"; }
+  if (t == TokenType::Null_)           { return "Null"; }
+  // operators
+  if (t == TokenType::Plus)            { return "Plus"; }
+  if (t == TokenType::Minus)           { return "Minus"; }
+  if (t == TokenType::Star)            { return "Star"; }
+  if (t == TokenType::Slash)           { return "Slash"; }
+  if (t == TokenType::Percent)         { return "Percent"; }
+  if (t == TokenType::Equal)           { return "Equal"; }
+  if (t == TokenType::EqualEqual)      { return "EqualEqual"; }
+  if (t == TokenType::BangEqual)       { return "BangEqual"; }
+  if (t == TokenType::Less)            { return "Less"; }
+  if (t == TokenType::Greater)         { return "Greater"; }
+  if (t == TokenType::LessEqual)       { return "LessEqual"; }
+  if (t == TokenType::GreaterEqual)    { return "GreaterEqual"; }
+  if (t == TokenType::AmpAmp)          { return "AmpAmp"; }
+  if (t == TokenType::PipePipe)        { return "PipePipe"; }
+  if (t == TokenType::Bang)            { return "Bang"; }
+  if (t == TokenType::Amp)             { return "Amp"; }
+  if (t == TokenType::Pipe)            { return "Pipe"; }
+  if (t == TokenType::Caret)           { return "Caret"; }
+  if (t == TokenType::Tilde)           { return "Tilde"; }
+  if (t == TokenType::LessLess)        { return "LessLess"; }
+  if (t == TokenType::GreaterGreater)  { return "GreaterGreater"; }
+  if (t == TokenType::PipeGreater)     { return "PipeGreater"; }
+  if (t == TokenType::Arrow)           { return "Arrow"; }
+  if (t == TokenType::FatArrow)        { return "FatArrow"; }
+  if (t == TokenType::Question)        { return "Question"; }
+  if (t == TokenType::QuestionQuestion){ return "QuestionQuestion"; }
+  if (t == TokenType::QuestionColon)   { return "QuestionColon"; }
+  if (t == TokenType::ColonColon)      { return "ColonColon"; }
+  if (t == TokenType::Dot)             { return "Dot"; }
+  if (t == TokenType::DotDot)          { return "DotDot"; }
+  if (t == TokenType::DotDotDot)       { return "DotDotDot"; }
+  if (t == TokenType::PlusEqual)       { return "PlusEqual"; }
+  if (t == TokenType::MinusEqual)      { return "MinusEqual"; }
+  if (t == TokenType::StarEqual)       { return "StarEqual"; }
+  if (t == TokenType::SlashEqual)      { return "SlashEqual"; }
+  // delimiters
+  if (t == TokenType::LeftParen)       { return "LeftParen"; }
+  if (t == TokenType::RightParen)      { return "RightParen"; }
+  if (t == TokenType::LeftBrace)       { return "LeftBrace"; }
+  if (t == TokenType::RightBrace)      { return "RightBrace"; }
+  if (t == TokenType::LeftBracket)     { return "LeftBracket"; }
+  if (t == TokenType::RightBracket)    { return "RightBracket"; }
+  if (t == TokenType::Comma)           { return "Comma"; }
+  if (t == TokenType::Semicolon)       { return "Semicolon"; }
+  if (t == TokenType::Colon)           { return "Colon"; }
+  // literals
+  if (t == TokenType::Integer)         { return "Integer"; }
+  if (t == TokenType::FloatLit)        { return "FloatLit"; }
+  if (t == TokenType::StringLit)       { return "StringLit"; }
+  if (t == TokenType::CharLit)         { return "CharLit"; }
+  if (t == TokenType::Identifier)      { return "Identifier"; }
+  if (t == TokenType::Eof)             { return "Eof"; }
+  if (t == TokenType::Error)           { return "Error"; }
   return "Error";
 }
 
@@ -1092,16 +1176,43 @@ int run_bytecode(string source, string path) {
   return 0;
 }
 
+int run_save_bytecode(string source, string source_path, string save_path, bool strip_debug) {
+  Token[] tokens = scan(source);
+  Parser p = parser::make_parser(tokens);
+  Program prog = parser::parse_program(p);
+  if (p.errors.len() > 0) {
+    for (int i = 0; i < p.errors.len(); i = i + 1) {
+      ParseError e = p.errors[i];
+      io::err.line("{}:{}: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  Compiler co = compiler::make_compiler();
+  int errs = compiler::compile_program(co, prog, source_path);
+  if (errs > 0) {
+    for (int i = 0; i < co.errors.len(); i = i + 1) {
+      CompileError e = co.errors[i];
+      io::err.line("{}:{}: compile error: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  bytecode::serialize_chunk(co.chunk, save_path, strip_debug);
+  return 0;
+}
+
 int main() {
   string[] argv = sys::args();
   if (argv.len() < 1) {
-    io::err.line("usage: kinglet cli/main.kl [--ast | --check | --bytecode] <source.kl>");
+    io::err.line("usage: kinglet [--ast | --check | --bytecode | --save-bytecode <out>] [--strip-debug] <source.kl>");
     return 64;
   }
   bool dump_ast = false;
   bool do_check = false;
   bool dump_bc = false;
+  bool save_bc = false;
+  bool strip_debug = false;
   string path = "";
+  string save_path = "";
   for (int i = 0; i < argv.len(); i = i + 1) {
     if (argv[i] == "--ast") {
       dump_ast = true;
@@ -1109,12 +1220,18 @@ int main() {
       do_check = true;
     } else if (argv[i] == "--bytecode") {
       dump_bc = true;
+    } else if (argv[i] == "--save-bytecode") {
+      save_bc = true;
+      i = i + 1;
+      if (i < argv.len()) { save_path = argv[i]; }
+    } else if (argv[i] == "--strip-debug") {
+      strip_debug = true;
     } else {
       path = argv[i];
     }
   }
   if (path.len() == 0) {
-    io::err.line("usage: kinglet cli/main.kl [--ast | --check | --bytecode] <source.kl>");
+    io::err.line("usage: kinglet [--ast | --check | --bytecode | --save-bytecode <out>] [--strip-debug] <source.kl>");
     return 64;
   }
   string source = fs::__read(path);
@@ -1130,6 +1247,9 @@ int main() {
   }
   if (dump_bc) {
     return run_bytecode(source, path);
+  }
+  if (save_bc) {
+    return run_save_bytecode(source, path, save_path, strip_debug);
   }
   return run_tokens(source);
 }
