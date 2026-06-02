@@ -36,8 +36,10 @@ struct TypeExpr {
 
 enum Expr {
   IntLit(int, int, int),
+  CharLit(int, int, int),
   FloatLit(float, int, int),
   StringLit(string, int, int),
+  NullLit(int, int),
   BoolLit(bool, int, int),
   Ident(string, int, int),
   Unary(UnaryOp, Expr, int, int),
@@ -51,10 +53,15 @@ enum Expr {
   Cast(TypeExpr, Expr, int, int),
   NsAccess(string, string, int, int),
   FieldAccess(Expr, string, int, int),
+  FieldAssign(Expr, string, Expr, int, int),
   Index(Expr, Expr, int, int),
+  IndexAssign(Expr, Expr, Expr, int, int),
   StructLit(TypeExpr, FieldInit[], int, int),
   ArrayLit(Expr[], int, int),
+  MapLit(Expr[], Expr[], int, int),
   NullCoalesce(Expr, string, Expr, int, int),
+  Ternary(Expr, Expr, Expr, int, int),
+  Propagate(Expr, int, int),
   TryExpr(Expr, int, int),
   None,
 }
@@ -75,6 +82,12 @@ struct Parameter {
   string name;
 }
 
+struct CatchArm {
+  TypeExpr error_type;
+  string binding_name;
+  Stmt body;
+}
+
 enum Stmt {
   ExprStmt(Expr, int, int),
   ReturnStmt(Expr, int, int),
@@ -86,6 +99,7 @@ enum Stmt {
   For(Stmt, Expr, Stmt, Stmt, int, int),
   Break(int, int),
   Continue(int, int),
+  TryCatch(Stmt, CatchArm[], int, int),
   None,
 }
 
