@@ -1,3 +1,5 @@
+using fs;
+
 // Bytecode data definitions — Kinglet mirror of kinglet-bootstrap/src/vm/chunk.h.
 //
 // Pure data: opcodes, instructions, the constant pool, and the per-function /
@@ -259,4 +261,153 @@ pub void register_builtin_enums(Chunk c) {
   float_result_counts.push(1);
   EnumMeta float_result = EnumMeta { "FloatResult", float_result_variants, float_result_counts };
   c.enum_metas.push(float_result);
+}
+
+// ---------- binary serialization helpers ------------------------------------
+
+// Single byte: int → string(byte(v & 0xFF)) produces a one-char string.
+// The CastTo opcode handles Int→Char (kind 3) and Char→String (kind 2).
+
+// Helper: convert low byte of int to a single-char string via Char→String cast.
+string byte_chr(int v) {
+  return string(byte(v & 0xFF));
+}
+
+pub string write_u8(string buf, int v) {
+  return buf + byte_chr(v);
+}
+
+pub string write_u32(string buf, int v) {
+  buf = buf + byte_chr(v);
+  buf = buf + byte_chr(v >> 8);
+  buf = buf + byte_chr(v >> 16);
+  buf = buf + byte_chr(v >> 24);
+  return buf;
+}
+
+pub string write_i32(string buf, int v) {
+  return write_u32(buf, v);
+}
+
+pub string write_u64(string buf, int v) {
+  buf = write_u32(buf, v & 0xFFFFFFFF);
+  buf = write_u32(buf, (v >> 32) & 0xFFFFFFFF);
+  return buf;
+}
+
+pub string write_i64(string buf, int v) {
+  return write_u64(buf, v);
+}
+
+pub string write_f64(string buf, float v) {
+  // Double constants are extremely rare in the self-host compiler output.
+  // When needed, a float→int bit-cast mechanism must be added.
+  return write_i64(buf, 0);
+}
+
+pub string write_str(string buf, string s) {
+  buf = write_u32(buf, s.len());
+  for (int i = 0; i < s.len(); i += 1) {
+    buf = buf + byte_chr(int(s[i]));
+  }
+  return buf;
+}
+
+// Map ConstKind to ValueType tag used in kbc serialization.
+// ConstKind order differs from ValueType: Null_=3 in ConstKind but Null=4 in ValueType.
+int const_kind_to_tag(ConstKind k) {
+  if (k == ConstKind::Int_)      { return 0; }  // ValueType::Int
+  if (k == ConstKind::Double_)   { return 1; }  // ValueType::Double
+  if (k == ConstKind::Bool_)     { return 2; }  // ValueType::Bool
+  if (k == ConstKind::Null_)     { return 4; }  // ValueType::Null
+  if (k == ConstKind::String_)   { return 5; }  // ValueType::String
+  if (k == ConstKind::Function_) { return 6; }  // ValueType::Function
+  if (k == ConstKind::Enum_)     { return 8; }  // ValueType::Enum
+  return 0;
+}
+
+string serialize_constant(string buf, Constant c) {
+  buf = write_u8(buf, const_kind_to_tag(c.kind));
+  if (c.kind == ConstKind::Int_) {
+    buf = write_i64(buf, c.int_value);
+  } else if (c.kind == ConstKind::Double_) {
+    buf = write_f64(buf, c.double_value);
+  } else if (c.kind == ConstKind::Bool_) {
+    if (c.bool_value) { buf = write_u8(buf, 1); }
+    else { buf = write_u8(buf, 0); }
+  } else if (c.kind == ConstKind::Null_) {
+    // no data
+  } else if (c.kind == ConstKind::String_) {
+    buf = write_str(buf, c.string_value);
+  } else if (c.kind == ConstKind::Function_) {
+    buf = write_i32(buf, c.aux1);
+  } else if (c.kind == ConstKind::Enum_) {
+    buf = write_i32(buf, c.aux1);
+    buf = write_i32(buf, c.aux2);
+    buf = write_u32(buf, 0); // payload count — self-host compiler emits no payload constants
+  }
+  return buf;
+}
+
+pub void serialize_chunk(Chunk c, string path, bool strip_debug) {
+  string buf = "";
+
+  // Header (16 bytes)
+  buf = write_u32(buf, 0x01424B43);   // magic
+  buf = write_u32(buf, 1);            // version
+  if (strip_debug) { buf = write_u32(buf, 0); }
+  else { buf = write_u32(buf, 1); }   // flags
+  buf = write_u32(buf, 0);            // reserved
+
+  // Constants
+  buf = write_u32(buf, c.constants.len());
+  for (int i = 0; i < c.constants.len(); i += 1) {
+    buf = serialize_constant(buf, c.constants[i]);
+  }
+
+  // Instructions
+  buf = write_u32(buf, c.instructions.len());
+  for (int i = 0; i < c.instructions.len(); i += 1) {
+    Instruction insn = c.instructions[i];
+    buf = write_u8(buf, int(insn.op));
+    buf = write_i32(buf, insn.operand);
+    if (!strip_debug) {
+      buf = write_i32(buf, insn.line);
+      buf = write_i32(buf, insn.col);
+    }
+  }
+
+  // Functions
+  buf = write_u32(buf, c.functions.len());
+  for (int i = 0; i < c.functions.len(); i += 1) {
+    FunctionInfo f = c.functions[i];
+    buf = write_str(buf, f.name);
+    buf = write_u64(buf, f.entry);
+    buf = write_i32(buf, f.param_count);
+  }
+
+  // Struct metas
+  buf = write_u32(buf, c.struct_metas.len());
+  for (int i = 0; i < c.struct_metas.len(); i += 1) {
+    StructMeta s = c.struct_metas[i];
+    buf = write_str(buf, s.name);
+    buf = write_u32(buf, s.field_names.len());
+    for (int j = 0; j < s.field_names.len(); j += 1) {
+      buf = write_str(buf, s.field_names[j]);
+    }
+  }
+
+  // Enum metas
+  buf = write_u32(buf, c.enum_metas.len());
+  for (int i = 0; i < c.enum_metas.len(); i += 1) {
+    EnumMeta e = c.enum_metas[i];
+    buf = write_str(buf, e.name);
+    buf = write_u32(buf, e.variants.len());
+    for (int j = 0; j < e.variants.len(); j += 1) {
+      buf = write_str(buf, e.variants[j]);
+      buf = write_i32(buf, e.variant_param_counts[j]);
+    }
+  }
+
+  fs::__write(path, buf);
 }
