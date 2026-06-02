@@ -51,8 +51,10 @@ pub TypeExpr make_type(string name) => TypeExpr { name, [] };
 //   None                                       // sentinel for "no expression"
 pub enum Expr {
   IntLit(int, int, int),
+  CharLit(int, int, int),          // value, line, col
   FloatLit(float, int, int),
   StringLit(string, int, int),
+  NullLit(int, int),               // line, col
   BoolLit(bool, int, int),
   Ident(string, int, int),
   Unary(UnaryOp, Expr, int, int),
@@ -66,10 +68,15 @@ pub enum Expr {
   Cast(TypeExpr, Expr, int, int),
   NsAccess(string, string, int, int),
   FieldAccess(Expr, string, int, int),
+  FieldAssign(Expr, string, Expr, int, int),    // object, field_name, value, line, col
   Index(Expr, Expr, int, int),
+  IndexAssign(Expr, Expr, Expr, int, int),      // object, index, value, line, col
   StructLit(TypeExpr, FieldInit[], int, int),
   ArrayLit(Expr[], int, int),
+  MapLit(Expr[], Expr[], int, int),             // keys, values, line, col
   NullCoalesce(Expr, string, Expr, int, int),
+  Ternary(Expr, Expr, Expr, int, int),          // condition, then_expr, else_expr, line, col
+  Propagate(Expr, int, int),                    // value, line, col
   TryExpr(Expr, int, int),
   None,
 }
@@ -103,6 +110,12 @@ pub struct Parameter {
 //   Break(line, col)
 //   Continue(line, col)
 //   None                                                 // sentinel for "no statement"
+pub struct CatchArm {
+  TypeExpr error_type;
+  string binding_name;
+  Stmt body;
+}
+
 pub enum Stmt {
   ExprStmt(Expr, int, int),
   ReturnStmt(Expr, int, int),
@@ -114,6 +127,7 @@ pub enum Stmt {
   For(Stmt, Expr, Stmt, Stmt, int, int),
   Break(int, int),
   Continue(int, int),
+  TryCatch(Stmt, CatchArm[], int, int),   // body, catches, line, col
   None,
 }
 

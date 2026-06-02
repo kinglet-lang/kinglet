@@ -215,8 +215,10 @@ TypeExpr parse_type_expr(Parser p) {
 
 int expr_line(Expr e) => e match {
   Expr::IntLit(_, let l, _) => l,
+  Expr::CharLit(_, let l, _) => l,
   Expr::FloatLit(_, let l, _) => l,
   Expr::StringLit(_, let l, _) => l,
+  Expr::NullLit(let l, _) => l,
   Expr::BoolLit(_, let l, _) => l,
   Expr::Ident(_, let l, _) => l,
   Expr::Unary(_, _, let l, _) => l,
@@ -230,18 +232,25 @@ int expr_line(Expr e) => e match {
   Expr::Cast(_, _, let l, _) => l,
   Expr::NsAccess(_, _, let l, _) => l,
   Expr::FieldAccess(_, _, let l, _) => l,
+  Expr::FieldAssign(_, _, _, let l, _) => l,
   Expr::Index(_, _, let l, _) => l,
+  Expr::IndexAssign(_, _, _, let l, _) => l,
   Expr::StructLit(_, _, let l, _) => l,
   Expr::ArrayLit(_, let l, _) => l,
+  Expr::MapLit(_, _, let l, _) => l,
   Expr::NullCoalesce(_, _, _, let l, _) => l,
+  Expr::Ternary(_, _, _, let l, _) => l,
+  Expr::Propagate(_, let l, _) => l,
   Expr::TryExpr(_, let l, _) => l,
   Expr::None => -1,
 };
 
 int expr_col(Expr e) => e match {
   Expr::IntLit(_, _, let c) => c,
+  Expr::CharLit(_, _, let c) => c,
   Expr::FloatLit(_, _, let c) => c,
   Expr::StringLit(_, _, let c) => c,
+  Expr::NullLit(_, let c) => c,
   Expr::BoolLit(_, _, let c) => c,
   Expr::Ident(_, _, let c) => c,
   Expr::Unary(_, _, _, let c) => c,
@@ -255,10 +264,15 @@ int expr_col(Expr e) => e match {
   Expr::Cast(_, _, let c) => c,
   Expr::NsAccess(_, _, _, let c) => c,
   Expr::FieldAccess(_, _, _, let c) => c,
+  Expr::FieldAssign(_, _, _, _, let c) => c,
   Expr::Index(_, _, _, let c) => c,
+  Expr::IndexAssign(_, _, _, _, let c) => c,
   Expr::StructLit(_, _, _, let c) => c,
   Expr::ArrayLit(_, _, let c) => c,
+  Expr::MapLit(_, _, _, let c) => c,
   Expr::NullCoalesce(_, _, _, _, let c) => c,
+  Expr::Ternary(_, _, _, _, let c) => c,
+  Expr::Propagate(_, _, let c) => c,
   Expr::TryExpr(_, _, let c) => c,
   Expr::None => -1,
 };
@@ -275,15 +289,64 @@ string assign_target_name(Expr e) {
 }
 
 Expr assignment(Parser p) {
-  Expr left = coalesce(p);
+  Expr left = ternary(p);
   if (is_assign_op(peek_tok(p).type)) {
     Token op = advance_tok(p);
     Expr value = assignment(p);
     AssignOp aop = token_to_assign_op(op.type);
+    // Simple name assignment
     string name = assign_target_name(left);
-    return Expr::Assign(name, aop, value, expr_line(left), expr_col(left));
+    if (name != "<error>") {
+      return Expr::Assign(name, aop, value, expr_line(left), expr_col(left));
+    }
+    // Field assignment: obj.field = value
+    if (left match {
+      Expr::FieldAccess(_, let fname, let fl, let fc) => true,
+      _ => false,
+    }) {
+      string fname = left match {
+        Expr::FieldAccess(_, let fn2, _, _) => fn2,
+        _ => "",
+      };
+      Expr obj = left match {
+        Expr::FieldAccess(let o, _, _, _) => o,
+        _ => left,
+      };
+      return Expr::FieldAssign(obj, fname, value, expr_line(left), expr_col(left));
+    }
+    // Index assignment: arr[idx] = value
+    if (left match {
+      Expr::Index(_, _, _, _) => true,
+      _ => false,
+    }) {
+      Expr obj = left match {
+        Expr::Index(let o, _, _, _) => o,
+        _ => left,
+      };
+      Expr idx = left match {
+        Expr::Index(_, let i, _, _) => i,
+        _ => left,
+      };
+      return Expr::IndexAssign(obj, idx, value, expr_line(left), expr_col(left));
+    }
+    // Fallback: treat as simple assign (error recovery)
+    return Expr::Assign("<error>", aop, value, expr_line(left), expr_col(left));
   }
   return left;
+}
+
+// Ternary: cond ? then : else — right-associative.
+// Sits between assignment (above) and coalesce (below).
+Expr ternary(Parser p) {
+  Expr expr = coalesce(p);
+  if (match_tt(p, TokenType::Question)) {
+    Token q = previous(p);
+    Expr then_expr = expression(p);
+    consume(p, TokenType::Colon, "Expected ':' in ternary expression.");
+    Expr else_expr = ternary(p);
+    return Expr::Ternary(expr, then_expr, else_expr, q.line, q.col);
+  }
+  return expr;
 }
 
 // lhs ?? rhs  and  lhs ?? |e| rhs  — right-associative.
@@ -458,6 +521,27 @@ Expr call_chain(Parser p) {
       expr = Expr::Index(expr, index, el, ec);
     } else if (match_tt(p, TokenType::Match)) {
       expr = match_expression(p, expr);
+    } else if (check(p, TokenType::Question)) {
+      // Disambiguate postfix `?` (propagate) from ternary `? :`.
+      // If the token after `?` can start an expression, leave `?` for
+      // the ternary parser at a higher precedence level.
+      if (p.current + 1 < p.tokens.len()) {
+        TokenType next = p.tokens[p.current + 1].type;
+        if (next == TokenType::Identifier || next == TokenType::Self_ ||
+            next == TokenType::Integer || next == TokenType::FloatLit ||
+            next == TokenType::StringLit || next == TokenType::CharLit ||
+            next == TokenType::True || next == TokenType::False || next == TokenType::Null_ ||
+            next == TokenType::LeftParen || next == TokenType::LeftBracket ||
+            next == TokenType::LeftBrace ||
+            next == TokenType::Minus || next == TokenType::Bang || next == TokenType::Tilde ||
+            next == TokenType::Int || next == TokenType::Float || next == TokenType::Double ||
+            next == TokenType::Bool || next == TokenType::String || next == TokenType::Void ||
+            next == TokenType::Char || next == TokenType::Byte) {
+          break; // ternary — don't consume `?`
+        }
+      }
+      advance_tok(p); // consume `?` as propagate
+      expr = Expr::Propagate(expr, el, ec);
     } else {
       break;
     }
@@ -538,9 +622,13 @@ Expr parse_struct_literal(Parser p, TypeExpr ty, Token start) {
 Expr primary(Parser p) {
   if (starts_type_method(p)) { return type_method_expr(p); }
   if (starts_cast(p)) { return cast_expr(p); }
-  if (match_tt(p, TokenType::Integer) || match_tt(p, TokenType::CharLit)) {
+  if (match_tt(p, TokenType::Integer)) {
     Token t = previous(p);
     return Expr::IntLit(t.int_value, t.line, t.col);
+  }
+  if (match_tt(p, TokenType::CharLit)) {
+    Token t = previous(p);
+    return Expr::CharLit(t.int_value, t.line, t.col);
   }
   if (match_tt(p, TokenType::FloatLit)) {
     Token t = previous(p);
@@ -553,9 +641,8 @@ Expr primary(Parser p) {
   if (match_tt(p, TokenType::True))  { Token t = previous(p); return Expr::BoolLit(true,  t.line, t.col); }
   if (match_tt(p, TokenType::False)) { Token t = previous(p); return Expr::BoolLit(false, t.line, t.col); }
   if (match_tt(p, TokenType::Null_)) {
-    // We don't track null literals separately; map to identifier "null".
     Token t = previous(p);
-    return Expr::Ident("null", t.line, t.col);
+    return Expr::NullLit(t.line, t.col);
   }
   if (match_tt(p, TokenType::LeftBracket)) {
     Token lb = previous(p);
@@ -568,6 +655,24 @@ Expr primary(Parser p) {
     }
     consume(p, TokenType::RightBracket, "Expected ']' after array literal.");
     return Expr::ArrayLit(elems, lb.line, lb.col);
+  }
+  if (match_tt(p, TokenType::LeftBrace)) {
+    Token lb = previous(p);
+    Expr[] keys = [];
+    Expr[] values = [];
+    if (!check(p, TokenType::RightBrace)) {
+      keys.push(expression(p));
+      consume(p, TokenType::Colon, "Expected ':' between map key and value.");
+      values.push(expression(p));
+      while (match_tt(p, TokenType::Comma)) {
+        if (check(p, TokenType::RightBrace)) { break; } // trailing comma
+        keys.push(expression(p));
+        consume(p, TokenType::Colon, "Expected ':' between map key and value.");
+        values.push(expression(p));
+      }
+    }
+    consume(p, TokenType::RightBrace, "Expected '}' after map literal.");
+    return Expr::MapLit(keys, values, lb.line, lb.col);
   }
   if (match_tt(p, TokenType::LeftParen)) {
     Expr e = expression(p);
@@ -998,8 +1103,33 @@ Stmt parse_statement(Parser p) {
   if (match_tt(p, TokenType::For))      { return parse_for(p); }
   if (match_tt(p, TokenType::Break))    { return parse_break(p); }
   if (match_tt(p, TokenType::Continue)) { return parse_continue(p); }
+  if (match_tt(p, TokenType::Try))      { return parse_try_catch(p); }
   if (is_var_decl_start(p))             { return parse_var_decl(p); }
   return parse_expression_statement(p);
+}
+
+Stmt parse_try_catch(Parser p) {
+  Token try_tok = previous(p);
+  consume(p, TokenType::LeftBrace, "Expected '{' after 'try'.");
+  Stmt body = parse_block_after_brace(p, previous(p));
+
+  CatchArm[] catches = [];
+  while (match_tt(p, TokenType::Catch)) {
+    consume(p, TokenType::LeftParen, "Expected '(' after 'catch'.");
+    consume(p, TokenType::Let, "Expected 'let' in catch pattern.");
+    Token name_tok = consume(p, TokenType::Identifier, "Expected binding name.");
+    consume(p, TokenType::Colon, "Expected ':' after catch binding name.");
+    TypeExpr err_type = parse_type_expr(p);
+    consume(p, TokenType::RightParen, "Expected ')' after catch type.");
+    consume(p, TokenType::LeftBrace, "Expected '{' after catch pattern.");
+    Stmt catch_body = parse_block_after_brace(p, previous(p));
+    CatchArm arm = CatchArm { err_type, name_tok.lexeme, catch_body };
+    catches.push(arm);
+  }
+  if (catches.len() == 0) {
+    error_at(p, try_tok, "Expected at least one 'catch' clause after 'try'.");
+  }
+  return Stmt::TryCatch(body, catches, try_tok.line, try_tok.col);
 }
 
 Stmt parse_return(Parser p) {
