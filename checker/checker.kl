@@ -152,7 +152,7 @@ pub string type_name(Type t) {
 
 // Unknown is bidirectionally compatible so we don't cascade errors after a
 // first failure has already poisoned a subexpression's type.
-bool types_compatible(Type a, Type b) {
+bool types_compatible(Checker c, Type a, Type b) {
   if (a.kind == TypeKind::Unknown) { return true; }
   if (b.kind == TypeKind::Unknown) { return true; }
   // Struct/Enum: name equality
@@ -161,6 +161,24 @@ bool types_compatible(Type a, Type b) {
   }
   if (a.kind == TypeKind::Enum && b.kind == TypeKind::Enum) {
     return a.name == b.name;
+  }
+  // Array: same kind is sufficient for basic checking;
+  // full element-type compatibility depends on type-detail traversal
+  // which is deferred until the checker has better recursion support.
+  if (a.kind == TypeKind::Array && b.kind == TypeKind::Array) {
+    int aid = a.type_id;
+    int bid = b.type_id;
+    if (aid >= 1 && aid <= c.array_element_types.len() &&
+        bid >= 1 && bid <= c.array_element_types.len()) {
+      Type ea = c.array_element_types[aid - 1];
+      Type eb = c.array_element_types[bid - 1];
+      return ea.kind == eb.kind || ea.kind == TypeKind::Unknown || eb.kind == TypeKind::Unknown;
+    }
+    return true;
+  }
+  // Map: same kind is sufficient for basic checking.
+  if (a.kind == TypeKind::Map && b.kind == TypeKind::Map) {
+    return true;
   }
   return a.kind == b.kind;
 }
@@ -216,7 +234,21 @@ pub struct Checker {
   EnumVariantInfo[][] enum_variants;    // enum_variants[type_id] = variant list
   FuncSignature[] func_signatures;      // func_signatures[type_id] = signature
   Type[] array_element_types;           // array_element_types[type_id] = element type
+  Type[] map_key_types;                 // map_key_types[type_id] = key type
+  Type[] map_value_types;               // map_value_types[type_id] = value type
   int next_type_id;                     // allocator counter, starts at 1
+
+  // Generic / parameterized type registries.
+  string[] generic_struct_names;           // base names of generic structs
+  string[][] generic_struct_type_params;   // type parameter names per generic struct
+  FieldDef[][] generic_struct_fields;      // original field defs (may ref T, U)
+  string[] generic_func_names;             // base names of generic functions
+  string[][] generic_func_type_params;     // type parameter names per generic function
+  TypeExpr[] generic_func_return_types;    // return type (may ref T, U)
+  Parameter[][] generic_func_params;       // parameter list (may ref T, U)
+
+  // Instantiation cache — mangled name → instantiated type_id.
+  string[] instantiated_names;            // mangled names already instantiated
 
   // Namespace tracking for `using` declarations.
   string[] used_namespaces;             // "io", "fs", "sys"
@@ -231,8 +263,19 @@ pub Checker make_checker(string file) {
   EnumVariantInfo[][] ev = [];
   FuncSignature[] fs = [];
   Type[] aet = [];
+  Type[] mkt = [];
+  Type[] mvt = [];
+  string[] gsn = [];
+  string[][] gstp = [];
+  FieldDef[][] gsf = [];
+  string[] gfn = [];
+  string[][] gftp = [];
+  TypeExpr[] gfr = [];
+  Parameter[][] gfp = [];
+  string[] inam = [];
   string[] un = [];
-  return Checker { b, s, e, file, tn, sf, ev, fs, aet, 1, un };
+  return Checker { b, s, e, file, tn, sf, ev, fs, aet, mkt, mvt, 1,
+                   gsn, gstp, gsf, gfn, gftp, gfr, gfp, inam, un };
 }
 
 void push_scope(Checker c) {
@@ -338,21 +381,149 @@ bool is_auto_type(TypeExpr t) {
   return t.name == "auto";
 }
 
+// Resolve a stringified type argument into a concrete Type.
+// The parser stores type_args as strings. Handles simple names and
+// single-level parameterized types like "Array<int>", "Map<int, string>".
+Type resolve_type_arg(Checker c, string arg_string) {
+  if (arg_string == "int")    { return type_int(); }
+  if (arg_string == "float")  { return type_float(); }
+  if (arg_string == "double") { return type_float(); }
+  if (arg_string == "bool")   { return type_bool(); }
+  if (arg_string == "string") { return type_string(); }
+  if (arg_string == "char")   { return type_char(); }
+  if (arg_string == "void")   { return type_void(); }
+  // User-defined type (non-generic) — look up by name
+  Type st = lookup_struct_type(c, arg_string);
+  if (st.kind != TypeKind::Unknown) { return st; }
+  Type et = lookup_enum_type(c, arg_string);
+  if (et.kind != TypeKind::Unknown) { return et; }
+  return type_unknown();
+}
+
+// Compute a mangled name for an instantiated generic type.
+string mangle_name(string base, string[] args) {
+  string result = base;
+  for (int i = 0; i < args.len(); i = i + 1) {
+    result = result + "__" + args[i];
+  }
+  return result;
+}
+
+// Substitute type parameter names with concrete type arg strings in a TypeExpr.
+// Only handles top-level substitution (no nested generics in field types).
+TypeExpr substitute_type_params(TypeExpr t, string[] param_names, string[] arg_strings) {
+  for (int i = 0; i < param_names.len(); i = i + 1) {
+    if (t.name == param_names[i] && t.type_args.len() == 0) {
+      return TypeExpr { arg_strings[i], [] };
+    }
+  }
+  return t;
+}
+
+// Resolve a TypeExpr to a Type, handling parameterized types (Array<T>,
+// Map<K,V>, generic structs) and falling back to simple name lookup.
 Type resolve_type_expr(Checker c, TypeExpr t) {
   if (t.name == "int")    { return type_int(); }
-  if (t.name == "auto")   { return type_int(); }   // placeholder until inferred
+  if (t.name == "auto")   { return type_unknown(); }  // resolved by check_var_decl from initializer
   if (t.name == "float")  { return type_float(); }
   if (t.name == "double") { return type_float(); }
   if (t.name == "bool")   { return type_bool(); }
   if (t.name == "string") { return type_string(); }
   if (t.name == "void")   { return type_void(); }
   if (t.name == "char")   { return type_char(); }
-  // User-defined types
+
+  // Parameterized types
+  if (t.type_args.len() != 0) {
+    // Array<T>
+    if (t.name == "Array") {
+      if (t.type_args.len() == 1) {
+        Type elem = resolve_type_arg(c, t.type_args[0]);
+        int id = alloc_type_id(c);
+        c.array_element_types.push(elem);
+        c.type_names.push("Array");
+        return Type { TypeKind::Array, "", id };
+      }
+      return type_unknown();
+    }
+    // Map<K, V>
+    if (t.name == "Map") {
+      if (t.type_args.len() == 2) {
+        Type key = resolve_type_arg(c, t.type_args[0]);
+        Type val = resolve_type_arg(c, t.type_args[1]);
+        int id = alloc_type_id(c);
+        c.map_key_types.push(key);
+        c.map_value_types.push(val);
+        c.type_names.push("Map");
+        return Type { TypeKind::Map, "", id };
+      }
+      return type_unknown();
+    }
+    // Generic struct instantiation
+    for (int i = 0; i < c.generic_struct_names.len(); i = i + 1) {
+      if (c.generic_struct_names[i] == t.name) {
+        return instantiate_generic_struct(c, i, t.type_args);
+      }
+    }
+    return type_unknown();
+  }
+
+  // User-defined types (non-generic)
   Type st = lookup_struct_type(c, t.name);
   if (st.kind != TypeKind::Unknown) { return st; }
   Type et = lookup_enum_type(c, t.name);
   if (et.kind != TypeKind::Unknown) { return et; }
+
+  // Check generic registries — bare name without type args is an error
+  for (int i = 0; i < c.generic_struct_names.len(); i = i + 1) {
+    if (c.generic_struct_names[i] == t.name) { return type_unknown(); }
+  }
+
   return type_unknown();
+}
+
+Type instantiate_generic_struct(Checker c, int gen_idx, string[] type_args) {
+  string base_name = c.generic_struct_names[gen_idx];
+  string mangled = mangle_name(base_name, type_args);
+
+  // Check cache
+  for (int i = 0; i < c.instantiated_names.len(); i = i + 1) {
+    if (c.instantiated_names[i] == mangled) {
+      int id = i + 1;
+      return Type { TypeKind::Struct, mangled, id };
+    }
+  }
+
+  string[] param_names = c.generic_struct_type_params[gen_idx];
+  FieldDef[] orig_fields = c.generic_struct_fields[gen_idx];
+
+  // Validate arg count
+  if (type_args.len() != param_names.len()) {
+    return type_unknown();
+  }
+
+  // Allocate type_id
+  int id = alloc_type_id(c);
+  c.type_names.push(mangled);
+  c.instantiated_names.push(mangled);
+
+  // Substitute field types
+  StructFieldInfo[] finfo = [];
+  for (int i = 0; i < orig_fields.len(); i = i + 1) {
+    TypeExpr subst = substitute_type_params(orig_fields[i].type, param_names, type_args);
+    Type ft = resolve_type_expr(c, subst);
+    finfo.push(StructFieldInfo { orig_fields[i].name, ft });
+  }
+  c.struct_fields.push(finfo);
+
+  // Register constructor
+  Type[] ptypes = [];
+  for (int i = 0; i < finfo.len(); i = i + 1) {
+    ptypes.push(finfo[i].field_type);
+  }
+  Type struct_type = Type { TypeKind::Struct, mangled, id };
+  c.func_signatures.push(FuncSignature { ptypes, struct_type });
+
+  return struct_type;
 }
 
 // --- binary-op classification --------------------------------------------
@@ -486,7 +657,7 @@ Type check_arithmetic(Checker c, BinaryOp op, Type l, Type r, int line, int col)
 }
 
 Type check_comparison(Checker c, Type l, Type r, int line, int col) {
-  if (!types_compatible(l, r)) {
+  if (!types_compatible(c, l, r)) {
     add_error(c, line, col,
       "Cannot compare '" + type_name(l) + "' and '" + type_name(r) + "'.");
   }
@@ -511,7 +682,7 @@ Type check_assign(Checker c, string name, AssignOp op, Expr value, int line, int
   Type target = lookup_var(c, name);
   bool is_plain = op match { AssignOp::Assign => true, _ => false, };
   if (is_plain) {
-    if (!types_compatible(vt, target)) {
+    if (!types_compatible(c, vt, target)) {
       add_error(c, line, col,
         "Cannot assign '" + type_name(vt) + "' to variable '" + name + "' of type '" + type_name(target) + "'.");
     }
@@ -579,7 +750,7 @@ Type check_call_args(Checker c, Type fn_type, Expr[] args, int line, int col) {
   }
   for (int i = 0; i < args.len(); i = i + 1) {
     Type at = check_expr(c, args[i]);
-    if (!types_compatible(at, sig.param_types[i])) {
+    if (!types_compatible(c, at, sig.param_types[i])) {
       add_error(c, line, col,
         "Argument " + int_to_string(i + 1) + " of '" + fn_type.name +
         "': expected '" + type_name(sig.param_types[i]) +
@@ -611,19 +782,35 @@ string int_to_string(int n) {
 
 // --- namespace access checking --------------------------------------------
 
-Type check_ns_access(Checker c, string ns, string _member, int line, int col) {
+Type check_ns_access(Checker c, string ns, string member, int line, int col) {
   // Check if namespace has been imported via using
   bool found = false;
   for (int i = 0; i < c.used_namespaces.len(); i = i + 1) {
     if (c.used_namespaces[i] == ns) { found = true; }
   }
-  if (!found) {
-    // Also check if it's a known enum type (enum::Variant access)
-    Type et = lookup_enum_type(c, ns);
-    if (et.kind != TypeKind::Unknown) { return et; }
-    add_error(c, line, col, "Unknown namespace '" + ns + "'.");
+  if (found) {
+    // Known stdlib namespace — defer detailed member checking
+    return type_unknown();
   }
-  return type_unknown();  // stdlib intrinsics deferred
+
+  // Check if it's a known enum type (EnumType::Variant access)
+  Type et = lookup_enum_type(c, ns);
+  if (et.kind != TypeKind::Unknown) {
+    // Validate variant exists
+    int id = et.type_id;
+    if (id >= 1 && id <= c.enum_variants.len()) {
+      EnumVariantInfo[] variants = c.enum_variants[id - 1];
+      for (int i = 0; i < variants.len(); i = i + 1) {
+        if (variants[i].name == member) { return et; }
+      }
+      add_error(c, line, col,
+        "Enum '" + ns + "' has no variant '" + member + "'.");
+    }
+    return et;
+  }
+
+  add_error(c, line, col, "Unknown namespace '" + ns + "'.");
+  return type_unknown();
 }
 
 // --- field access checking ------------------------------------------------
@@ -725,9 +912,20 @@ Type check_index(Checker c, Expr obj, Expr idx, int line, int col) {
 // --- struct literal checking ----------------------------------------------
 
 Type check_struct_lit(Checker c, TypeExpr t, FieldInit[] fields, int line, int col) {
-  Type st = lookup_struct_type(c, t.name);
+  Type st = resolve_type_expr(c, t);
   if (st.kind == TypeKind::Unknown) {
-    add_error(c, line, col, "Unknown struct type '" + t.name + "'.");
+    // If type_args present, resolve_type_expr may have failed because
+    // the generic struct wasn't registered yet. Try resolve by name only.
+    if (t.type_args.len() == 0) {
+      add_error(c, line, col, "Unknown struct type '" + t.name + "'.");
+    } else {
+      add_error(c, line, col,
+        "Cannot construct generic struct '" + t.name + "'.");
+    }
+    return type_unknown();
+  }
+  if (st.kind != TypeKind::Struct) {
+    add_error(c, line, col, "'" + t.name + "' is not a struct type.");
     return type_unknown();
   }
   int id = st.type_id;
@@ -735,15 +933,15 @@ Type check_struct_lit(Checker c, TypeExpr t, FieldInit[] fields, int line, int c
   StructFieldInfo[] expected = c.struct_fields[id - 1];
   if (fields.len() != expected.len()) {
     add_error(c, line, col,
-      "Struct '" + t.name + "' expects " + int_to_string(expected.len()) +
+      "Struct '" + st.name + "' expects " + int_to_string(expected.len()) +
       " fields, got " + int_to_string(fields.len()) + ".");
     return st;
   }
   for (int i = 0; i < fields.len(); i = i + 1) {
     Type vt = check_expr(c, fields[i].value);
-    if (!types_compatible(vt, expected[i].field_type)) {
+    if (!types_compatible(c, vt, expected[i].field_type)) {
       add_error(c, line, col,
-        "Field '" + fields[i].name + "' of '" + t.name +
+        "Field '" + fields[i].name + "' of '" + st.name +
         "': expected '" + type_name(expected[i].field_type) +
         "', got '" + type_name(vt) + "'.");
     }
@@ -758,7 +956,7 @@ Type check_array_lit(Checker c, Expr[] elems, int line, int col) {
   Type first = check_expr(c, elems[0]);
   for (int i = 1; i < elems.len(); i = i + 1) {
     Type et = check_expr(c, elems[i]);
-    if (!types_compatible(first, et)) {
+    if (!types_compatible(c, first, et)) {
       add_error(c, line, col,
         "Array element type mismatch: '" + type_name(first) +
         "' vs '" + type_name(et) + "'.");
@@ -826,7 +1024,7 @@ Type check_null_coalesce(Checker c, Expr left, Expr right, int line, int col) {
   Type lt = check_expr(c, left);
   Type rt = check_expr(c, right);
   // Both branches should be compatible
-  if (!types_compatible(lt, rt)) {
+  if (!types_compatible(c, lt, rt)) {
     add_error(c, line, col,
       "Null coalesce branches have incompatible types: '" +
       type_name(lt) + "' vs '" + type_name(rt) + "'.");
@@ -876,11 +1074,16 @@ void check_var_decl(Checker c, TypeExpr t, string n, Expr init, int line, int co
   bool auto_typed = is_auto_type(t);
   Type final_type = declared;
   bool has_init = init match { Expr::None => false, _ => true, };
+  if (auto_typed && !has_init) {
+    add_error(c, line, col, "Auto variable '" + n + "' requires an initializer.");
+    declare_var(c, n, type_unknown(), line, col);
+    return;
+  }
   if (has_init) {
     Type init_type = check_expr(c, init);
     if (auto_typed) {
       final_type = init_type;
-    } else if (!types_compatible(init_type, declared)) {
+    } else if (!types_compatible(c, init_type, declared)) {
       add_error(c, line, col,
         "Cannot assign '" + type_name(init_type) + "' to variable '" + n + "' of type '" + type_name(declared) + "'.");
     }
@@ -905,7 +1108,7 @@ void check_if(Checker c, Expr cond, Stmt th, Stmt el, int line, int col) {
   Type else_type = branch_result_type(c, el);
   bool has_then_value = then_type.kind != TypeKind::Void;
   bool has_else_value = else_type.kind != TypeKind::Void;
-  if (has_then_value && has_else_value && !types_compatible(then_type, else_type)) {
+  if (has_then_value && has_else_value && !types_compatible(c, then_type, else_type)) {
     add_error(c, line, col,
       "If branches have incompatible types: '" + type_name(then_type) + "' vs '" + type_name(else_type) + "'.");
   }
@@ -968,10 +1171,10 @@ void check_for(Checker c, Stmt init, Expr cond, Stmt step, Stmt body) {
 
 void register_decl(Checker c, Decl d) {
   d match {
-    Decl::FunctionDecl(let n, let rt, let _tps, let params, let _body, let _is_pub, let line, let col) =>
-      register_function(c, n, rt, params, line, col),
-    Decl::StructDecl(let n, let _tps, let fields, let _is_pub, let _l, let _co) =>
-      register_struct(c, n, fields),
+    Decl::FunctionDecl(let n, let rt, let tps, let params, let _body, let _is_pub, let line, let col) =>
+      register_function(c, n, rt, tps, params, line, col),
+    Decl::StructDecl(let n, let tps, let fields, let _is_pub, let _l, let _co) =>
+      register_struct(c, n, tps, fields),
     Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _co) =>
       register_enum(c, n, variants),
     Decl::UsingDecl(let n, let _is_ns, let _l, let _co) =>
@@ -980,7 +1183,15 @@ void register_decl(Checker c, Decl d) {
   };
 }
 
-void register_function(Checker c, string n, TypeExpr rt, Parameter[] params, int line, int col) {
+void register_function(Checker c, string n, TypeExpr rt, string[] tps, Parameter[] params, int line, int col) {
+  if (tps.len() > 0) {
+    // Generic function — register template, not a concrete callable
+    c.generic_func_names.push(n);
+    c.generic_func_type_params.push(tps);
+    c.generic_func_return_types.push(rt);
+    c.generic_func_params.push(params);
+    return;
+  }
   int id = alloc_type_id(c);
   Type ret = resolve_type_expr(c, rt);
 
@@ -997,7 +1208,15 @@ void register_function(Checker c, string n, TypeExpr rt, Parameter[] params, int
   declare_var(c, n, fn_type, line, col);
 }
 
-void register_struct(Checker c, string name, FieldDef[] fields) {
+void register_struct(Checker c, string name, string[] tps, FieldDef[] fields) {
+  if (tps.len() > 0) {
+    // Generic struct — register template, not a concrete type
+    c.generic_struct_names.push(name);
+    c.generic_struct_type_params.push(tps);
+    c.generic_struct_fields.push(fields);
+    return;
+  }
+
   int id = alloc_type_id(c);
 
   // Build field info

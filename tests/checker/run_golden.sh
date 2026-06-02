@@ -54,6 +54,9 @@ run_case pass_let pass
 run_case pass_infer pass
 run_case pass_scope pass
 run_case fail_mismatch fail
+run_case pass_auto_int pass
+run_case pass_auto_array pass
+run_case fail_auto_no_init fail
 
 echo "===================="
 echo "$PASS/$TOTAL passed"
