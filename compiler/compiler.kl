@@ -38,6 +38,16 @@ pub struct FuncEntry {
   int param_count;
 }
 
+pub struct EnumEntry {
+  string name;
+  int type_idx;
+}
+
+pub struct StructEntry {
+  string name;
+  int type_idx;
+}
+
 pub struct CompileError {
   int line;
   int col;
@@ -55,6 +65,8 @@ pub struct Compiler {
   int[] loop_continues;   // jump offsets to patch to loop start
   int loop_depth;          // number of active loops (for break/continue validation)
   string[] usings;         // active `using` namespaces (io, fs, sys)
+  EnumEntry[] enums;       // enum name -> type_idx lookup (parallel array)
+  StructEntry[] structs;   // struct name -> type_idx lookup (parallel array)
 }
 
 pub Compiler make_compiler() {
@@ -67,7 +79,9 @@ pub Compiler make_compiler() {
   int[] lbs = [];
   int[] lcs = [];
   string[] us = [];
-  return Compiler { c, ls, ss, 0, fs, es, lbs, lcs, 0, us };
+  EnumEntry[] ens = [];
+  StructEntry[] sts = [];
+  return Compiler { c, ls, ss, 0, fs, es, lbs, lcs, 0, us, ens, sts };
 }
 
 // Indices of pre-registered built-in enums (mirrors bytecode::register_builtin_enums
@@ -140,6 +154,29 @@ int resolve_local(Compiler co, string name) {
 int resolve_function(Compiler co, string name) {
   for (int i = 0; i < co.funcs.len(); i = i + 1) {
     if (co.funcs[i].name == name) { return i; }
+  }
+  return -1;
+}
+
+int resolve_enum(Compiler co, string name) {
+  for (int i = 0; i < co.enums.len(); i = i + 1) {
+    if (co.enums[i].name == name) { return co.enums[i].type_idx; }
+  }
+  return -1;
+}
+
+int resolve_struct(Compiler co, string name) {
+  for (int i = 0; i < co.structs.len(); i = i + 1) {
+    if (co.structs[i].name == name) { return co.structs[i].type_idx; }
+  }
+  return -1;
+}
+
+// Look up variant index within an enum type. Returns -1 if not found.
+int resolve_variant(Compiler co, int type_idx, string variant_name) {
+  EnumMeta meta = co.chunk.enum_metas[type_idx];
+  for (int i = 0; i < meta.variants.len(); i = i + 1) {
+    if (meta.variants[i] == variant_name) { return i; }
   }
   return -1;
 }
@@ -320,8 +357,10 @@ void emit_struct_lit(Compiler co, TypeExpr t, FieldInit[] fields, int line, int 
   for (int i = 0; i < fields.len(); i = i + 1) {
     compile_expr(co, fields[i].value);
   }
-  // Encode: (type_idx << 16) | field_count. type_idx=0 for now.
-  int operand = fields.len();  // (0 << 16) | count
+  // Encode: (type_idx << 16) | field_count.
+  int type_idx = resolve_struct(co, t.name);
+  if (type_idx < 0) { type_idx = 0; }
+  int operand = (type_idx << 16) | fields.len();
   bytecode::write_operand(co.chunk, OpCode::StructNew, operand, line, col);
 }
 
@@ -657,6 +696,17 @@ pub int compile_program(Compiler co, Program prog) {
       _ => skip_decl(co),
     };
   }
+  // Pass 0b: register struct and enum declarations.
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    Decl d = prog.declarations[i];
+    d match {
+      Decl::StructDecl(let n, let _tps, let fields, let _is_pub, let _l, let _c) =>
+        _register_struct_decl(co, n, fields),
+      Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _c) =>
+        _register_enum_decl(co, n, variants),
+      _ => skip_decl(co),
+    };
+  }
   // Pass 1: register every top-level function, in source order.
   int main_fi = -1;
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
@@ -698,6 +748,28 @@ pub int compile_program(Compiler co, Program prog) {
 
 void register_top_function(Compiler co, string name, Parameter[] params) {
   register_compiler_function(co, name, params.len());
+}
+
+void _register_struct_decl(Compiler co, string name, FieldDef[] fields) {
+  string[] field_names = [];
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    field_names.push(fields[i].name);
+  }
+  StructMeta meta = StructMeta { name, field_names };
+  int idx = bytecode::add_struct_meta(co.chunk, meta);
+  co.structs.push(StructEntry { name, idx });
+}
+
+void _register_enum_decl(Compiler co, string name, EnumVariant[] variants) {
+  string[] variant_names = [];
+  int[] param_counts = [];
+  for (int i = 0; i < variants.len(); i = i + 1) {
+    variant_names.push(variants[i].name);
+    param_counts.push(variants[i].param_types.len());
+  }
+  EnumMeta meta = EnumMeta { name, variant_names, param_counts };
+  int idx = bytecode::add_enum_meta(co.chunk, meta);
+  co.enums.push(EnumEntry { name, idx });
 }
 
 void skip_decl(Compiler co) { return; }

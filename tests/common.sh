@@ -52,7 +52,7 @@ ensure_cli_kbc() {
   fi
   if [[ "$needs_rebuild" -eq 1 ]]; then
     echo "Rebuilding $cli_kbc (this is slow, ~85s) ..." >&2
-    if ! "$kinglet" --compile "$entry" -o "$cli_kbc" 2>"$root/.cli_kbc_compile.err"; then
+    if ! "$kinglet" --save-bytecode "$cli_kbc" "$entry" 2>"$root/.cli_kbc_compile.err"; then
       echo "failed to rebuild cli.kbc:" >&2
       cat "$root/.cli_kbc_compile.err" >&2
       rm -f "$root/.cli_kbc_compile.err"
