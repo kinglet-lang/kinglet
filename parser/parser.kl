@@ -49,51 +49,13 @@ import "ast.kl" {
   make_type
 }
 
-// TokenType is `pub` because the module loader only categorises public
-// enums into `mod.public_enums`; private enums are dropped silently, so
-// they would be unresolvable when parser.kl's function bodies are
-// re-compiled in the importer's context. Callers must do a full
-// `import "parser.kl"` (no selective brace list) so TokenType comes through.
-pub enum TokenType {
-  Auto, Int, Float, Double, Bool, String, Void, Byte,
-  Const,
-  Return, If, Else, For, While, Break, Continue, Guard,
-  Match, Let, When,
-  Pub, Import, Export, Namespace, Using,
-  Struct, Enum, Trait, Impl, Self_,
-  Spawn, Select,
-  True, False, Null_,
+import "../lexer/token.kl" { TokenType, Token }
 
-  Plus, Minus, Star, Slash, Percent,
-  Equal, EqualEqual, BangEqual,
-  Less, Greater, LessEqual, GreaterEqual,
-  AmpAmp, PipePipe, Bang,
-  Amp, Pipe, Caret, Tilde, LessLess, GreaterGreater, PipeGreater,
-  Arrow, FatArrow, Question, QuestionQuestion, ColonColon, Dot, DotDot, DotDotDot,
-  PlusEqual, MinusEqual, StarEqual, SlashEqual,
-
-  LeftParen, RightParen,
-  LeftBrace, RightBrace,
-  LeftBracket, RightBracket,
-  Comma, Semicolon, Colon,
-
-  Integer, FloatLit, StringLit, CharLit,
-
-  Identifier,
-
-  Eof,
-  Error,
-}
-
-pub struct Token {
-  TokenType type;
-  string lexeme;
-  int line;
-  int col;
-  int int_value;
-  float float_value;
-  string string_value;
-}
+// TokenType and Token are now imported from lexer/token.kl.
+// Previously inlined here to avoid a bootstrap compiler struct-meta
+// re-registration bug (duplicate import scrambled meta indices).
+// The bootstrap compiler now deduplicates imports by resolved path,
+// so the inline copy is no longer needed.
 
 pub struct ParseError {
   int line;
