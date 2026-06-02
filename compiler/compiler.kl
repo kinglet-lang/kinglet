@@ -560,9 +560,11 @@ void emit_struct_lit(Compiler co, TypeExpr t, FieldInit[] fields, int line, int 
 void emit_cast(Compiler co, TypeExpr t, Expr v, int line, int col) {
   compile_expr(co, v);
   int target_kind = 0;
-  if (t.name == "int")    { target_kind = 0; }
-  if (t.name == "float")  { target_kind = 1; }
-  if (t.name == "string") { target_kind = 2; }
+  if (t.name == "int")          { target_kind = 0; }
+  if (t.name == "float")        { target_kind = 1; }
+  if (t.name == "string")       { target_kind = 2; }
+  if (t.name == "char")         { target_kind = 3; }
+  if (t.name == "byte")         { target_kind = 3; }
   bytecode::write_operand(co.chunk, OpCode::CastTo, target_kind, line, col);
 }
 
