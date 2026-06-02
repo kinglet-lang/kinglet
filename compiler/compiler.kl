@@ -266,13 +266,14 @@ pub struct Compiler {
   EnumEntry[] enums;
   StructEntry[] structs;
   ImportState imports;
+  bool in_try;
 }
 
 pub Compiler make_compiler() {
   Chunk c = bytecode::make_chunk();
   bytecode::register_builtin_enums(c);
   return Compiler { c, [], [], 0, [], [], [], [], 0, [], [], [],
-    ImportState { [], [], [], [] } };
+    ImportState { [], [], [], [] }, false };
 }
 
 // Indices of pre-registered built-in enums (mirrors bytecode::register_builtin_enums
@@ -391,8 +392,10 @@ int callee_ident_col(Expr callee, int fallback) {
 void compile_expr(Compiler co, Expr e) {
   e match {
     Expr::IntLit(let v, let l, let c)    => emit_int(co, v, l, c),
+    Expr::CharLit(let v, let l, let c)   => emit_char(co, v, l, c),
     Expr::FloatLit(let v, let l, let c)  => emit_float(co, v, l, c),
     Expr::StringLit(let v, let l, let c) => emit_string(co, v, l, c),
+    Expr::NullLit(let l, let c)          => bytecode::write_op(co.chunk, OpCode::Null_, l, c),
     Expr::BoolLit(let v, let l, let c)   => emit_bool(co, v, l, c),
     Expr::Ident(let n, let l, let c)     => emit_ident(co, n, l, c),
     Expr::Binary(let lhs, let op, let rhs, let l, let c) => emit_binary(co, lhs, op, rhs, l, c),
@@ -400,11 +403,16 @@ void compile_expr(Compiler co, Expr e) {
     Expr::Call(let callee, let _ta, let args, let l, let c) => emit_call(co, callee, args, l, c),
     Expr::Unary(let op, let r, let l, let c)  => emit_unary(co, op, r, l, c),
     Expr::ArrayLit(let elems, let l, let c)   => emit_array_lit(co, elems, l, c),
+    Expr::MapLit(let keys, let vals, let l, let c) => emit_map_lit(co, keys, vals, l, c),
     Expr::Index(let obj, let idx, let l, let c) => emit_index_get(co, obj, idx, l, c),
+    Expr::IndexAssign(let obj, let idx, let v, let l, let c) => emit_index_assign(co, obj, idx, v, l, c),
     Expr::FieldAccess(let obj, let field, let l, let c) => emit_field_get(co, obj, field, l, c),
+    Expr::FieldAssign(let obj, let field, let v, let l, let c) => emit_field_assign(co, obj, field, v, l, c),
     Expr::StructLit(let t, let fields, let l, let c) => emit_struct_lit(co, t, fields, l, c),
     Expr::Cast(let t, let v, let l, let c) => emit_cast(co, t, v, l, c),
     Expr::NullCoalesce(let left, let eb, let right, let l, let c) => compile_coalesce(co, left, eb, right, l, c),
+    Expr::Ternary(let cond, let then_e, let else_e, let l, let c) => emit_ternary(co, cond, then_e, else_e, l, c),
+    Expr::Propagate(let value, let l, let c) => emit_propagate(co, value, l, c),
     Expr::TryExpr(let value, let l, let c) => compile_try(co, value, l, c),
     Expr::NsAccess(let ns, let member, let l, let c) => emit_ns_access(co, ns, member, l, c),
     Expr::Match(let val, let arms, let l, let c) => compile_match(co, val, arms, l, c),
@@ -414,6 +422,10 @@ void compile_expr(Compiler co, Expr e) {
 }
 
 void emit_int(Compiler co, int v, int line, int col) {
+  bytecode::write_constant(co.chunk, bytecode::const_int(v), line, col);
+}
+
+void emit_char(Compiler co, int v, int line, int col) {
   bytecode::write_constant(co.chunk, bytecode::const_int(v), line, col);
 }
 
@@ -566,6 +578,57 @@ void emit_cast(Compiler co, TypeExpr t, Expr v, int line, int col) {
   if (t.name == "char")         { target_kind = 3; }
   if (t.name == "byte")         { target_kind = 3; }
   bytecode::write_operand(co.chunk, OpCode::CastTo, target_kind, line, col);
+}
+
+void emit_map_lit(Compiler co, Expr[] keys, Expr[] vals, int line, int col) {
+  for (int i = 0; i < keys.len(); i = i + 1) {
+    compile_expr(co, keys[i]);
+    compile_expr(co, vals[i]);
+  }
+  bytecode::write_operand(co.chunk, OpCode::MapNew, keys.len(), line, col);
+}
+
+void emit_index_assign(Compiler co, Expr obj, Expr idx, Expr v, int line, int col) {
+  compile_expr(co, obj);
+  compile_expr(co, idx);
+  compile_expr(co, v);
+  bytecode::write_op(co.chunk, OpCode::IndexSet, line, col);
+}
+
+void emit_field_assign(Compiler co, Expr obj, string field, Expr v, int line, int col) {
+  compile_expr(co, obj);
+  compile_expr(co, v);
+  int field_const = bytecode::add_constant(co.chunk, bytecode::const_string(field));
+  bytecode::write_operand(co.chunk, OpCode::FieldSet, field_const, line, col);
+}
+
+void emit_ternary(Compiler co, Expr cond, Expr then_e, Expr else_e, int line, int col) {
+  compile_expr(co, cond);
+  int else_jump = bytecode::write_operand(co.chunk, OpCode::JmpFalse, 0, line, col);
+  compile_expr(co, then_e);
+  int end_jump = bytecode::write_operand(co.chunk, OpCode::Jmp, 0, line, col);
+  int else_pc = co.chunk.instructions.len();
+  co.chunk.instructions[else_jump].operand = else_pc - else_jump - 1;
+  compile_expr(co, else_e);
+  int end_pc = co.chunk.instructions.len();
+  co.chunk.instructions[end_jump].operand = end_pc - end_jump - 1;
+}
+
+void emit_propagate(Compiler co, Expr value, int line, int col) {
+  compile_expr(co, value);
+  if (co.in_try) {
+    bytecode::write_op(co.chunk, OpCode::PropagateErr, line, col);
+  } else {
+    int err_jump = bytecode::write_operand(co.chunk, OpCode::JmpIfErr, 0, line, col);
+    int end_jump = bytecode::write_operand(co.chunk, OpCode::Jmp, 0, line, col);
+    int err_pc = co.chunk.instructions.len();
+    co.chunk.instructions[err_jump].operand = err_pc - err_jump - 1;
+    bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+    bytecode::write_op(co.chunk, OpCode::Null_, line, col);
+    bytecode::write_op(co.chunk, OpCode::Return_, line, col);
+    int end_pc = co.chunk.instructions.len();
+    co.chunk.instructions[end_jump].operand = end_pc - end_jump - 1;
+  }
 }
 
 // ---------- match expression -----------------------------------------------
@@ -1080,6 +1143,7 @@ void compile_stmt(Compiler co, Stmt s) {
     Stmt::Break(let l, let c)                          => compile_break(co, l, c),
     Stmt::Continue(let l, let c)                       => compile_continue(co, l, c),
     Stmt::Guard(let cond, let body, let l, let c)      => compile_guard(co, cond, body, l, c),
+    Stmt::TryCatch(let body, let catches, let l, let c) => compile_try_catch(co, body, catches, l, c),
     _ => compile_error(co, 0, 0, "Unsupported statement in VM compiler."),
   };
 }
@@ -1223,6 +1287,37 @@ void compile_guard(Compiler co, Expr cond, Stmt body, int line, int col) {
   int exit_jump = emit_jump(co, OpCode::JmpFalse, line, col);
   compile_stmt(co, body);
   patch_jump(co, exit_jump);
+}
+
+void compile_try_catch(Compiler co, Stmt body, CatchArm[] catches, int line, int col) {
+  // Placeholder PushHandler — patch operand after we know catch_pc.
+  int handler_idx = co.chunk.instructions.len();
+  bytecode::write_operand(co.chunk, OpCode::PushHandler, 0, line, col);
+
+  // Compile try body with in_try flag set
+  bool prev_in_try = co.in_try;
+  co.in_try = true;
+  compile_stmt(co, body);
+  co.in_try = prev_in_try;
+
+  bytecode::write_op(co.chunk, OpCode::PopHandler, line, col);
+  int end_jump = emit_jump(co, OpCode::Jmp, line, col);
+
+  // --- catch landing pad ---
+  int catch_pc = co.chunk.instructions.len();
+  co.chunk.instructions[handler_idx].operand = catch_pc - handler_idx - 1;
+
+  // Single catch arm: bind error value, execute body.
+  if (catches.len() > 0) {
+    CatchArm arm = catches[0];
+    int err_slot = co.locals.len();
+    co.locals.push(Local { arm.binding_name, err_slot, co.scope_depth });
+    bytecode::write_operand(co.chunk, OpCode::StoreLocal, err_slot, line, col);
+    compile_stmt(co, arm.body);
+    co.locals.pop();
+  }
+
+  patch_jump(co, end_jump);
 }
 
 // ---------- function & program --------------------------------------------

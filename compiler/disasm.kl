@@ -48,6 +48,10 @@ string opcode_name(OpCode op) {
   if (op == OpCode::Return_)  { return "Return"; }
   if (op == OpCode::Jmp)      { return "Jmp"; }
   if (op == OpCode::JmpFalse) { return "JmpFalse"; }
+  if (op == OpCode::JmpIfErr)    { return "JmpIfErr"; }
+  if (op == OpCode::PushHandler) { return "PushHandler"; }
+  if (op == OpCode::PopHandler)  { return "PopHandler"; }
+  if (op == OpCode::PropagateErr) { return "PropagateErr"; }
   if (op == OpCode::Eq)       { return "Eq"; }
   if (op == OpCode::Neq)      { return "Neq"; }
   if (op == OpCode::Lt)       { return "Lt"; }

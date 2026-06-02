@@ -32,7 +32,9 @@ pub enum OpCode {
   // misc
   IsNull, CastTo, FloatToBits,
   // calls / control
-  Call, Return_, Jmp, JmpFalse,
+  Call, Return_, Jmp, JmpFalse, JmpIfErr,
+  // error handling
+  PushHandler, PopHandler, PropagateErr,
   // comparison
   Eq, Neq, Lt, Gt, Le, Ge,
   // native intrinsics (io / fs / sys)
