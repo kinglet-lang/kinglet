@@ -958,7 +958,7 @@ Decl parse_function_decl(Parser p, bool is_pub) {
   Parameter[] params = parse_parameters(p);
   consume(p, TokenType::RightParen, "Expected ')' after parameter list.");
   Stmt body = parse_function_body(p);
-  return Decl::FunctionDecl(name.lexeme, return_type, type_params, params, body, is_pub, start.line, start.col);
+  return Decl::FunctionDecl(name.lexeme, return_type, type_params, params, [], body, is_pub, start.line, start.col);
 }
 
 Parameter[] parse_parameters(Parser p) {

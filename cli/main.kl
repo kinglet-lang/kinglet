@@ -113,10 +113,22 @@ struct EnumVariant {
   TypeExpr[] param_types;
 }
 
+struct ConceptMethod {
+  TypeExpr return_type;
+  string name;
+  Parameter[] params;
+}
+
+struct WhereClause {
+  string concept_name;
+  string[] type_args;
+}
+
 enum Decl {
-  FunctionDecl(string, TypeExpr, string[], Parameter[], Stmt, bool, int, int),
+  FunctionDecl(string, TypeExpr, string[], Parameter[], WhereClause[], Stmt, bool, int, int),
   StructDecl(string, string[], FieldDef[], bool, int, int),
   EnumDecl(string, EnumVariant[], bool, int, int),
+  ConceptDecl(string, string[], ConceptMethod[], bool, int, int),
   ImportDecl(string, string, string[], int, int),
   UsingDecl(string, bool, int, int),
   TopLevelStmt(Stmt, int, int),
@@ -541,8 +553,8 @@ void print_for(Stmt init, Expr c, Stmt step, Stmt body, int depth) {
 
 void print_decl(Decl d, int depth) {
   d match {
-    Decl::FunctionDecl(let n, let rt, let tps, let params, let body, let is_pub, let _l, let _c) =>
-      print_function_decl(n, rt, tps, params, body, is_pub, depth),
+    Decl::FunctionDecl(let n, let rt, let tps, let params, let _w, let body, let is_pub, let _l, let _c) =>
+      print_function_decl(n, rt, tps, params, _w, body, is_pub, depth),
     Decl::StructDecl(let n, let tps, let fields, let is_pub, let _l, let _c) =>
       print_struct_decl(n, tps, fields, is_pub, depth),
     Decl::EnumDecl(let n, let variants, let is_pub, let _l, let _c) =>
@@ -576,7 +588,7 @@ string format_type_params(string[] tps) {
   return s + ">";
 }
 
-void print_function_decl(string n, TypeExpr rt, string[] tps, Parameter[] params, Stmt body, bool is_pub, int depth) {
+void print_function_decl(string n, TypeExpr rt, string[] tps, Parameter[] params, WhereClause[] _w, Stmt body, bool is_pub, int depth) {
   io::out.line("{}{}FunctionDecl {} {}{}", indent_str(depth), pub_marker(is_pub), type_name(rt), n, format_type_params(tps));
   for (int i = 0; i < params.len(); i = i + 1) {
     Parameter pr = params[i];
@@ -1081,7 +1093,7 @@ void check_for(Checker c, Stmt init, Expr cond, Stmt step, Stmt body) {
 
 void register_decl(Checker c, Decl d) {
   d match {
-    Decl::FunctionDecl(let n, let rt, let _tps, let _params, let _body, let _is_pub, let line, let col) =>
+    Decl::FunctionDecl(let n, let rt, let _tps, let _params, let _w, let _body, let _is_pub, let line, let col) =>
       register_function(c, n, rt, line, col),
     _ => check_void(),
   };
@@ -1094,7 +1106,7 @@ void register_function(Checker c, string n, TypeExpr rt, int line, int col) {
 
 void check_decl(Checker c, Decl d) {
   d match {
-    Decl::FunctionDecl(let _n, let _rt, let _tps, let params, let body, let _is_pub, let _l, let _co) =>
+    Decl::FunctionDecl(let _n, let _rt, let _tps, let params, let _w, let body, let _is_pub, let _l, let _co) =>
       check_function(c, params, body),
     Decl::TopLevelStmt(let s, let _l, let _co) => check_stmt(c, s),
     _ => check_void(),

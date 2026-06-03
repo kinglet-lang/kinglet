@@ -141,18 +141,31 @@ pub struct EnumVariant {
   TypeExpr[] param_types;
 }
 
+pub struct ConceptMethod {
+  TypeExpr return_type;
+  string name;
+  Parameter[] params;
+}
+
+pub struct WhereClause {
+  string concept_name;
+  string[] type_args;
+}
+
 // Declaration node. Variant payloads, in order:
 //
-//   FunctionDecl(name, return_type, type_params, params, body, is_public, line, col)
+//   FunctionDecl(name, return_type, type_params, params, where_clauses, body, is_public, line, col)
 //   StructDecl(name, type_params, fields, is_public, line, col)
 //   EnumDecl(name, variants, is_public, line, col)
+//   ConceptDecl(name, type_params, methods, is_public, line, col)
 //   ImportDecl(path, alias, selected, line, col)
 //   UsingDecl(namespace_name, is_namespace, line, col)
 //   TopLevelStmt(stmt, line, col)
 pub enum Decl {
-  FunctionDecl(string, TypeExpr, string[], Parameter[], Stmt, bool, int, int),
+  FunctionDecl(string, TypeExpr, string[], Parameter[], WhereClause[], Stmt, bool, int, int),
   StructDecl(string, string[], FieldDef[], bool, int, int),
   EnumDecl(string, EnumVariant[], bool, int, int),
+  ConceptDecl(string, string[], ConceptMethod[], bool, int, int),
   ImportDecl(string, string, string[], int, int),
   UsingDecl(string, bool, int, int),
   TopLevelStmt(Stmt, int, int),

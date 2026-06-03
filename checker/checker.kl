@@ -97,10 +97,22 @@ struct EnumVariant {
   TypeExpr[] param_types;
 }
 
+struct ConceptMethod {
+  TypeExpr return_type;
+  string name;
+  Parameter[] params;
+}
+
+struct WhereClause {
+  string concept_name;
+  string[] type_args;
+}
+
 enum Decl {
-  FunctionDecl(string, TypeExpr, string[], Parameter[], Stmt, bool, int, int),
+  FunctionDecl(string, TypeExpr, string[], Parameter[], WhereClause[], Stmt, bool, int, int),
   StructDecl(string, string[], FieldDef[], bool, int, int),
   EnumDecl(string, EnumVariant[], bool, int, int),
+  ConceptDecl(string, string[], ConceptMethod[], bool, int, int),
   ImportDecl(string, string, string[], int, int),
   UsingDecl(string, bool, int, int),
   TopLevelStmt(Stmt, int, int),
@@ -1171,8 +1183,8 @@ void check_for(Checker c, Stmt init, Expr cond, Stmt step, Stmt body) {
 
 void register_decl(Checker c, Decl d) {
   d match {
-    Decl::FunctionDecl(let n, let rt, let tps, let params, let _body, let _is_pub, let line, let col) =>
-      register_function(c, n, rt, tps, params, line, col),
+    Decl::FunctionDecl(let n, let rt, let tps, let params, let _w, let _body, let _is_pub, let line, let col) =>
+      register_function(c, n, rt, tps, params, _w, line, col),
     Decl::StructDecl(let n, let tps, let fields, let _is_pub, let _l, let _co) =>
       register_struct(c, n, tps, fields),
     Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _co) =>
@@ -1183,7 +1195,7 @@ void register_decl(Checker c, Decl d) {
   };
 }
 
-void register_function(Checker c, string n, TypeExpr rt, string[] tps, Parameter[] params, int line, int col) {
+void register_function(Checker c, string n, TypeExpr rt, string[] tps, Parameter[] params, WhereClause[] _where_clauses, int line, int col) {
   if (tps.len() > 0) {
     // Generic function — register template, not a concrete callable
     c.generic_func_names.push(n);
@@ -1268,7 +1280,7 @@ void register_using(Checker c, string name) {
 
 void check_decl(Checker c, Decl d) {
   d match {
-    Decl::FunctionDecl(let _n, let _rt, let _tps, let params, let body, let _is_pub, let _l, let _co) =>
+    Decl::FunctionDecl(let _n, let _rt, let _tps, let params, let _w, let body, let _is_pub, let _l, let _co) =>
       check_function(c, params, body),
     Decl::TopLevelStmt(let s, let _l, let _co) => check_stmt(c, s),
     _ => check_void(),

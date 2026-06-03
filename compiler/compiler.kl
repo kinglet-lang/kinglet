@@ -176,7 +176,7 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   bool is_sel = selected.len() > 0;
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
-      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let body, let is_pub, let dl, let dc) =>
+      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
         _reg_import_func(co, ns, n, params, body, is_pub, dl, dc, selected, is_sel),
       _ => {},
     };
@@ -1406,7 +1406,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
     d match {
-      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _body, let _is_pub, let _l, let _c) =>
+      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _w, let _body, let _is_pub, let _l, let _c) =>
         register_top_function(co, n, params),
       _ => skip_decl(co),
     };
@@ -1431,7 +1431,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
     d match {
-      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let body, let _is_pub, let l, let c) =>
+      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _w, let body, let _is_pub, let l, let c) =>
         compile_function_body(co, n, params, body, l, c),
       _ => skip_decl(co),
     };
