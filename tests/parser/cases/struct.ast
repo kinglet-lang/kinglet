@@ -1,32 +1,29 @@
-Program
-  StructDecl Point
-    field int x
-    field int y
-  EnumDecl Shape
-    variant Circle
-      param int
-    variant Rect
-      param int
-      param int
-    variant Empty
-  FunctionDecl int main
-    Block
-      VarDecl Point p
-        StructLit Point
-          field
-            IntLit 1
-          field
-            IntLit 2
-      VarDecl Shape s
-        Call
-          NsAccess Shape::Rect
-          IntLit 3
-          IntLit 4
-      VarDecl int sum
-        Binary +
-          FieldAccess .x
-            Ident p
-          FieldAccess .y
-            Ident p
-      Return
-        Ident sum
+(program
+  (struct Point
+    (int x)
+    (int y))
+  (enum Shape
+    Circle(int)
+    Rect(int, int)
+    Empty)
+  (function int main (params)
+    (block
+      (var type=Point name=p
+        (struct-literal Point
+          (field 
+            (int-literal 1))
+          (field 
+            (int-literal 2))))
+      (var type=Shape name=s
+        (call
+          (namespace-access Shape::Rect)
+          (int-literal 3)
+          (int-literal 4)))
+      (var type=int name=sum
+        (binary +
+          (field-access .x
+            (identifier p))
+          (field-access .y
+            (identifier p))))
+      (return
+        (identifier sum)))))

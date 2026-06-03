@@ -141,12 +141,6 @@ pub struct EnumVariant {
   TypeExpr[] param_types;
 }
 
-pub struct TraitMethod {
-  TypeExpr return_type;
-  string name;
-  Parameter[] params;
-}
-
 // Declaration node. Variant payloads, in order:
 //
 //   FunctionDecl(name, return_type, type_params, params, body, is_public, line, col)
@@ -154,8 +148,6 @@ pub struct TraitMethod {
 //   EnumDecl(name, variants, is_public, line, col)
 //   ImportDecl(path, alias, selected, line, col)
 //   UsingDecl(namespace_name, is_namespace, line, col)
-//   TraitDecl(name, methods, is_public, line, col)
-//   ImplDecl(target_type, trait_name, methods, is_public, line, col)
 //   TopLevelStmt(stmt, line, col)
 pub enum Decl {
   FunctionDecl(string, TypeExpr, string[], Parameter[], Stmt, bool, int, int),
@@ -163,8 +155,6 @@ pub enum Decl {
   EnumDecl(string, EnumVariant[], bool, int, int),
   ImportDecl(string, string, string[], int, int),
   UsingDecl(string, bool, int, int),
-  TraitDecl(string, TraitMethod[], bool, int, int),
-  ImplDecl(string, string, Decl[], bool, int, int),
   TopLevelStmt(Stmt, int, int),
 }
 

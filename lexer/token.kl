@@ -5,7 +5,7 @@ pub enum TokenType {
   Return, If, Else, For, While, Break, Continue, Guard,
   Match, Let, When, Try, Catch,
   Pub, Import, Export, Namespace, Using,
-  Struct, Enum, Trait, Impl, Self_,
+  Struct, Enum, Concept, Where,
   True, False, Null_,
 
   // operators

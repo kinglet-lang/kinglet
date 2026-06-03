@@ -1,7 +1,7 @@
-Program
-  FunctionDecl int main
-    Block
-      VarDecl int x
-        IntLit 1
-      Return
-        Ident x
+(program
+  (function int main (params)
+    (block
+      (var type=int name=x
+        (int-literal 1))
+      (return
+        (identifier x)))))

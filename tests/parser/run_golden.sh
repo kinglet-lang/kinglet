@@ -27,6 +27,7 @@ PER_CASE_TIMEOUT="${PER_CASE_TIMEOUT:-30}"
 
 is_known_bad() {
   local name="$1"
+  if ((${#SKIP_KNOWN[@]} == 0)); then return 1; fi
   for bad in "${SKIP_KNOWN[@]}"; do
     if [[ "$bad" == "$name" ]]; then return 0; fi
   done

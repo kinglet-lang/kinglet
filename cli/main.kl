@@ -113,20 +113,12 @@ struct EnumVariant {
   TypeExpr[] param_types;
 }
 
-struct TraitMethod {
-  TypeExpr return_type;
-  string name;
-  Parameter[] params;
-}
-
 enum Decl {
   FunctionDecl(string, TypeExpr, string[], Parameter[], Stmt, bool, int, int),
   StructDecl(string, string[], FieldDef[], bool, int, int),
   EnumDecl(string, EnumVariant[], bool, int, int),
   ImportDecl(string, string, string[], int, int),
   UsingDecl(string, bool, int, int),
-  TraitDecl(string, TraitMethod[], bool, int, int),
-  ImplDecl(string, string, Decl[], bool, int, int),
   TopLevelStmt(Stmt, int, int),
 }
 
@@ -167,9 +159,8 @@ string tt_name(TokenType t) {
   if (t == TokenType::Using)           { return "Using"; }
   if (t == TokenType::Struct)          { return "Struct"; }
   if (t == TokenType::Enum)            { return "Enum"; }
-  if (t == TokenType::Trait)           { return "Trait"; }
-  if (t == TokenType::Impl)            { return "Impl"; }
-  if (t == TokenType::Self_)           { return "Self"; }
+  if (t == TokenType::Concept)         { return "Concept"; }
+  if (t == TokenType::Where)           { return "Where"; }
   if (t == TokenType::True)            { return "True"; }
   if (t == TokenType::False)           { return "False"; }
   if (t == TokenType::Null_)           { return "Null"; }

@@ -97,20 +97,12 @@ struct EnumVariant {
   TypeExpr[] param_types;
 }
 
-struct TraitMethod {
-  TypeExpr return_type;
-  string name;
-  Parameter[] params;
-}
-
 enum Decl {
   FunctionDecl(string, TypeExpr, string[], Parameter[], Stmt, bool, int, int),
   StructDecl(string, string[], FieldDef[], bool, int, int),
   EnumDecl(string, EnumVariant[], bool, int, int),
   ImportDecl(string, string, string[], int, int),
   UsingDecl(string, bool, int, int),
-  TraitDecl(string, TraitMethod[], bool, int, int),
-  ImplDecl(string, string, Decl[], bool, int, int),
   TopLevelStmt(Stmt, int, int),
 }
 
@@ -260,12 +252,6 @@ pub struct Checker {
 
   // Namespace tracking for `using` declarations.
   string[] used_namespaces;             // "io", "fs", "sys"
-
-  // Trait / impl method resolution.
-  string[] trait_names;                 // registered trait names
-  TraitMethod[][] trait_methods;        // method signatures per trait
-  string[] method_keys;                 // "TypeName::method" lookup keys
-  int[] method_type_ids;                // type_id of method's FuncSignature
 }
 
 pub Checker make_checker(string file) {
@@ -288,13 +274,8 @@ pub Checker make_checker(string file) {
   Parameter[][] gfp = [];
   string[] inam = [];
   string[] un = [];
-  string[] trn = [];
-  TraitMethod[][] trm = [];
-  string[] mks = [];
-  int[] mti = [];
   return Checker { b, s, e, file, tn, sf, ev, fs, aet, mkt, mvt, 1,
-                   gsn, gstp, gsf, gfn, gftp, gfr, gfp, inam, un,
-                   trn, trm, mks, mti };
+                   gsn, gstp, gsf, gfn, gftp, gfr, gfp, inam, un };
 }
 
 void push_scope(Checker c) {
@@ -845,16 +826,6 @@ Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
       for (int i = 0; i < fields.len(); i = i + 1) {
         if (fields[i].name == field) { return fields[i].field_type; }
       }
-      // Method lookup: if field not found, search impl methods
-      string method_key = ot.name + "::" + field;
-      int mi = find_method(c.method_keys, method_key);
-      if (mi != -1 && mi < c.method_type_ids.len()) {
-        int mid = c.method_type_ids[mi];
-        if (mid >= 1 && mid <= c.func_signatures.len()) {
-          FuncSignature sig = c.func_signatures[mid - 1];
-          return Type { TypeKind::Function, method_key, mid };
-        }
-      }
       add_error(c, line, col,
         "Struct '" + ot.name + "' has no field '" + field + "'.");
     }
@@ -1206,10 +1177,6 @@ void register_decl(Checker c, Decl d) {
       register_struct(c, n, tps, fields),
     Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _co) =>
       register_enum(c, n, variants),
-    Decl::TraitDecl(let n, let methods, let _is_pub, let _l, let _co) =>
-      register_trait(c, n, methods),
-    Decl::ImplDecl(let target, let trait_name, let methods, let _is_pub, let _l, let _co) =>
-      register_impl(c, target, trait_name, methods),
     Decl::UsingDecl(let n, let _is_ns, let _l, let _co) =>
       register_using(c, n),
     _ => check_void(),
@@ -1297,93 +1264,12 @@ void register_using(Checker c, string name) {
   c.used_namespaces.push(name);
 }
 
-void register_trait(Checker c, string name, TraitMethod[] methods) {
-  // Store trait method signatures for later impl validation.
-  // Also register the name so it can be looked up in type expressions.
-  c.trait_names.push(name);
-  c.trait_methods.push(methods);
-}
-
-// Look up an impl method signature by "Type::method" key.
-int find_method(string[] keys, string key) {
-  for (int i = 0; i < keys.len(); i = i + 1) {
-    if (keys[i] == key) { return i; }
-  }
-  return -1;
-}
-
-void register_impl(Checker c, string target, string trait_name, Decl[] methods) {
-  // Validate against trait if specified
-  if (trait_name != "") {
-    int ti = -1;
-    for (int i = 0; i < c.trait_names.len(); i = i + 1) {
-      if (c.trait_names[i] == trait_name) { ti = i; }
-    }
-    if (ti == -1) {
-      add_error(c, 0, 0, "Impl for unknown trait '" + trait_name + "'.");
-      return;
-    }
-    TraitMethod[] req = c.trait_methods[ti];
-    // Check every required method is implemented
-    for (int ri = 0; ri < req.len(); ri = ri + 1) {
-      bool found = false;
-      for (int mi = 0; mi < methods.len(); mi = mi + 1) {
-        string mn = methods[mi] match {
-          Decl::FunctionDecl(let n, let _rt, let _tp, let _ps, let _b, let _ip, let _l, let _c) => n,
-          _ => "",
-        };
-        if (mn == req[ri].name) { found = true; }
-      }
-      if (!found) {
-        add_error(c, 0, 0,
-          "Impl for '" + trait_name + "' is missing method '" + req[ri].name + "'.");
-      }
-    }
-  }
-
-  // Register each method in the method lookup table
-  for (int i = 0; i < methods.len(); i = i + 1) {
-    string mn = methods[i] match {
-      Decl::FunctionDecl(let n, let _rt, let _tp, let _ps, let _b, let _ip, let _l, let _c) => n,
-      _ => "",
-    };
-    string key = target + "::" + mn;
-    c.method_keys.push(key);
-
-    // Register the method's function signature
-    Decl d = methods[i];
-    register_impl_method_sig(c, d, key);
-  }
-}
-
-void register_impl_method_sig(Checker c, Decl d, string key) {
-  d match {
-    Decl::FunctionDecl(let _n, let rt, let _tp, let params, let _b, let _ip, let _l, let _co) =>
-      impl_func_sig(c, rt, params, key),
-    _ => check_void(),
-  };
-}
-
-void impl_func_sig(Checker c, TypeExpr rt, Parameter[] params, string key) {
-  int id = alloc_type_id(c);
-  Type ret = resolve_type_expr(c, rt);
-  Type[] ptypes = [];
-  for (int j = 0; j < params.len(); j = j + 1) {
-    ptypes.push(resolve_type_expr(c, params[j].type));
-  }
-  c.func_signatures.push(FuncSignature { ptypes, ret });
-  c.type_names.push(key);
-  c.method_type_ids.push(id);
-}
-
 // --- declaration checking -------------------------------------------------
 
 void check_decl(Checker c, Decl d) {
   d match {
     Decl::FunctionDecl(let _n, let _rt, let _tps, let params, let body, let _is_pub, let _l, let _co) =>
       check_function(c, params, body),
-    Decl::ImplDecl(let _target, let _trait_name, let methods, let _is_pub, let _l, let _co) =>
-      check_impl_methods(c, methods),
     Decl::TopLevelStmt(let s, let _l, let _co) => check_stmt(c, s),
     _ => check_void(),
   };
@@ -1398,16 +1284,6 @@ void check_function(Checker c, Parameter[] params, Stmt body) {
   }
   check_stmt(c, body);
   pop_scope(c);
-}
-
-void check_impl_methods(Checker c, Decl[] methods) {
-  for (int i = 0; i < methods.len(); i = i + 1) {
-    methods[i] match {
-      Decl::FunctionDecl(let _n, let _rt, let _tp, let ps, let b, let _ip, let _l, let _c) =>
-        check_function(c, ps, b),
-      _ => check_void(),
-    };
-  }
 }
 
 pub int check_program(Checker c, Program prog) {

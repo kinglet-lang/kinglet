@@ -1,12 +1,10 @@
-Program
-  using io
-  using fs
-  ImportDecl "../lib/util.kl"
-  ImportDecl "../lib/math.kl" as m
-  ImportDecl "../lib/text.kl"
-    symbol trim
-    symbol lower
-  FunctionDecl int main
-    Block
-      Return
-        IntLit 0
+(program
+  (using io)
+  (using fs)
+  (import "../lib/util.kl")
+  (import "../lib/math.kl" as m)
+  (import "../lib/text.kl" {trim, lower})
+  (function int main (params)
+    (block
+      (return
+        (int-literal 0)))))

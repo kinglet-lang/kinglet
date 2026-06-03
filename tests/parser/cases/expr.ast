@@ -1,44 +1,41 @@
-Program
-  FunctionDecl int compute
-    param int a
-    param int b
-    Block
-      Return
-        Binary -
-          Binary *
-            Binary +
-              Ident a
-              Ident b
-            IntLit 2
-          Binary /
-            Ident a
-            Ident b
-  FunctionDecl bool check
-    param int n
-    Block
-      Return
-        Binary ||
-          Binary &&
-            Binary >
-              Ident n
-              IntLit 0
-            Binary <
-              Ident n
-              IntLit 100
-          Binary ==
-            Ident n
-            Unary -
-              IntLit 1
-  FunctionDecl int main
-    Block
-      VarDecl int z
-        Call
-          Ident compute
-          IntLit 3
-          IntLit 4
-      VarDecl bool ok
-        Call
-          Ident check
-          Ident z
-      Return
-        Ident z
+(program
+  (function int compute (params (int a) (int b))
+    (block
+      (return
+        (binary -
+          (binary *
+            (binary +
+              (identifier a)
+              (identifier b))
+            (int-literal 2))
+          (binary /
+            (identifier a)
+            (identifier b))))))
+  (function bool check (params (int n))
+    (block
+      (return
+        (binary ||
+          (binary &&
+            (binary >
+              (identifier n)
+              (int-literal 0))
+            (binary <
+              (identifier n)
+              (int-literal 100)))
+          (binary ==
+            (identifier n)
+            (unary -
+              (int-literal 1)))))))
+  (function int main (params)
+    (block
+      (var type=int name=z
+        (call
+          (identifier compute)
+          (int-literal 3)
+          (int-literal 4)))
+      (var type=bool name=ok
+        (call
+          (identifier check)
+          (identifier z)))
+      (return
+        (identifier z)))))

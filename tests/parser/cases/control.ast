@@ -1,79 +1,67 @@
-Program
-  FunctionDecl int main
-    Block
-      VarDecl int n
-        IntLit 0
-      If
-        cond
-          Binary >
-            Ident n
-            IntLit 5
-        then
-          Block
-            ExprStmt
-              Assign n =
-                Binary -
-                  Ident n
-                  IntLit 1
-        else
-          Block
-            ExprStmt
-              Assign n =
-                Binary +
-                  Ident n
-                  IntLit 1
-      While
-        cond
-          Binary <
-            Ident n
-            IntLit 10
-        body
-          Block
-            ExprStmt
-              Assign n =
-                Binary +
-                  Ident n
-                  IntLit 1
-            If
-              cond
-                Binary ==
-                  Ident n
-                  IntLit 7
-              then
-                Block
-                  Break
-              else
-                None
-      For
-        init
-          VarDecl int i
-            IntLit 0
-        cond
-          Binary <
-            Ident i
-            IntLit 3
-        step
-          ExprStmt
-            Assign i =
-              Binary +
-                Ident i
-                IntLit 1
-        body
-          Block
-            If
-              cond
-                Binary ==
-                  Ident i
-                  IntLit 1
-              then
-                Block
-                  Continue
-              else
-                None
-            ExprStmt
-              Assign n =
-                Binary +
-                  Ident n
-                  Ident i
-      Return
-        Ident n
+(program
+  (function int main (params)
+    (block
+      (var type=int name=n
+        (int-literal 0))
+      (if
+        (binary >
+          (identifier n)
+          (int-literal 5))
+        (block
+          (expr-stmt
+            (assign =
+              (identifier n)
+              (binary -
+                (identifier n)
+                (int-literal 1)))))
+        (block
+          (expr-stmt
+            (assign =
+              (identifier n)
+              (binary +
+                (identifier n)
+                (int-literal 1))))))
+      (while
+        (binary <
+          (identifier n)
+          (int-literal 10))
+        (block
+          (expr-stmt
+            (assign =
+              (identifier n)
+              (binary +
+                (identifier n)
+                (int-literal 1))))
+          (if
+            (binary ==
+              (identifier n)
+              (int-literal 7))
+            (block
+              (break)))))
+      (for
+        (var type=int name=i
+          (int-literal 0))
+        (binary <
+          (identifier i)
+          (int-literal 3))
+        (expr-stmt
+          (assign =
+            (identifier i)
+            (binary +
+              (identifier i)
+              (int-literal 1))))
+        (block
+          (if
+            (binary ==
+              (identifier i)
+              (int-literal 1))
+            (block
+              (continue)))
+          (expr-stmt
+            (assign =
+              (identifier n)
+              (binary +
+                (identifier n)
+                (identifier i))))))
+      (return
+        (identifier n)))))

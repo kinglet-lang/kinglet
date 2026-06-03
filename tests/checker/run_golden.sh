@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Checker golden tests for the self-hosted Kinglet checker.
-# Runs `kinglet --run cli.kbc --check <case>.kl` and verifies expected
+# Runs `kinglet --run cli.kbc <case>.kl --check` and verifies expected
+# (file path before --check: bootstrap binary consumes leading --* flags)
 # pass/fail. Uses the cached cli.kbc artefact so each case takes ~70ms
 # instead of recompiling cli/main.kl from source.
 set -u
@@ -25,7 +26,7 @@ run_case() {
 
   # Strip warnings for cleaner output
   local output
-  output=$("$KINGLET" --run "$CLI_KBC" --check "$file" 2>&1 | grep -v warning || true)
+  output=$("$KINGLET" --run "$CLI_KBC" "$file" --check 2>&1 | grep -v warning || true)
 
   if [ "$expect_pass" = "pass" ]; then
     if echo "$output" | grep -q "OK: no type errors"; then
