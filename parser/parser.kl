@@ -990,44 +990,9 @@ Decl parse_function_decl(Parser p, bool is_pub) {
   consume(p, TokenType::LeftParen, "Expected '(' after function name.");
   Parameter[] params = parse_parameters(p);
   consume(p, TokenType::RightParen, "Expected ')' after parameter list.");
-  WhereClause[] where_clauses = parse_where_clauses(p);
   Stmt body = parse_function_body(p);
-  return Decl::FunctionDecl(name.lexeme, return_type, type_params, params, where_clauses, body, is_pub, start.line, start.col);
-}
-
-WhereClause[] parse_where_clauses(Parser p) {
-  WhereClause[] clauses = [];
-  if (!match_tt(p, TokenType::Where)) { return clauses; }
-
-  // First clause: concept_name '(' type_arg (',' type_arg)* ')'
-  Token cn = consume(p, TokenType::Identifier, "Expected concept name in where clause.");
-  consume(p, TokenType::LeftParen, "Expected '(' after concept name in where clause.");
-  string[] ta = [];
-  Token t1 = consume(p, TokenType::Identifier, "Expected type argument in where clause.");
-  ta.push(t1.lexeme);
-  while (match_tt(p, TokenType::Comma)) {
-    Token tn = consume(p, TokenType::Identifier, "Expected type argument.");
-    ta.push(tn.lexeme);
-  }
-  consume(p, TokenType::RightParen, "Expected ')' after where clause.");
-  clauses.push(WhereClause { cn.lexeme, ta });
-
-  // Additional clauses separated by ','
-  while (match_tt(p, TokenType::Comma)) {
-    Token cn2 = consume(p, TokenType::Identifier, "Expected concept name in where clause.");
-    consume(p, TokenType::LeftParen, "Expected '(' after concept name in where clause.");
-    string[] ta2 = [];
-    Token t2 = consume(p, TokenType::Identifier, "Expected type argument in where clause.");
-    ta2.push(t2.lexeme);
-    while (match_tt(p, TokenType::Comma)) {
-      Token tn2 = consume(p, TokenType::Identifier, "Expected type argument.");
-      ta2.push(tn2.lexeme);
-    }
-    consume(p, TokenType::RightParen, "Expected ')' after where clause.");
-    clauses.push(WhereClause { cn2.lexeme, ta2 });
-  }
-
-  return clauses;
+  WhereClause[] empty_wc = [];
+  return Decl::FunctionDecl(name.lexeme, return_type, type_params, params, empty_wc, body, is_pub, start.line, start.col);
 }
 
 Parameter[] parse_parameters(Parser p) {

@@ -262,6 +262,15 @@ pub struct Checker {
   // Instantiation cache — mangled name → instantiated type_id.
   string[] instantiated_names;            // mangled names already instantiated
 
+  // Concept registries.
+  string[] concept_names;
+  string[][] concept_type_params;
+  ConceptMethod[][] concept_methods;
+
+  // UFCS method registry — "StructName::funcName" → type_id of the function.
+  string[] method_keys;
+  int[] method_type_ids;
+
   // Namespace tracking for `using` declarations.
   string[] used_namespaces;             // "io", "fs", "sys"
 }
@@ -285,9 +294,15 @@ pub Checker make_checker(string file) {
   TypeExpr[] gfr = [];
   Parameter[][] gfp = [];
   string[] inam = [];
+  string[] cn = [];
+  string[][] ctp = [];
+  ConceptMethod[][] cm = [];
+  string[] mk = [];
+  int[] mti = [];
   string[] un = [];
   return Checker { b, s, e, file, tn, sf, ev, fs, aet, mkt, mvt, 1,
-                   gsn, gstp, gsf, gfn, gftp, gfr, gfp, inam, un };
+                   gsn, gstp, gsf, gfn, gftp, gfr, gfp, inam,
+                   cn, ctp, cm, mk, mti, un };
 }
 
 void push_scope(Checker c) {
@@ -838,9 +853,17 @@ Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
       for (int i = 0; i < fields.len(); i = i + 1) {
         if (fields[i].name == field) { return fields[i].field_type; }
       }
-      add_error(c, line, col,
-        "Struct '" + ot.name + "' has no field '" + field + "'.");
     }
+    // UFCS: try "StructName::methodName"
+    string method_key = ot.name + "::" + field;
+    for (int i = 0; i < c.method_keys.len(); i = i + 1) {
+      if (c.method_keys[i] == method_key) {
+        int mid = c.method_type_ids[i];
+        return c.func_signatures[mid - 1].return_type;
+      }
+    }
+    add_error(c, line, col,
+      "Struct '" + ot.name + "' has no field or method '" + field + "'.");
     return type_unknown();
   }
 
@@ -1189,6 +1212,8 @@ void register_decl(Checker c, Decl d) {
       register_struct(c, n, tps, fields),
     Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _co) =>
       register_enum(c, n, variants),
+    Decl::ConceptDecl(let n, let tps, let methods, let _is_pub, let _l, let _co) =>
+      register_concept(c, n, tps, methods),
     Decl::UsingDecl(let n, let _is_ns, let _l, let _co) =>
       register_using(c, n),
     _ => check_void(),
@@ -1218,6 +1243,16 @@ void register_function(Checker c, string n, TypeExpr rt, string[] tps, Parameter
 
   Type fn_type = Type { TypeKind::Function, n, id };
   declare_var(c, n, fn_type, line, col);
+
+  // UFCS: if first param is a known struct, register as method
+  if (params.len() > 0) {
+    Type first = ptypes[0];
+    if (first.kind == TypeKind::Struct) {
+      string key = first.name + "::" + n;
+      c.method_keys.push(key);
+      c.method_type_ids.push(id);
+    }
+  }
 }
 
 void register_struct(Checker c, string name, string[] tps, FieldDef[] fields) {
@@ -1268,6 +1303,12 @@ void register_enum(Checker c, string name, EnumVariant[] variants) {
   c.type_names.push(name);
 }
 
+void register_concept(Checker c, string name, string[] tps, ConceptMethod[] methods) {
+  c.concept_names.push(name);
+  c.concept_type_params.push(tps);
+  c.concept_methods.push(methods);
+}
+
 void register_using(Checker c, string name) {
   // Check for duplicate
   for (int i = 0; i < c.used_namespaces.len(); i = i + 1) {
@@ -1300,10 +1341,33 @@ void check_function(Checker c, Parameter[] params, Stmt body) {
 
 pub int check_program(Checker c, Program prog) {
   push_scope(c);
-  // Pre-pass: register top-level names so references resolve in any order.
+  // Pass 1: register types and concepts (needed before functions for UFCS/concept lookup)
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
-    register_decl(c, prog.declarations[i]);
+    Decl d = prog.declarations[i];
+    d match {
+      Decl::StructDecl(let n, let tps, let fields, let _is_pub, let _l, let _co) =>
+        register_struct(c, n, tps, fields),
+      Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _co) =>
+        register_enum(c, n, variants),
+      Decl::ConceptDecl(let n, let tps, let methods, let _is_pub, let _l, let _co) =>
+        register_concept(c, n, tps, methods),
+      Decl::ImportDecl(let _p, let _a, let _s, let _l, let _co) =>
+        check_void(),
+      Decl::UsingDecl(let n, let _is_ns, let _l, let _co) =>
+        register_using(c, n),
+      _ => check_void(),
+    };
   }
+  // Pass 2: register functions (may inject UFCS keys referencing pass-1 structs)
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    Decl d = prog.declarations[i];
+    d match {
+      Decl::FunctionDecl(let n, let rt, let tps, let params, let _w, let _body, let _is_pub, let line, let col) =>
+        register_function(c, n, rt, tps, params, _w, line, col),
+      _ => check_void(),
+    };
+  }
+  // Pass 3: type-check bodies
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     check_decl(c, prog.declarations[i]);
   }
