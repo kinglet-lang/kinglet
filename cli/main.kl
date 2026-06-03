@@ -563,6 +563,8 @@ void print_decl(Decl d, int depth) {
       print_import_decl(path, alias, selected, depth),
     Decl::UsingDecl(let n, let is_ns, let _l, let _c) =>
       print_using_decl(n, is_ns, depth),
+    Decl::ConceptDecl(let n, let tps, let methods, let is_pub, let _l, let _c) =>
+      print_concept_decl(n, tps, methods, is_pub, depth),
     Decl::TopLevelStmt(let s, let _l, let _c) =>
       print_top_level_stmt(s, depth),
   };
@@ -595,6 +597,17 @@ void print_function_decl(string n, TypeExpr rt, string[] tps, Parameter[] params
     io::out.line("{}param {} {}", indent_str(depth + 1), type_name(pr.type), pr.name);
   }
   print_stmt(body, depth + 1);
+}
+
+void print_concept_decl(string n, string[] tps, ConceptMethod[] methods, bool is_pub, int depth) {
+  io::out.line("{}{}ConceptDecl {}{}", indent_str(depth), pub_marker(is_pub), n, format_type_params(tps));
+  for (int i = 0; i < methods.len(); i = i + 1) {
+    ConceptMethod m = methods[i];
+    io::out.line("{}method {} {}", indent_str(depth + 1), type_name(m.return_type), m.name);
+    for (int j = 0; j < m.params.len(); j = j + 1) {
+      io::out.line("{}param {} {}", indent_str(depth + 2), type_name(m.params[j].type), m.params[j].name);
+    }
+  }
 }
 
 void print_struct_decl(string n, string[] tps, FieldDef[] fields, bool is_pub, int depth) {

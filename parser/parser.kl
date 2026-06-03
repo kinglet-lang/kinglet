@@ -785,13 +785,23 @@ Decl parse_declaration(Parser p) {
 
   bool is_pub = match_tt(p, TokenType::Pub);
 
-  if (match_tt(p, TokenType::Struct)) { return parse_struct_decl(p, is_pub); }
-  if (match_tt(p, TokenType::Enum))   { return parse_enum_decl(p, is_pub); }
+  if (match_tt(p, TokenType::Struct))  { return parse_struct_decl(p, is_pub); }
+  if (match_tt(p, TokenType::Enum))    { return parse_enum_decl(p, is_pub); }
+
+  // match_tt(TokenType::Concept) fails at self-host runtime when compiled
+  // by the C++ bootstrap — the bootstrap resolves enum variant indices
+  // for newly-added variants inconsistently across modules.  Use lexeme
+  // comparison as a temporary workaround.
+  // TODO(concepts): revert to match_tt(TokenType::Concept) after self-hosting.
+  if (peek_tok(p).lexeme == "concept") {
+    advance_tok(p);
+    return parse_concept_decl(p, is_pub);
+  }
 
   if (is_function_declaration_start(p)) { return parse_function_decl(p, is_pub); }
 
   if (is_pub) {
-    error_at(p, peek_tok(p), "'pub' can only be used before function, struct, or enum declarations.");
+    error_at(p, peek_tok(p), "'pub' can only be used before function, struct, enum, or concept declarations.");
   }
   Token here = peek_tok(p);
   Stmt s = parse_statement(p);
@@ -827,6 +837,29 @@ Decl parse_import(Parser p) {
   }
   match_tt(p, TokenType::Semicolon);
   return Decl::ImportDecl(path, alias, selected, import_tok.line, import_tok.col);
+}
+
+Decl parse_concept_decl(Parser p, bool is_pub) {
+  Token start = previous(p);
+  Token name = consume(p, TokenType::Identifier, "Expected concept name.");
+  string[] tps = parse_type_params(p);
+  if (tps.len() == 0) {
+    error_at(p, start, "Concept must declare at least one type parameter.");
+  }
+  consume(p, TokenType::LeftBrace, "Expected '{' after concept name.");
+
+  ConceptMethod[] methods = [];
+  while (!check(p, TokenType::RightBrace) && peek_tok(p).type != TokenType::Eof) {
+    TypeExpr ret_ty = parse_type_expr(p);
+    Token mn = consume(p, TokenType::Identifier, "Expected method name in concept.");
+    consume(p, TokenType::LeftParen, "Expected '(' after method name.");
+    Parameter[] params = parse_parameters(p);
+    consume(p, TokenType::RightParen, "Expected ')' after parameter list.");
+    consume(p, TokenType::Semicolon, "Expected ';' after concept method signature.");
+    methods.push(ConceptMethod { ret_ty, mn.lexeme, params });
+  }
+  consume(p, TokenType::RightBrace, "Expected '}' after concept body.");
+  return Decl::ConceptDecl(name.lexeme, tps, methods, is_pub, start.line, start.col);
 }
 
 string[] parse_type_params(Parser p) {
@@ -957,8 +990,44 @@ Decl parse_function_decl(Parser p, bool is_pub) {
   consume(p, TokenType::LeftParen, "Expected '(' after function name.");
   Parameter[] params = parse_parameters(p);
   consume(p, TokenType::RightParen, "Expected ')' after parameter list.");
+  WhereClause[] where_clauses = parse_where_clauses(p);
   Stmt body = parse_function_body(p);
-  return Decl::FunctionDecl(name.lexeme, return_type, type_params, params, [], body, is_pub, start.line, start.col);
+  return Decl::FunctionDecl(name.lexeme, return_type, type_params, params, where_clauses, body, is_pub, start.line, start.col);
+}
+
+WhereClause[] parse_where_clauses(Parser p) {
+  WhereClause[] clauses = [];
+  if (!match_tt(p, TokenType::Where)) { return clauses; }
+
+  // First clause: concept_name '(' type_arg (',' type_arg)* ')'
+  Token cn = consume(p, TokenType::Identifier, "Expected concept name in where clause.");
+  consume(p, TokenType::LeftParen, "Expected '(' after concept name in where clause.");
+  string[] ta = [];
+  Token t1 = consume(p, TokenType::Identifier, "Expected type argument in where clause.");
+  ta.push(t1.lexeme);
+  while (match_tt(p, TokenType::Comma)) {
+    Token tn = consume(p, TokenType::Identifier, "Expected type argument.");
+    ta.push(tn.lexeme);
+  }
+  consume(p, TokenType::RightParen, "Expected ')' after where clause.");
+  clauses.push(WhereClause { cn.lexeme, ta });
+
+  // Additional clauses separated by ','
+  while (match_tt(p, TokenType::Comma)) {
+    Token cn2 = consume(p, TokenType::Identifier, "Expected concept name in where clause.");
+    consume(p, TokenType::LeftParen, "Expected '(' after concept name in where clause.");
+    string[] ta2 = [];
+    Token t2 = consume(p, TokenType::Identifier, "Expected type argument in where clause.");
+    ta2.push(t2.lexeme);
+    while (match_tt(p, TokenType::Comma)) {
+      Token tn2 = consume(p, TokenType::Identifier, "Expected type argument.");
+      ta2.push(tn2.lexeme);
+    }
+    consume(p, TokenType::RightParen, "Expected ')' after where clause.");
+    clauses.push(WhereClause { cn2.lexeme, ta2 });
+  }
+
+  return clauses;
 }
 
 Parameter[] parse_parameters(Parser p) {
