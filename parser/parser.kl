@@ -75,7 +75,7 @@ pub struct Parser {
 
 pub Parser make_parser(Token[] tokens) => Parser { tokens, 0, [] };
 
-// --- token cursor primitives ---
+// token cursor primitives
 
 bool is_at_end(Parser p) => p.tokens[p.current].type == TokenType::Eof;
 
@@ -174,7 +174,7 @@ UnaryOp token_to_unary_op(TokenType t) {
   return UnaryOp::Neg;
 }
 
-// --- type expressions ---
+// type expressions
 
 string type_to_string(TypeExpr t) {
   if (t.type_args.len() == 0) { return t.name; }
@@ -215,7 +215,7 @@ TypeExpr parse_type_expr(Parser p) {
   return t;
 }
 
-// --- position helpers: extract line/col from any Expr variant ---
+// position helpers: extract line/col from any Expr variant
 
 int expr_line(Expr e) => e match {
   Expr::IntLit(_, let l, _) => l,
@@ -281,7 +281,7 @@ int expr_col(Expr e) => e match {
   Expr::None => -1,
 };
 
-// --- expressions: precedence climbing matching the C++ parser ---
+// expressions: precedence climbing matching the C++ parser
 
 Expr expression(Parser p) => assignment(p);
 
@@ -770,7 +770,7 @@ Expr parse_pattern(Parser p) {
   return expression(p);
 }
 
-// --- declarations ---
+// declarations
 
 pub Program parse_program(Parser p) {
   Decl[] decls = [];

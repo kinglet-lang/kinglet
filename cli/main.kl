@@ -23,7 +23,7 @@ using ast {
   Decl, Program, make_type
 };
 
-// --- token printer (existing --tokens / default behaviour) -----------------
+// token printer (existing --tokens / default behaviour)
 
 string tt_name(TokenType t) {
   if (t == TokenType::Auto)            { return "Auto"; }
@@ -166,7 +166,7 @@ int run_tokens(string source) {
   return 0;
 }
 
-// --- ast printer (--ast flag) ---------------------------------------------
+// ast printer (--ast flag)
 
 string indent_str(int depth) {
   string s = "";
@@ -552,7 +552,7 @@ int run_ast(string source) {
 
 
 // ===== type checker =====
-// --- type system ----------------------------------------------------------
+// type system
 
 pub enum TypeKind {
   Int, Float, Bool, String, Void, Unknown,
@@ -594,7 +594,7 @@ bool is_numeric(Type t) {
   return false;
 }
 
-// --- scope stack & checker state ------------------------------------------
+// scope stack & checker state
 
 pub struct Binding {
   string name;
@@ -675,7 +675,7 @@ Type lookup_var(Checker c, string name) {
   return type_unknown();
 }
 
-// --- type-expression resolution ------------------------------------------
+// type-expression resolution
 
 bool is_auto_type(TypeExpr t) {
   if (t.type_args.len() != 0) { return false; }
@@ -694,7 +694,7 @@ Type resolve_type_expr(TypeExpr t) {
   return type_unknown();
 }
 
-// --- binary-op classification --------------------------------------------
+// binary-op classification
 
 bool is_arithmetic_op(BinaryOp op) {
   return op match {
@@ -742,7 +742,7 @@ bool op_is_add(BinaryOp op) {
   return op match { BinaryOp::Add => true, _ => false, };
 }
 
-// --- expression checking --------------------------------------------------
+// expression checking
 
 Type check_expr(Checker c, Expr e) {
   return e match {
@@ -858,7 +858,7 @@ Type check_assign(Checker c, string name, AssignOp op, Expr value, int line, int
   return target;
 }
 
-// --- statement checking ---------------------------------------------------
+// statement checking
 
 void check_stmt(Checker c, Stmt s) {
   s match {
@@ -987,7 +987,7 @@ void check_for(Checker c, Stmt init, Expr cond, Stmt step, Stmt body) {
   pop_scope(c);
 }
 
-// --- declaration checking -------------------------------------------------
+// declaration checking
 
 void register_decl(Checker c, Decl d) {
   d match {

@@ -25,7 +25,7 @@ import {
 
 using io;
 
-// ---------- path helpers ---------------------------------------------------
+// path helpers
 
 string dir_of(string path) {
   int i = path.len() - 1;
@@ -77,7 +77,7 @@ string resolve_import_path(string base_dir, string relative) {
   return result;
 }
 
-// ---------- import helpers --------------------------------------------------
+// import helpers
 
 bool str_arr_contains(string[] arr, string val) {
   for (int i = 0; i < arr.len(); i = i + 1) {
@@ -208,7 +208,7 @@ void _handle_transitive(Compiler co, string ip, string mod_dir, string ia, strin
   if (err.len() > 0) { compile_error(co, 0, 0, err); }
 }
 
-// ---------- compiler state -------------------------------------------------
+// compiler state
 
 pub struct Local {
   string name;
@@ -287,7 +287,7 @@ int castError_variant_NotANumber() => 1;
 int result_variant_Ok() => 0;
 int result_variant_Err() => 1;
 
-// --- jump backpatching --------------------------------------------------
+// jump backpatching
 
 int emit_jump(Compiler co, OpCode op, int line, int col) {
   bytecode::write_operand(co.chunk, op, 0, line, col);
@@ -308,7 +308,7 @@ void compile_error(Compiler co, int line, int col, string msg) {
   co.errors.push(e);
 }
 
-// ---------- scope / locals -------------------------------------------------
+// scope / locals
 // Renamed away from the obvious push_scope/pop_scope to avoid colliding with
 // the typechecker's helpers in cli/main.kl — the bootstrap registers every
 // function by bare name globally, last write wins, so a generic name from
@@ -389,7 +389,7 @@ int callee_ident_col(Expr callee, int fallback) {
   };
 }
 
-// ---------- expression compilation ----------------------------------------
+// expression compilation
 
 void compile_expr(Compiler co, Expr e) {
   e match {
@@ -633,7 +633,7 @@ void emit_propagate(Compiler co, Expr value, int line, int col) {
   }
 }
 
-// ---------- match expression -----------------------------------------------
+// match expression
 // Mirrors compiler.cc:1202-1378.
 
 void compile_match(Compiler co, Expr value, MatchArm[] arms, int line, int col) {
@@ -1131,7 +1131,7 @@ void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
   bytecode::write_operand(co.chunk, OpCode::Call, args.len(), cl, cc);
 }
 
-// ---------- statement compilation -----------------------------------------
+// statement compilation
 
 void compile_stmt(Compiler co, Stmt s) {
   s match {
@@ -1305,7 +1305,7 @@ void compile_try_catch(Compiler co, Stmt body, CatchArm[] catches, int line, int
   bytecode::write_op(co.chunk, OpCode::PopHandler, line, col);
   int end_jump = emit_jump(co, OpCode::Jmp, line, col);
 
-  // --- catch landing pad ---
+  // catch landing pad
   int catch_pc = co.chunk.instructions.len();
   co.chunk.instructions[handler_idx].operand = catch_pc - handler_idx - 1;
 
@@ -1322,7 +1322,7 @@ void compile_try_catch(Compiler co, Stmt body, CatchArm[] catches, int line, int
   patch_jump(co, end_jump);
 }
 
-// ---------- function & program --------------------------------------------
+// function & program
 
 void register_compiler_function(Compiler co, string name, int param_count) {
   // Allocate function table slot (entry to be patched once body emits).
@@ -1476,7 +1476,7 @@ void _register_enum_decl(Compiler co, string name, EnumVariant[] variants) {
 
 void skip_decl(Compiler co) { return; }
 
-// --- native intrinsic helpers --------------------------------------------
+// native intrinsic helpers
 
 void handle_ns_call(Compiler co, string ns, string m, Expr[] args, int nl, int nc) {
   if (!has_using(co, ns)) {

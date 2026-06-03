@@ -265,7 +265,7 @@ pub void register_builtin_enums(Chunk c) {
   c.enum_metas.push(float_result);
 }
 
-// ---------- binary serialization helpers ------------------------------------
+// binary serialization helpers
 
 // Single byte: int → string(byte(v & 0xFF)) produces a one-char string.
 // The CastTo opcode handles Int→Char (kind 3) and Char→String (kind 2).
