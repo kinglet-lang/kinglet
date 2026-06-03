@@ -32,7 +32,7 @@ for src in "$CASES_DIR"/*.kl; do
   cpp_exit=$?
   "$KINGLET" --run "$CLI_KBC" --bytecode "$src" >"$self_out" 2>"$TMP_DIR/$name.self.err"
   self_exit=$?
-  perl -i -pe 's/\r$//' "$cpp_out" "$self_out"
+  strip_cr "$cpp_out" "$self_out"
 
   if [[ "$cpp_exit" -ne 0 ]]; then
     echo "FAIL $name: C++ --bytecode exited $cpp_exit" >&2

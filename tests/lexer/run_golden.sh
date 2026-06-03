@@ -31,7 +31,7 @@ for src in "$CASES_DIR"/*.kl; do
 
   "$KINGLET" --run "$CLI_KBC" "$src" >"$out" 2>"$err"
   actual_exit=$?
-  perl -i -pe 's/\r$//' "$out" "$err"
+  strip_cr "$out" "$err"
 
   if [[ "$actual_exit" -ne 0 ]]; then
     echo "FAIL $name: exit $actual_exit" >&2

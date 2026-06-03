@@ -54,7 +54,7 @@ for src in "$CASES_DIR"/*.kl; do
 
   timeout "$PER_CASE_TIMEOUT" "$KINGLET" --run "$CLI_KBC" --ast "$src" >"$out" 2>"$err"
   actual_exit=$?
-  perl -i -pe 's/\r$//' "$out" "$err"
+  strip_cr "$out" "$err"
 
   if [[ "$actual_exit" -eq 124 ]]; then
     echo "FAIL $name: timed out after ${PER_CASE_TIMEOUT}s" >&2

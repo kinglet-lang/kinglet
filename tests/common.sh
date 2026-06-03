@@ -62,3 +62,16 @@ ensure_cli_kbc() {
   fi
   printf '%s' "$cli_kbc"
 }
+
+# Normalize CRLF to LF byte-for-byte in the given files. `tr -d` deletes raw
+# 0x0D bytes, sidestepping the text-mode pitfalls of in-place editors: BSD
+# `sed -i` needs a backup-suffix argument and does not interpret `\r`, while
+# Windows `perl -i` re-adds `\r` on write via its `:crlf` layer. tr operates on
+# the byte stream and behaves the same on macOS, Linux, and Git-Bash.
+strip_cr() {
+  local f
+  for f in "$@"; do
+    [[ -f "$f" ]] || continue
+    tr -d '\r' <"$f" >"$f.nocr" && mv -f "$f.nocr" "$f"
+  done
+}
