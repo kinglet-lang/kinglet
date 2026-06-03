@@ -47,7 +47,7 @@ Source (.kl)
 
 ## Language Quick Reference
 
-Kinglet is a C-family language designed as "C++ after completing worthwhile standard committee proposals." See `decisions/0001-design-principles.md` for the three design pillars: full value semantics, deterministic destruction, and zero-cost abstraction without ownership.
+Kinglet is a C-family language designed as "C++ after completing worthwhile standard committee proposals." See `decisions/0002-design-principles.md` for the three design pillars: full value semantics, deterministic destruction, and zero-cost abstraction without ownership.
 
 ```kl
 // Types: int, float, double, bool, string, byte, void, auto
