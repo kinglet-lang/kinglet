@@ -42,14 +42,18 @@
 //     * chained-comparison rewrite (a < b < c)              — not used yet
 //     * destructuring var decl (`auto[a, b] = expr;`)       — not used yet
 
-import "ast.kl" {
+import {
+  "ast.kl"
+  "../lexer/token.kl"
+}
+
+using ast {
   Program, Decl, Stmt, Expr, TypeExpr,
   BinaryOp, UnaryOp, AssignOp,
   MatchArm, FieldInit, Parameter, FieldDef, EnumVariant,
   make_type
-}
-
-import "../lexer/token.kl" { TokenType, Token }
+};
+using token { TokenType, Token };
 
 // TokenType and Token are now imported from lexer/token.kl.
 // Previously inlined here to avoid a bootstrap compiler struct-meta

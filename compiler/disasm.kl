@@ -16,9 +16,11 @@
 // print without quotes, doubles use C++ default precision (6 significant
 // digits, no trailing zero), bools as "true"/"false", null as "null".
 
-import "bytecode.kl" {
-  OpCode, Instruction, Constant, ConstKind, Chunk
+import {
+  "bytecode.kl"
 }
+
+using bytecode { OpCode, Instruction, Constant, ConstKind, Chunk };
 
 string opcode_name(OpCode op) {
   if (op == OpCode::Constant) { return "Constant"; }

@@ -18,8 +18,10 @@
 //   * Each function body ends with `Null ; Return` as a fallthrough guard,
 //     after the user's body has been compiled.
 
-import "bytecode.kl"
-import "../parser/ast.kl"
+import {
+  "bytecode.kl"
+  "../parser/ast.kl"
+}
 
 using io;
 

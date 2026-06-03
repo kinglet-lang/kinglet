@@ -1,4 +1,8 @@
-import "token.kl" { TokenType }
+import {
+  "token.kl"
+}
+
+using token { TokenType };
 
 pub struct KeywordEntry {
   string spelling;

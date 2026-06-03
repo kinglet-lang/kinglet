@@ -1,5 +1,10 @@
-import "token.kl" { Token, TokenType }
-import "keywords.kl" { KeywordEntry, all_keywords }
+import {
+  "token.kl"
+  "keywords.kl"
+}
+
+using token { Token, TokenType };
+using keywords { KeywordEntry, all_keywords };
 
 struct Scanner {
   string source;

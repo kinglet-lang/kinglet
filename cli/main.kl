@@ -2,141 +2,26 @@ using io;
 using fs;
 using sys;
 
-import "../lexer/scanner.kl" { scan }
-import "../lexer/keywords.kl" { KeywordEntry }
-import "../parser/parser.kl"
-import "../compiler/compiler.kl"
-import "../compiler/disasm.kl"
-import "../compiler/bytecode.kl"
-
-// AST type definitions are duplicated here from parser/ast.kl so that the
-// entry-module pre-pass in the bootstrap typechecker registers stubs
-// before resolving variant param types — without that, recursive Expr /
-// Stmt / Decl variant params silently resolve to Void when imported,
-// breaking `Expr::Unary(let _, let r, ...) => ...` style destructuring.
-// The runtime matches enum variants by enum-name + variant-name across
-// modules, so values built inside parser.kl line up with these mirror
-// definitions.
-
-enum BinaryOp {
-  Add, Sub, Mul, Div, Mod,
-  Eq, Neq, Lt, Gt, Le, Ge,
-  And, Or,
-  BitAnd, BitOr, BitXor, Shl, Shr,
+import {
+  "../lexer/token.kl"
+  "../lexer/scanner.kl"
+  "../lexer/keywords.kl"
+  "../parser/parser.kl"
+  "../compiler/compiler.kl"
+  "../compiler/disasm.kl"
+  "../compiler/bytecode.kl"
+  "../parser/ast.kl"
 }
 
-enum UnaryOp { Neg, Not, BitNot, }
-
-enum AssignOp { Assign, AddAssign, SubAssign, MulAssign, DivAssign, }
-
-struct TypeExpr {
-  string name;
-  string[] type_args;
-}
-
-enum Expr {
-  IntLit(int, int, int),
-  CharLit(int, int, int),
-  FloatLit(float, int, int),
-  StringLit(string, int, int),
-  NullLit(int, int),
-  BoolLit(bool, int, int),
-  Ident(string, int, int),
-  Unary(UnaryOp, Expr, int, int),
-  Binary(Expr, BinaryOp, Expr, int, int),
-  Assign(string, AssignOp, Expr, int, int),
-  Call(Expr, TypeExpr[], Expr[], int, int),
-  BindingPat(string, int, int),
-  ArrayPat(Expr[], int, int),
-  EnumPat(string, string, Expr[], int, int),
-  Match(Expr, MatchArm[], int, int),
-  Cast(TypeExpr, Expr, int, int),
-  NsAccess(string, string, int, int),
-  FieldAccess(Expr, string, int, int),
-  FieldAssign(Expr, string, Expr, int, int),
-  Index(Expr, Expr, int, int),
-  IndexAssign(Expr, Expr, Expr, int, int),
-  StructLit(TypeExpr, FieldInit[], int, int),
-  ArrayLit(Expr[], int, int),
-  MapLit(Expr[], Expr[], int, int),
-  NullCoalesce(Expr, string, Expr, int, int),
-  Ternary(Expr, Expr, Expr, int, int),
-  Propagate(Expr, int, int),
-  TryExpr(Expr, int, int),
-  None,
-}
-
-struct MatchArm {
-  Expr pattern;
-  Expr guard_expr;
-  Expr body;
-}
-
-struct FieldInit {
-  string name;
-  Expr value;
-}
-
-struct Parameter {
-  TypeExpr type;
-  string name;
-}
-
-struct CatchArm {
-  TypeExpr error_type;
-  string binding_name;
-  Stmt body;
-}
-
-enum Stmt {
-  ExprStmt(Expr, int, int),
-  ReturnStmt(Expr, int, int),
-  VarDecl(string, TypeExpr, string, Expr, int, int),
-  Block(Stmt[], int, int),
-  If(Expr, Stmt, Stmt, int, int),
-  Guard(Expr, Stmt, int, int),
-  While(Expr, Stmt, int, int),
-  For(Stmt, Expr, Stmt, Stmt, int, int),
-  Break(int, int),
-  Continue(int, int),
-  TryCatch(Stmt, CatchArm[], int, int),
-  None,
-}
-
-struct FieldDef {
-  TypeExpr type;
-  string name;
-}
-
-struct EnumVariant {
-  string name;
-  TypeExpr[] param_types;
-}
-
-struct ConceptMethod {
-  TypeExpr return_type;
-  string name;
-  Parameter[] params;
-}
-
-struct WhereClause {
-  string concept_name;
-  string[] type_args;
-}
-
-enum Decl {
-  FunctionDecl(string, TypeExpr, string[], Parameter[], WhereClause[], Stmt, bool, int, int),
-  StructDecl(string, string[], FieldDef[], bool, int, int),
-  EnumDecl(string, EnumVariant[], bool, int, int),
-  ConceptDecl(string, string[], ConceptMethod[], bool, int, int),
-  ImportDecl(string, string, string[], int, int),
-  UsingDecl(string, bool, int, int),
-  TopLevelStmt(Stmt, int, int),
-}
-
-struct Program {
-  Decl[] declarations;
-}
+using token { Token, TokenType };
+using scanner { scan };
+using keywords { KeywordEntry };
+using ast {
+  BinaryOp, UnaryOp, AssignOp, TypeExpr,
+  Expr, MatchArm, FieldInit, Parameter, CatchArm,
+  Stmt, FieldDef, EnumVariant, ConceptMethod, WhereClause,
+  Decl, Program, make_type
+};
 
 // --- token printer (existing --tokens / default behaviour) -----------------
 
