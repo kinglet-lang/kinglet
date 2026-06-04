@@ -1,0 +1,530 @@
+// Type checker for the Kinglet self-host CLI (--check mode).
+
+import {
+  "../lexer/token.kl"
+  "../lexer/scanner.kl"
+  "../parser/ast.kl"
+  "../parser/helpers.kl"
+  "../parser/parser.kl"
+}
+
+using io;
+using scanner { scan };
+using token { Token };
+using ast {
+  BinaryOp, UnaryOp, AssignOp, TypeExpr,
+  Expr, Parameter, Stmt, Decl, Program
+};
+using helpers { Parser, ParseError };
+
+// type system
+
+pub enum TypeKind {
+  Int, Float, Bool, String, Void, Unknown,
+}
+
+pub struct Type {
+  TypeKind kind;
+}
+
+pub Type type_int()     => Type { TypeKind::Int };
+pub Type type_float()   => Type { TypeKind::Float };
+pub Type type_bool()    => Type { TypeKind::Bool };
+pub Type type_string()  => Type { TypeKind::String };
+pub Type type_void()    => Type { TypeKind::Void };
+pub Type type_unknown() => Type { TypeKind::Unknown };
+
+pub string type_kind_name(Type t) {
+  return t.kind match {
+    TypeKind::Int     => "int",
+    TypeKind::Float   => "float",
+    TypeKind::Bool    => "bool",
+    TypeKind::String  => "string",
+    TypeKind::Void    => "void",
+    TypeKind::Unknown => "unknown",
+  };
+}
+
+// Unknown is bidirectionally compatible so we don't cascade errors after a
+// first failure has already poisoned a subexpression's type.
+bool types_compatible(Type a, Type b) {
+  if (a.kind == TypeKind::Unknown) { return true; }
+  if (b.kind == TypeKind::Unknown) { return true; }
+  return a.kind == b.kind;
+}
+
+bool is_numeric(Type t) {
+  if (t.kind == TypeKind::Int) { return true; }
+  if (t.kind == TypeKind::Float) { return true; }
+  return false;
+}
+
+// scope stack & checker state
+
+pub struct Binding {
+  string name;
+  Type type;
+  int scope_depth;
+}
+
+pub struct CheckError {
+  int line;
+  int col;
+  string message;
+}
+
+pub struct Checker {
+  Binding[] bindings;
+  int[] scope_starts;
+  CheckError[] errors;
+  string file;
+}
+
+pub Checker make_checker(string file) {
+  Binding[] b = [];
+  int[] s = [];
+  CheckError[] e = [];
+  return Checker { b, s, e, file };
+}
+
+void push_scope(Checker c) {
+  c.scope_starts.push(c.bindings.len());
+}
+
+void pop_scope(Checker c) {
+  if (c.scope_starts.len() == 0) { return; }
+  int start = c.scope_starts[c.scope_starts.len() - 1];
+  c.scope_starts.pop();
+  while (c.bindings.len() > start) {
+    c.bindings.pop();
+  }
+}
+
+int current_scope_start(Checker c) {
+  if (c.scope_starts.len() == 0) { return 0; }
+  return c.scope_starts[c.scope_starts.len() - 1];
+}
+
+void add_error(Checker c, int line, int col, string msg) {
+  CheckError e = CheckError { line, col, msg };
+  c.errors.push(e);
+}
+
+void declare_var(Checker c, string name, Type t, int line, int col) {
+  int start = current_scope_start(c);
+  for (int i = start; i < c.bindings.len(); i = i + 1) {
+    if (c.bindings[i].name == name) {
+      add_error(c, line, col, "Variable '" + name + "' already declared in this scope.");
+      return;
+    }
+  }
+  Binding b = Binding { name, t, c.scope_starts.len() };
+  c.bindings.push(b);
+}
+
+bool var_exists(Checker c, string name) {
+  int i = c.bindings.len() - 1;
+  while (i >= 0) {
+    if (c.bindings[i].name == name) { return true; }
+    i = i - 1;
+  }
+  return false;
+}
+
+Type lookup_var(Checker c, string name) {
+  int i = c.bindings.len() - 1;
+  while (i >= 0) {
+    if (c.bindings[i].name == name) { return c.bindings[i].type; }
+    i = i - 1;
+  }
+  return type_unknown();
+}
+
+// type-expression resolution
+
+bool is_auto_type(TypeExpr t) {
+  if (t.type_args.len() != 0) { return false; }
+  return t.name == "auto";
+}
+
+Type resolve_type_expr(TypeExpr t) {
+  if (t.type_args.len() != 0) { return type_unknown(); }
+  if (t.name == "int")    { return type_int(); }
+  if (t.name == "auto")   { return type_unknown(); }
+  if (t.name == "float")  { return type_float(); }
+  if (t.name == "double") { return type_float(); }
+  if (t.name == "bool")   { return type_bool(); }
+  if (t.name == "string") { return type_string(); }
+  if (t.name == "void")   { return type_void(); }
+  return type_unknown();
+}
+
+// binary-op classification
+
+bool is_arithmetic_op(BinaryOp op) {
+  return op match {
+    BinaryOp::Add => true,
+    BinaryOp::Sub => true,
+    BinaryOp::Mul => true,
+    BinaryOp::Div => true,
+    BinaryOp::Mod => true,
+    _ => false,
+  };
+}
+
+bool is_comparison_op(BinaryOp op) {
+  return op match {
+    BinaryOp::Eq  => true,
+    BinaryOp::Neq => true,
+    BinaryOp::Lt  => true,
+    BinaryOp::Gt  => true,
+    BinaryOp::Le  => true,
+    BinaryOp::Ge  => true,
+    _ => false,
+  };
+}
+
+bool is_logical_op(BinaryOp op) {
+  return op match {
+    BinaryOp::And => true,
+    BinaryOp::Or  => true,
+    _ => false,
+  };
+}
+
+bool is_bitwise_op(BinaryOp op) {
+  return op match {
+    BinaryOp::BitAnd => true,
+    BinaryOp::BitOr  => true,
+    BinaryOp::BitXor => true,
+    BinaryOp::Shl    => true,
+    BinaryOp::Shr    => true,
+    _ => false,
+  };
+}
+
+bool op_is_add(BinaryOp op) {
+  return op match { BinaryOp::Add => true, _ => false, };
+}
+
+// expression checking
+
+Type check_expr(Checker c, Expr e) {
+  return e match {
+    Expr::IntLit(let _v, let _l, let _co)    => type_int(),
+    Expr::FloatLit(let _v, let _l, let _co)  => type_float(),
+    Expr::StringLit(let _v, let _l, let _co) => type_string(),
+    Expr::BoolLit(let _v, let _l, let _co)   => type_bool(),
+    Expr::Ident(let n, let l, let co)        => check_ident(c, n, l, co),
+    Expr::Unary(let op, let r, let l, let co) => check_unary(c, op, r, l, co),
+    Expr::Binary(let lhs, let op, let rhs, let l, let co) => check_binary(c, lhs, op, rhs, l, co),
+    Expr::Assign(let n, let op, let v, let l, let co)     => check_assign(c, n, op, v, l, co),
+    _ => type_unknown(),
+  };
+}
+
+Type check_ident(Checker c, string name, int line, int col) {
+  if (name == "null") { return type_unknown(); }
+  if (!var_exists(c, name)) {
+    add_error(c, line, col, "Undeclared variable '" + name + "'.");
+    return type_unknown();
+  }
+  return lookup_var(c, name);
+}
+
+Type check_unary(Checker c, UnaryOp op, Expr r, int line, int col) {
+  Type rt = check_expr(c, r);
+  return op match {
+    UnaryOp::Neg    => check_neg(c, rt, line, col),
+    UnaryOp::Not    => type_bool(),
+    UnaryOp::BitNot => check_bitnot(c, rt, line, col),
+  };
+}
+
+Type check_neg(Checker c, Type rt, int line, int col) {
+  if (rt.kind == TypeKind::Unknown) { return type_int(); }
+  if (is_numeric(rt)) { return rt; }
+  add_error(c, line, col, "Cannot negate non-numeric type '" + type_kind_name(rt) + "'.");
+  return type_int();
+}
+
+Type check_bitnot(Checker c, Type rt, int line, int col) {
+  if (rt.kind == TypeKind::Unknown) { return type_int(); }
+  if (rt.kind != TypeKind::Int) {
+    add_error(c, line, col, "Bitwise NOT requires an integer operand, got '" + type_kind_name(rt) + "'.");
+  }
+  return type_int();
+}
+
+Type check_binary(Checker c, Expr lhs, BinaryOp op, Expr rhs, int line, int col) {
+  Type l = check_expr(c, lhs);
+  Type r = check_expr(c, rhs);
+  if (is_arithmetic_op(op)) { return check_arithmetic(c, op, l, r, line, col); }
+  if (is_comparison_op(op)) { return check_comparison(c, l, r, line, col); }
+  if (is_logical_op(op))    { return type_bool(); }
+  if (is_bitwise_op(op))    { return check_bitwise(c, l, r, line, col); }
+  return type_unknown();
+}
+
+Type check_arithmetic(Checker c, BinaryOp op, Type l, Type r, int line, int col) {
+  if (op_is_add(op) && (l.kind == TypeKind::String || r.kind == TypeKind::String)) {
+    return type_string();
+  }
+  if (l.kind == TypeKind::Unknown || r.kind == TypeKind::Unknown) { return type_int(); }
+  if (!is_numeric(l) || !is_numeric(r)) {
+    add_error(c, line, col,
+      "Arithmetic operands must be numeric, got '" + type_kind_name(l) + "' and '" + type_kind_name(r) + "'.");
+    return type_int();
+  }
+  if (l.kind == TypeKind::Float || r.kind == TypeKind::Float) { return type_float(); }
+  return type_int();
+}
+
+Type check_comparison(Checker c, Type l, Type r, int line, int col) {
+  if (!types_compatible(l, r)) {
+    add_error(c, line, col,
+      "Cannot compare '" + type_kind_name(l) + "' and '" + type_kind_name(r) + "'.");
+  }
+  return type_bool();
+}
+
+Type check_bitwise(Checker c, Type l, Type r, int line, int col) {
+  if (l.kind == TypeKind::Unknown || r.kind == TypeKind::Unknown) { return type_int(); }
+  if (l.kind != TypeKind::Int || r.kind != TypeKind::Int) {
+    add_error(c, line, col,
+      "Bitwise operators require integer operands, got '" + type_kind_name(l) + "' and '" + type_kind_name(r) + "'.");
+  }
+  return type_int();
+}
+
+Type check_assign(Checker c, string name, AssignOp op, Expr value, int line, int col) {
+  Type vt = check_expr(c, value);
+  if (!var_exists(c, name)) {
+    add_error(c, line, col, "Undeclared variable '" + name + "'.");
+    return vt;
+  }
+  Type target = lookup_var(c, name);
+  bool is_plain = op match { AssignOp::Assign => true, _ => false, };
+  if (is_plain) {
+    if (!types_compatible(vt, target)) {
+      add_error(c, line, col,
+        "Cannot assign '" + type_kind_name(vt) + "' to variable '" + name + "' of type '" + type_kind_name(target) + "'.");
+    }
+  } else {
+    bool is_add = op match { AssignOp::AddAssign => true, _ => false, };
+    if (is_add && target.kind == TypeKind::String && vt.kind == TypeKind::String) {
+      // string += string OK
+    } else if (!is_numeric(target) || !is_numeric(vt)) {
+      add_error(c, line, col,
+        "Compound assignment requires numeric operands, got '" +
+        type_kind_name(target) + "' and '" + type_kind_name(vt) + "'.");
+    }
+  }
+  return target;
+}
+
+// statement checking
+
+void check_stmt(Checker c, Stmt s) {
+  s match {
+    Stmt::ExprStmt(let e, let _l, let _co)         => check_expr_stmt(c, e),
+    Stmt::ReturnStmt(let v, let _l, let _co)       => check_return(c, v),
+    Stmt::VarDecl(let _stor, let t, let n, let init, let l, let co) => check_var_decl(c, t, n, init, l, co),
+    Stmt::Block(let stmts, let _l, let _co)        => check_block(c, stmts),
+    Stmt::If(let cond, let th, let el, let l, let co) => check_if(c, cond, th, el, l, co),
+    Stmt::Guard(let cond, let body, let _l, let _co)  => check_guard(c, cond, body),
+    Stmt::While(let cond, let body, let _l, let _co)  => check_while(c, cond, body),
+    Stmt::For(let init, let cond, let step, let body, let _l, let _co) => check_for(c, init, cond, step, body),
+    Stmt::Break(let _l, let _co)    => check_void(),
+    Stmt::Continue(let _l, let _co) => check_void(),
+    Stmt::None                       => check_void(),
+  };
+}
+
+void check_void() { return; }
+
+void check_expr_stmt(Checker c, Expr e) {
+  Type _t = check_expr(c, e);
+}
+
+void check_return(Checker c, Expr v) {
+  v match {
+    Expr::None => check_void(),
+    _ => check_expr_stmt(c, v),
+  };
+}
+
+void check_var_decl(Checker c, TypeExpr t, string n, Expr init, int line, int col) {
+  Type declared = resolve_type_expr(t);
+  bool auto_typed = is_auto_type(t);
+  Type final_type = declared;
+  bool has_init = init match { Expr::None => false, _ => true, };
+  if (auto_typed && !has_init) {
+    add_error(c, line, col, "Auto variable '" + n + "' requires an initializer.");
+    declare_var(c, n, type_unknown(), line, col);
+    return;
+  }
+  if (has_init) {
+    Type init_type = check_expr(c, init);
+    if (auto_typed) {
+      final_type = init_type;
+    } else if (!types_compatible(init_type, declared)) {
+      add_error(c, line, col,
+        "Cannot assign '" + type_kind_name(init_type) + "' to variable '" + n + "' of type '" + type_kind_name(declared) + "'.");
+    }
+  }
+  declare_var(c, n, final_type, line, col);
+}
+
+void check_block(Checker c, Stmt[] stmts) {
+  push_scope(c);
+  for (int i = 0; i < stmts.len(); i = i + 1) {
+    check_stmt(c, stmts[i]);
+  }
+  pop_scope(c);
+}
+
+void check_if(Checker c, Expr cond, Stmt th, Stmt el, int line, int col) {
+  Type ct = check_expr(c, cond);
+  if (ct.kind != TypeKind::Bool && ct.kind != TypeKind::Int && ct.kind != TypeKind::Unknown) {
+    add_error(c, line, col, "If condition must be 'bool', got '" + type_kind_name(ct) + "'.");
+  }
+  Type then_type = branch_result_type(c, th);
+  Type else_type = branch_result_type(c, el);
+  bool has_then_value = then_type.kind != TypeKind::Void;
+  bool has_else_value = else_type.kind != TypeKind::Void;
+  if (has_then_value && has_else_value && !types_compatible(then_type, else_type)) {
+    add_error(c, line, col,
+      "If branches have incompatible types: '" + type_kind_name(then_type) + "' vs '" + type_kind_name(else_type) + "'.");
+  }
+}
+
+// Branch types: a Block returns the type of its trailing ExprStmt (or void),
+// any other Stmt is checked for side effects and contributes void.
+Type branch_result_type(Checker c, Stmt s) {
+  return s match {
+    Stmt::Block(let stmts, let _l, let _co) => block_result_type(c, stmts),
+    Stmt::None                               => type_void(),
+    _ => check_stmt_void(c, s),
+  };
+}
+
+Type check_stmt_void(Checker c, Stmt s) {
+  check_stmt(c, s);
+  return type_void();
+}
+
+Type block_result_type(Checker c, Stmt[] stmts) {
+  push_scope(c);
+  Type last = type_void();
+  for (int i = 0; i < stmts.len(); i = i + 1) {
+    Stmt s = stmts[i];
+    bool is_tail = i == stmts.len() - 1;
+    if (is_tail) {
+      last = s match {
+        Stmt::ExprStmt(let e, let _l, let _co) => check_expr(c, e),
+        _ => check_stmt_void(c, s),
+      };
+    } else {
+      check_stmt(c, s);
+    }
+  }
+  pop_scope(c);
+  return last;
+}
+
+void check_guard(Checker c, Expr cond, Stmt body) {
+  Type _ct = check_expr(c, cond);
+  check_stmt(c, body);
+}
+
+void check_while(Checker c, Expr cond, Stmt body) {
+  Type _ct = check_expr(c, cond);
+  check_stmt(c, body);
+}
+
+void check_for(Checker c, Stmt init, Expr cond, Stmt step, Stmt body) {
+  push_scope(c);
+  check_stmt(c, init);
+  Type _ct = check_expr(c, cond);
+  check_stmt(c, step);
+  check_stmt(c, body);
+  pop_scope(c);
+}
+
+// declaration checking
+
+void register_decl(Checker c, Decl d) {
+  d match {
+    Decl::FunctionDecl(let n, let rt, let _tps, let _params, let _w, let _body, let _is_pub, let line, let col) =>
+      register_function(c, n, rt, line, col),
+    _ => check_void(),
+  };
+}
+
+void register_function(Checker c, string n, TypeExpr rt, int line, int col) {
+  Type t = resolve_type_expr(rt);
+  declare_var(c, n, t, line, col);
+}
+
+void check_decl(Checker c, Decl d) {
+  d match {
+    Decl::FunctionDecl(let _n, let _rt, let _tps, let params, let _w, let body, let _is_pub, let _l, let _co) =>
+      check_function(c, params, body),
+    Decl::TopLevelStmt(let s, let _l, let _co) => check_stmt(c, s),
+    _ => check_void(),
+  };
+}
+
+void check_function(Checker c, Parameter[] params, Stmt body) {
+  push_scope(c);
+  for (int i = 0; i < params.len(); i = i + 1) {
+    Parameter p = params[i];
+    Type pt = resolve_type_expr(p.type);
+    declare_var(c, p.name, pt, 0, 0);
+  }
+  check_stmt(c, body);
+  pop_scope(c);
+}
+
+pub int check_program(Checker c, Program prog) {
+  push_scope(c);
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    register_decl(c, prog.declarations[i]);
+  }
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    check_decl(c, prog.declarations[i]);
+  }
+  pop_scope(c);
+  return c.errors.len();
+}
+
+pub int run_checker(Program prog) {
+  Checker c = make_checker("check");
+  int err_count = check_program(c, prog);
+  for (int i = 0; i < c.errors.len(); i = i + 1) {
+    CheckError e = c.errors[i];
+    io::err.line("{}:{}: {}", e.line, e.col, e.message);
+  }
+  return err_count;
+}
+
+pub int run_check(string source) {
+  Token[] tokens = scan(source);
+  Parser p = helpers::make_parser(tokens);
+  Program prog = parser::parse_program(p);
+  if (p.errors.len() > 0) {
+    for (int i = 0; i < p.errors.len(); i = i + 1) {
+      ParseError e = p.errors[i];
+      io::err.line("{}:{}: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  int err_count = run_checker(prog);
+  if (err_count > 0) {
+    io::err.line("{} type error(s)", err_count);
+    return 65;
+  }
+  io::out.line("OK: no type errors");
+  return 0;
+}
