@@ -1,0 +1,235 @@
+// Parser helper primitives: Parser struct, token cursor, type expression
+// parser, and position helpers for Expr nodes.
+
+import {
+  "ast.kl"
+  "../lexer/token.kl"
+}
+
+using ast {
+  Program, Decl, Stmt, Expr, TypeExpr,
+  BinaryOp, UnaryOp, AssignOp,
+  MatchArm, FieldInit, Parameter, FieldDef, EnumVariant,
+  make_type
+};
+using token { TokenType, Token };
+
+pub struct ParseError {
+  int line;
+  int col;
+  string message;
+}
+
+pub struct Parser {
+  Token[] tokens;
+  int current;
+  ParseError[] errors;
+}
+
+pub Parser make_parser(Token[] tokens) => Parser { tokens, 0, [] };
+
+// token cursor primitives
+
+bool is_at_end(Parser p) => p.tokens[p.current].type == TokenType::Eof;
+
+Token peek_tok(Parser p) => p.tokens[p.current];
+
+Token previous(Parser p) => p.tokens[p.current - 1];
+
+bool check(Parser p, TokenType t) {
+  if (is_at_end(p)) { return false; }
+  return peek_tok(p).type == t;
+}
+
+bool check_at(Parser p, int offset, TokenType t) {
+  int i = p.current + offset;
+  if (i >= p.tokens.len()) { return false; }
+  return p.tokens[i].type == t;
+}
+
+Token advance_tok(Parser p) {
+  if (!is_at_end(p)) { p.current = p.current + 1; }
+  return previous(p);
+}
+
+bool match_tt(Parser p, TokenType t) {
+  if (!check(p, t)) { return false; }
+  advance_tok(p);
+  return true;
+}
+
+void error_at(Parser p, Token t, string msg) {
+  ParseError e = ParseError { t.line, t.col, msg };
+  p.errors.push(e);
+}
+
+Token consume(Parser p, TokenType t, string msg) {
+  if (check(p, t)) { return advance_tok(p); }
+  error_at(p, peek_tok(p), msg);
+  return peek_tok(p);
+}
+
+bool is_type_start(TokenType t) {
+  if (t == TokenType::Auto)   { return true; }
+  if (t == TokenType::Int)    { return true; }
+  if (t == TokenType::Float)  { return true; }
+  if (t == TokenType::Double) { return true; }
+  if (t == TokenType::Bool)   { return true; }
+  if (t == TokenType::String) { return true; }
+  if (t == TokenType::Void)   { return true; }
+  if (t == TokenType::Byte)   { return true; }
+  if (t == TokenType::Identifier) { return true; }
+  return false;
+}
+
+bool is_assign_op(TokenType t) {
+  if (t == TokenType::Equal)      { return true; }
+  if (t == TokenType::PlusEqual)  { return true; }
+  if (t == TokenType::MinusEqual) { return true; }
+  if (t == TokenType::StarEqual)  { return true; }
+  if (t == TokenType::SlashEqual) { return true; }
+  return false;
+}
+
+AssignOp token_to_assign_op(TokenType t) {
+  if (t == TokenType::PlusEqual)  { return AssignOp::AddAssign; }
+  if (t == TokenType::MinusEqual) { return AssignOp::SubAssign; }
+  if (t == TokenType::StarEqual)  { return AssignOp::MulAssign; }
+  if (t == TokenType::SlashEqual) { return AssignOp::DivAssign; }
+  return AssignOp::Assign;
+}
+
+BinaryOp token_to_binary_op(TokenType t) {
+  if (t == TokenType::Plus)           { return BinaryOp::Add; }
+  if (t == TokenType::Minus)          { return BinaryOp::Sub; }
+  if (t == TokenType::Star)           { return BinaryOp::Mul; }
+  if (t == TokenType::Slash)          { return BinaryOp::Div; }
+  if (t == TokenType::Percent)        { return BinaryOp::Mod; }
+  if (t == TokenType::EqualEqual)     { return BinaryOp::Eq; }
+  if (t == TokenType::BangEqual)      { return BinaryOp::Neq; }
+  if (t == TokenType::Less)           { return BinaryOp::Lt; }
+  if (t == TokenType::Greater)        { return BinaryOp::Gt; }
+  if (t == TokenType::LessEqual)      { return BinaryOp::Le; }
+  if (t == TokenType::GreaterEqual)   { return BinaryOp::Ge; }
+  if (t == TokenType::AmpAmp)         { return BinaryOp::And; }
+  if (t == TokenType::PipePipe)       { return BinaryOp::Or; }
+  if (t == TokenType::Amp)            { return BinaryOp::BitAnd; }
+  if (t == TokenType::Pipe)           { return BinaryOp::BitOr; }
+  if (t == TokenType::Caret)          { return BinaryOp::BitXor; }
+  if (t == TokenType::LessLess)       { return BinaryOp::Shl; }
+  if (t == TokenType::GreaterGreater) { return BinaryOp::Shr; }
+  return BinaryOp::Add;
+}
+
+UnaryOp token_to_unary_op(TokenType t) {
+  if (t == TokenType::Bang)  { return UnaryOp::Not; }
+  if (t == TokenType::Tilde) { return UnaryOp::BitNot; }
+  return UnaryOp::Neg;
+}
+
+// type expressions
+
+string type_to_string(TypeExpr t) {
+  if (t.type_args.len() == 0) { return t.name; }
+  string out = t.name + "<";
+  for (int i = 0; i < t.type_args.len(); i = i + 1) {
+    if (i > 0) { out = out + ","; }
+    out = out + t.type_args[i];
+  }
+  out = out + ">";
+  return out;
+}
+
+TypeExpr parse_type_expr(Parser p) {
+  if (!is_type_start(peek_tok(p).type)) {
+    error_at(p, peek_tok(p), "Expected type name.");
+    return make_type("<error>");
+  }
+  Token name_tok = advance_tok(p);
+  string[] type_args = [];
+  if (check(p, TokenType::Less)) {
+    advance_tok(p);
+    TypeExpr inner = parse_type_expr(p);
+    type_args.push(type_to_string(inner));
+    while (match_tt(p, TokenType::Comma)) {
+      TypeExpr more = parse_type_expr(p);
+      type_args.push(type_to_string(more));
+    }
+    consume(p, TokenType::Greater, "Expected '>' after type arguments.");
+  }
+  TypeExpr t = TypeExpr { name_tok.lexeme, type_args };
+  while (match_tt(p, TokenType::LeftBracket)) {
+    consume(p, TokenType::RightBracket, "Expected ']' after array type suffix.");
+    string inner_name = type_to_string(t);
+    string[] arg = [];
+    arg.push(inner_name);
+    t = TypeExpr { "Array", arg };
+  }
+  return t;
+}
+
+// position helpers: extract line/col from any Expr variant
+
+int expr_line(Expr e) => e match {
+  Expr::IntLit(_, let l, _) => l,
+  Expr::CharLit(_, let l, _) => l,
+  Expr::FloatLit(_, let l, _) => l,
+  Expr::StringLit(_, let l, _) => l,
+  Expr::NullLit(let l, _) => l,
+  Expr::BoolLit(_, let l, _) => l,
+  Expr::Ident(_, let l, _) => l,
+  Expr::Unary(_, _, let l, _) => l,
+  Expr::Binary(_, _, _, let l, _) => l,
+  Expr::Assign(_, _, _, let l, _) => l,
+  Expr::Call(_, _, _, let l, _) => l,
+  Expr::BindingPat(_, let l, _) => l,
+  Expr::ArrayPat(_, let l, _) => l,
+  Expr::EnumPat(_, _, _, let l, _) => l,
+  Expr::Match(_, _, let l, _) => l,
+  Expr::Cast(_, _, let l, _) => l,
+  Expr::NsAccess(_, _, let l, _) => l,
+  Expr::FieldAccess(_, _, let l, _) => l,
+  Expr::FieldAssign(_, _, _, let l, _) => l,
+  Expr::Index(_, _, let l, _) => l,
+  Expr::IndexAssign(_, _, _, let l, _) => l,
+  Expr::StructLit(_, _, let l, _) => l,
+  Expr::ArrayLit(_, let l, _) => l,
+  Expr::MapLit(_, _, let l, _) => l,
+  Expr::NullCoalesce(_, _, _, let l, _) => l,
+  Expr::Ternary(_, _, _, let l, _) => l,
+  Expr::Propagate(_, let l, _) => l,
+  Expr::TryExpr(_, let l, _) => l,
+  Expr::None => -1,
+};
+
+int expr_col(Expr e) => e match {
+  Expr::IntLit(_, _, let c) => c,
+  Expr::CharLit(_, _, let c) => c,
+  Expr::FloatLit(_, _, let c) => c,
+  Expr::StringLit(_, _, let c) => c,
+  Expr::NullLit(_, let c) => c,
+  Expr::BoolLit(_, _, let c) => c,
+  Expr::Ident(_, _, let c) => c,
+  Expr::Unary(_, _, _, let c) => c,
+  Expr::Binary(_, _, _, _, let c) => c,
+  Expr::Assign(_, _, _, _, let c) => c,
+  Expr::Call(_, _, _, _, let c) => c,
+  Expr::BindingPat(_, _, let c) => c,
+  Expr::ArrayPat(_, _, let c) => c,
+  Expr::EnumPat(_, _, _, _, let c) => c,
+  Expr::Match(_, _, _, let c) => c,
+  Expr::Cast(_, _, let c) => c,
+  Expr::NsAccess(_, _, _, let c) => c,
+  Expr::FieldAccess(_, _, _, let c) => c,
+  Expr::FieldAssign(_, _, _, _, let c) => c,
+  Expr::Index(_, _, _, let c) => c,
+  Expr::IndexAssign(_, _, _, _, let c) => c,
+  Expr::StructLit(_, _, _, let c) => c,
+  Expr::ArrayLit(_, _, let c) => c,
+  Expr::MapLit(_, _, _, let c) => c,
+  Expr::NullCoalesce(_, _, _, _, let c) => c,
+  Expr::Ternary(_, _, _, _, let c) => c,
+  Expr::Propagate(_, _, let c) => c,
+  Expr::TryExpr(_, _, let c) => c,
+  Expr::None => -1,
+};
