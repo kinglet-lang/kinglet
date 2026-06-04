@@ -33,6 +33,27 @@ using codegen { compile_stmt };
 
 // path helpers
 
+// Walk up from start_dir looking for kinglet.toml. Returns the directory
+// containing it, or empty string if not found.
+string find_project_root(string start_dir) {
+  string dir = start_dir;
+  while (dir.len() > 0) {
+    string candidate = dir + "/kinglet.toml";
+    string content = fs::__read(candidate);
+    if (content != null) { return dir; }
+    int i = dir.len() - 1;
+    while (i >= 0) {
+      if (dir.slice(i, i + 1) == "/") {
+        dir = dir.slice(0, i);
+        break;
+      }
+      i = i - 1;
+    }
+    if (i < 0) { break; }
+  }
+  return "";
+}
+
 string dir_of(string path) {
   int i = path.len() - 1;
   while (i >= 0) {
@@ -63,7 +84,19 @@ string stem_of(string path) {
   return name;
 }
 
-string resolve_import_path(string base_dir, string relative) {
+string resolve_import_path(string base_dir, string relative, string project_root) {
+  // Project-root-relative path: //parser/ast.kl
+  if (relative.len() >= 2 && relative[0] == '/' && relative[1] == '/') {
+    if (project_root.len() == 0) {
+      return "";  // caller should report "no kinglet.toml found"
+    }
+    string rel = relative.slice(2, relative.len());
+    if (project_root[project_root.len() - 1] == '/') {
+      return project_root + rel;
+    }
+    return project_root + "/" + rel;
+  }
+  // Relative path: ../foo.kl or ./foo.kl or foo.kl
   string[] parts = relative.split("/");
   string[] segments = base_dir.split("/");
   for (int i = 0; i < parts.len(); i = i + 1) {
@@ -174,7 +207,10 @@ void handle_import_block(Compiler co, string[] paths, string[] aliases, string b
 }
 
 string load_module(Compiler co, string import_path, string importing_dir, string alias, string[] selected) {
-  string resolved = resolve_import_path(importing_dir, import_path);
+  string resolved = resolve_import_path(importing_dir, import_path, co.imports.project_root);
+  if (resolved.len() == 0 && import_path.len() >= 2 && import_path[0] == '/' && import_path[1] == '/') {
+    return "Cannot resolve '//' path: no kinglet.toml found";
+  }
   if (str_arr_contains(co.imports.loading_paths, resolved)) {
     return "Circular import: " + import_path;
   }
@@ -350,6 +386,10 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
         co.usings.push(n),
       _ => skip_decl(co),
     };
+  }
+  // Discover project root from kinglet.toml for // path resolution.
+  if (source_path.len() > 0) {
+    co.imports.project_root = find_project_root(dir_of(source_path));
   }
   // Pass 0a: process imports.
   if (source_path.len() > 0) {

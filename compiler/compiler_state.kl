@@ -54,6 +54,7 @@ pub struct ImportState {
   string[] loading_paths;
   ImportedFunc[] pending;
   string[] namespaces;
+  string project_root;
 }
 
 pub struct Compiler {
@@ -77,7 +78,7 @@ pub Compiler make_compiler() {
   Chunk c = bytecode::make_chunk();
   bytecode::register_builtin_enums(c);
   return Compiler { c, [], [], 0, [], [], [], [], 0, [], [], [],
-    ImportState { [], [], [], [] }, false };
+    ImportState { [], [], [], [], "" }, false };
 }
 
 // Indices of pre-registered built-in enums (mirrors bytecode::register_builtin_enums
