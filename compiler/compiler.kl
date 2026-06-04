@@ -121,8 +121,8 @@ void _reg_import_func(Compiler co, string ns, string n, Parameter[] params, Stmt
   if (is_pub && is_sel && !str_arr_contains(selected, n)) { return; }
   string qualified = ns + "::" + n;
   if (!func_exists(co, qualified)) {
-    register_compiler_function(co, qualified, params.len());
-    co.imports.pending.push(ImportedFunc { qualified, params, body, dl, dc });
+    register_compiler_function(co, n, qualified, params.len());
+    co.imports.pending.push(ImportedFunc { ns, qualified, params, body, dl, dc });
   }
   int fi = resolve_function(co, qualified);
   if (is_pub && is_sel && !func_exists(co, n)) {
@@ -131,6 +131,11 @@ void _reg_import_func(Compiler co, string ns, string n, Parameter[] params, Stmt
   if (!is_pub && !func_exists(co, n)) {
     register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len());
   }
+}
+
+void _reg_import_func_if(Compiler co, string ns, string n, Parameter[] params, Stmt body, bool is_pub, int dl, int dc, string[] selected, bool is_sel, bool want_pub) {
+  if (is_pub != want_pub) { return; }
+  _reg_import_func(co, ns, n, params, body, is_pub, dl, dc, selected, is_sel);
 }
 
 void _reg_import_struct(Compiler co, string n, FieldDef[] fields, bool is_pub, string[] selected, bool is_sel) {
@@ -143,9 +148,29 @@ void _reg_import_enum(Compiler co, string n, EnumVariant[] variants, bool is_pub
   if (!enum_exists(co, n)) { _register_enum_decl(co, n, variants); }
 }
 
+void _reg_import_struct_if(Compiler co, string n, FieldDef[] fields, bool is_pub, string[] selected, bool is_sel, bool want_pub) {
+  if (is_pub != want_pub) { return; }
+  _reg_import_struct(co, n, fields, is_pub, selected, is_sel);
+}
+
+void _reg_import_enum_if(Compiler co, string n, EnumVariant[] variants, bool is_pub, string[] selected, bool is_sel, bool want_pub) {
+  if (is_pub != want_pub) { return; }
+  _reg_import_enum(co, n, variants, is_pub, selected, is_sel);
+}
+
 void handle_import_decl(Compiler co, string path, string base_dir, string alias, string[] selected, int line, int col) {
   string err = load_module(co, path, base_dir, alias, selected);
   if (err.len() > 0) { compile_error(co, line, col, err); }
+}
+
+void handle_import_block(Compiler co, string[] paths, string[] aliases, string base_dir, int line, int col) {
+  for (int i = 0; i < paths.len(); i = i + 1) {
+    string alias = "";
+    if (i < aliases.len()) { alias = aliases[i]; }
+    string[] selected = [];
+    string err = load_module(co, paths[i], base_dir, alias, selected);
+    if (err.len() > 0) { compile_error(co, line, col, err); return; }
+  }
 }
 
 string load_module(Compiler co, string import_path, string importing_dir, string alias, string[] selected) {
@@ -169,30 +194,69 @@ string load_module(Compiler co, string import_path, string importing_dir, string
     prog.declarations[i] match {
       Decl::ImportDecl(let ip, let ia, let isel, let _l, let _c) =>
         _handle_transitive(co, ip, mod_dir, ia, isel),
+      Decl::ImportBlockDecl(let paths, let aliases, let _l, let _c) =>
+        _handle_transitive_block(co, paths, aliases, mod_dir),
       _ => {},
     };
     if (co.errors.len() > 0) { co.imports.loading_paths.pop(); return "transitive error"; }
   }
-  // Register declarations
+  // Register declarations. Order matters for bytecode-identity with the
+  // bootstrap: process_import_module in compiler.cc registers public
+  // functions first (line 1794), then private functions (line 1821), so
+  // function indices in the resulting chunk match across compilers.
   bool is_sel = selected.len() > 0;
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
       Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
-        _reg_import_func(co, ns, n, params, body, is_pub, dl, dc, selected, is_sel),
+        _reg_import_func_if(co, ns, n, params, body, is_pub, dl, dc, selected, is_sel, true),
+      _ => {},
+    };
+  }
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    prog.declarations[i] match {
+      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
+        _reg_import_func_if(co, ns, n, params, body, is_pub, dl, dc, selected, is_sel, false),
+      _ => {},
+    };
+  }
+  // Register imported structs and enums — pub then private to match bootstrap's
+  // process_import_module order (compiler.cc:1834-1894).
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    prog.declarations[i] match {
+      Decl::StructDecl(let n, let _tps, let fields, let is_pub, let _l, let _c) =>
+        _reg_import_struct_if(co, n, fields, is_pub, selected, is_sel, true),
       _ => {},
     };
   }
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
       Decl::StructDecl(let n, let _tps, let fields, let is_pub, let _l, let _c) =>
-        _reg_import_struct(co, n, fields, is_pub, selected, is_sel),
+        _reg_import_struct_if(co, n, fields, is_pub, selected, is_sel, false),
       _ => {},
     };
   }
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
       Decl::EnumDecl(let n, let variants, let is_pub, let _l, let _c) =>
-        _reg_import_enum(co, n, variants, is_pub, selected, is_sel),
+        _reg_import_enum_if(co, n, variants, is_pub, selected, is_sel, true),
+      _ => {},
+    };
+  }
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    prog.declarations[i] match {
+      Decl::EnumDecl(let n, let variants, let is_pub, let _l, let _c) =>
+        _reg_import_enum_if(co, n, variants, is_pub, selected, is_sel, false),
+      _ => {},
+    };
+  }
+  // Apply this module's own `using mod { sym };` selections so unqualified
+  // calls inside its function bodies (compiled later in Pass 2b) resolve to
+  // the dependency's qualified function index. Mirrors compiler.cc:1904-1915
+  // in the bootstrap.
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    prog.declarations[i] match {
+      Decl::UsingDecl(let un, let _is_ns, let usel, let _l, let _c) =>
+        register_using_aliases(co, un, usel),
       _ => {},
     };
   }
@@ -207,9 +271,32 @@ void _handle_transitive(Compiler co, string ip, string mod_dir, string ia, strin
   if (err.len() > 0) { compile_error(co, 0, 0, err); }
 }
 
-void register_compiler_function(Compiler co, string name, int param_count) {
+void _handle_transitive_block(Compiler co, string[] paths, string[] aliases, string mod_dir) {
+  for (int i = 0; i < paths.len(); i = i + 1) {
+    string alias = "";
+    if (i < aliases.len()) { alias = aliases[i]; }
+    string[] selected = [];
+    string err = load_module(co, paths[i], mod_dir, alias, selected);
+    if (err.len() > 0) { compile_error(co, 0, 0, err); return; }
+  }
+}
+
+void register_using_aliases(Compiler co, string ns, string[] selected) {
+  for (int i = 0; i < selected.len(); i = i + 1) {
+    string sym = selected[i];
+    string qualified = ns + "::" + sym;
+    int fi = resolve_function(co, qualified);
+    if (fi >= 0 && !func_exists(co, sym)) {
+      register_func_alias(co, sym, co.funcs[fi].func_index, co.funcs[fi].const_index, co.funcs[fi].param_count);
+    }
+  }
+}
+
+void register_compiler_function(Compiler co, string chunk_name, string lookup_name, int param_count) {
   // Allocate function table slot (entry to be patched once body emits).
-  FunctionInfo info = FunctionInfo { name, 0, param_count };
+  // chunk_name is the bare name stored in the chunk (bootstrap uses bare names;
+  // qualified names only go in the lookup table so serialized output matches).
+  FunctionInfo info = FunctionInfo { chunk_name, 0, param_count };
   co.chunk.functions.push(info);
   int func_index = co.chunk.functions.len() - 1;
   // Every function gets a Function_ constant, even at decl time. Mirrors
@@ -221,7 +308,7 @@ void register_compiler_function(Compiler co, string name, int param_count) {
   };
   co.chunk.constants.push(fc);
   int const_index = co.chunk.constants.len() - 1;
-  FuncEntry fe = FuncEntry { name, func_index, const_index, param_count };
+  FuncEntry fe = FuncEntry { lookup_name, func_index, const_index, param_count };
   co.funcs.push(fe);
 }
 
@@ -258,7 +345,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
     d match {
-      Decl::UsingDecl(let n, let _is_ns, let _l, let _c) =>
+      Decl::UsingDecl(let n, let _is_ns, let _selected, let _l, let _c) =>
         co.usings.push(n),
       _ => skip_decl(co),
     };
@@ -270,10 +357,22 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
       prog.declarations[i] match {
         Decl::ImportDecl(let path, let alias, let selected, let line, let col) =>
           handle_import_decl(co, path, base_dir, alias, selected, line, col),
+        Decl::ImportBlockDecl(let paths, let aliases, let line, let col) =>
+          handle_import_block(co, paths, aliases, base_dir, line, col),
         _ => {},
       };
       if (co.errors.len() > 0) { return co.errors.len(); }
     }
+  }
+  // Pass 0c: lower `using mod { sym1, sym2 };` to short-name function aliases.
+  // Mirrors compiler.cc:56-69 in the bootstrap. Each selected symbol resolves
+  // to ns::sym and gets a short-name FuncEntry pointing at the same slot.
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    prog.declarations[i] match {
+      Decl::UsingDecl(let n, let _is_ns, let selected, let _l, let _c) =>
+        register_using_aliases(co, n, selected),
+      _ => skip_decl(co),
+    };
   }
   // Pass 0b: register struct and enum declarations.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
@@ -323,6 +422,17 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
     if (co.errors.len() > 0) { return co.errors.len(); }
   }
   // Pass 2b: compile imported function bodies.
+  // Stable-sort by namespace to match bootstrap's std::map iteration order
+  // (alphabetical by namespace). Insertion sort is in-place and stable.
+  for (int i = 1; i < co.imports.pending.len(); i = i + 1) {
+    ImportedFunc key = co.imports.pending[i];
+    int j = i - 1;
+    while (j >= 0 && co.imports.pending[j].ns > key.ns) {
+      co.imports.pending[j + 1] = co.imports.pending[j];
+      j = j - 1;
+    }
+    co.imports.pending[j + 1] = key;
+  }
   for (int i = 0; i < co.imports.pending.len(); i = i + 1) {
     ImportedFunc ifn = co.imports.pending[i];
     compile_function_body(co, ifn.qualified_name, ifn.params, ifn.body, ifn.line, ifn.col);
@@ -332,7 +442,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
 }
 
 void register_top_function(Compiler co, string name, Parameter[] params) {
-  register_compiler_function(co, name, params.len());
+  register_compiler_function(co, name, name, params.len());
 }
 
 void _register_struct_decl(Compiler co, string name, FieldDef[] fields) {

@@ -63,8 +63,19 @@ Decl parse_using(Parser p) {
   Token using_tok = previous(p);
   bool is_namespace = match_tt(p, TokenType::Namespace);
   Token name = consume(p, TokenType::Identifier, "Expected namespace name after 'using'.");
+  string[] selected = [];
+  if (match_tt(p, TokenType::LeftBrace)) {
+    while (!check(p, TokenType::RightBrace) && peek_tok(p).type != TokenType::Eof) {
+      Token sym = consume(p, TokenType::Identifier, "Expected symbol name in using list.");
+      selected.push(sym.lexeme);
+      if (!check(p, TokenType::RightBrace)) {
+        consume(p, TokenType::Comma, "Expected ',' between symbols in using list.");
+      }
+    }
+    consume(p, TokenType::RightBrace, "Expected '}' after using symbol list.");
+  }
   consume(p, TokenType::Semicolon, "Expected ';' after using declaration.");
-  return Decl::UsingDecl(name.lexeme, is_namespace, using_tok.line, using_tok.col);
+  return Decl::UsingDecl(name.lexeme, is_namespace, selected, using_tok.line, using_tok.col);
 }
 
 Decl parse_import(Parser p) {

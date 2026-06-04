@@ -745,6 +745,15 @@ void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
     return;
   }
   int fi = resolve_function(co, callee_name);
+  // Fallback: search imported namespaces for ns::callee_name. Mirrors
+  // compiler.cc:1130-1139 — intra-module calls inside non-selectively
+  // imported modules only have the qualified name registered.
+  if (fi < 0) {
+    for (int ni = 0; ni < co.imports.namespaces.len(); ni = ni + 1) {
+      int qfi = resolve_function(co, co.imports.namespaces[ni] + "::" + callee_name);
+      if (qfi >= 0) { fi = qfi; break; }
+    }
+  }
   if (fi < 0) {
     compile_error(co, cl, cc, "Use of undeclared variable '" + callee_name + "'.");
     return;

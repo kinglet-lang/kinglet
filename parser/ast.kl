@@ -160,7 +160,9 @@ pub struct WhereClause {
 //   ConceptDecl(name, type_params, methods, is_public, line, col)
 //   ImportDecl(path, alias, selected, line, col)
 //   ImportBlockDecl(paths, aliases, line, col)  — import { "p1" as a \n "p2" }
-//   UsingDecl(namespace_name, is_namespace, line, col)
+//   UsingDecl(namespace_name, is_namespace, selected, line, col)
+//     selected is empty for `using ns;` and `using namespace ns;`,
+//     populated for `using mod { sym1, sym2 };`.
 //   TopLevelStmt(stmt, line, col)
 pub enum Decl {
   FunctionDecl(string, TypeExpr, string[], Parameter[], WhereClause[], Stmt, bool, int, int),
@@ -169,7 +171,7 @@ pub enum Decl {
   ConceptDecl(string, string[], ConceptMethod[], bool, int, int),
   ImportDecl(string, string, string[], int, int),
   ImportBlockDecl(string[], string[], int, int),
-  UsingDecl(string, bool, int, int),
+  UsingDecl(string, bool, string[], int, int),
   TopLevelStmt(Stmt, int, int),
 }
 

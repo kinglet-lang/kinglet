@@ -41,6 +41,7 @@ pub struct CompileError {
 }
 
 pub struct ImportedFunc {
+  string ns;
   string qualified_name;
   Parameter[] params;
   Stmt body;

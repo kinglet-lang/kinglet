@@ -447,8 +447,8 @@ void print_decl(Decl d, int depth) {
       print_import_decl(path, alias, selected, depth),
     Decl::ImportBlockDecl(let paths, let aliases, let _l, let _c) =>
       print_import_block(paths, aliases, depth),
-    Decl::UsingDecl(let n, let is_ns, let _l, let _c) =>
-      print_using_decl(n, is_ns, depth),
+    Decl::UsingDecl(let n, let is_ns, let selected, let _l, let _c) =>
+      print_using_decl(n, is_ns, selected, depth),
     Decl::ConceptDecl(let n, let tps, let methods, let is_pub, let _l, let _c) =>
       print_concept_decl(n, tps, methods, is_pub, depth),
     Decl::TopLevelStmt(let s, let _l, let _c) =>
@@ -540,7 +540,16 @@ void print_import_block(string[] paths, string[] aliases, int depth) {
   }
 }
 
-void print_using_decl(string n, bool is_ns, int depth) {
+void print_using_decl(string n, bool is_ns, string[] selected, int depth) {
+  if (selected.len() > 0) {
+    string body = "";
+    for (int i = 0; i < selected.len(); i = i + 1) {
+      if (i > 0) { body = body + ", "; }
+      body = body + selected[i];
+    }
+    io::out.line("{}(using {} {" + body + "})", indent_str(depth), n);
+    return;
+  }
   string kind = "using";
   if (is_ns) { kind = "using namespace"; }
   io::out.line("{}{} {}", indent_str(depth), kind, n);
