@@ -1,225 +1,60 @@
 // Self-hosted Kinglet type checker.
 //
-// Walks a Program and reports type errors. Operates on a private mirror
-// of the AST types declared in parser/ast.kl — same shape, same names,
-// distinct module-scope copies. The bootstrap compiler matches enum
-// variants and struct field meta by name across modules, so values built
-// in parser.kl line up with the mirrors here. We do NOT import ast.kl
-// directly: doing so triggers the same duplicate-pub-function bug
-// documented at the top of parser/parser.kl when ast.kl has already been
-// pulled in transitively.
-//
-// Phase 1 expansion: Char/Null/Function/Struct/Enum/Array/Map type kinds,
-// type detail storage, struct/enum/using declaration registration.
+// Walks a Program AST (parser/ast.kl) and reports type errors.
+// CLI entry points (run_check, run_checker) live in cli/checker_driver.kl.
 
-using io;
-
-// --- AST mirror (kept in sync with parser/ast.kl by position) -------------
-
-enum BinaryOp {
-  Add, Sub, Mul, Div, Mod,
-  Eq, Neq, Lt, Gt, Le, Ge,
-  And, Or,
-  BitAnd, BitOr, BitXor, Shl, Shr,
+import {
+  "../parser/ast.kl"
 }
 
-enum UnaryOp { Neg, Not, BitNot, }
+using ast {
+  BinaryOp, UnaryOp, AssignOp, TypeExpr,
+  Expr, Parameter, Stmt, Decl, Program
+};
 
-enum AssignOp { Assign, AddAssign, SubAssign, MulAssign, DivAssign, }
-
-struct TypeExpr {
-  string name;
-  string[] type_args;
-}
-
-enum Expr {
-  IntLit(int, int, int),
-  FloatLit(float, int, int),
-  StringLit(string, int, int),
-  BoolLit(bool, int, int),
-  Ident(string, int, int),
-  Unary(UnaryOp, Expr, int, int),
-  Binary(Expr, BinaryOp, Expr, int, int),
-  Assign(string, AssignOp, Expr, int, int),
-  Call(Expr, TypeExpr[], Expr[], int, int),
-  BindingPat(string, int, int),
-  ArrayPat(Expr[], int, int),
-  EnumPat(string, string, Expr[], int, int),
-  Match(Expr, MatchArm[], int, int),
-  Cast(TypeExpr, Expr, int, int),
-  NsAccess(string, string, int, int),
-  FieldAccess(Expr, string, int, int),
-  Index(Expr, Expr, int, int),
-  StructLit(TypeExpr, FieldInit[], int, int),
-  ArrayLit(Expr[], int, int),
-  NullCoalesce(Expr, string, Expr, int, int),
-  TryExpr(Expr, int, int),
-  None,
-}
-
-struct MatchArm {
-  Expr pattern;
-  Expr guard_expr;
-  Expr body;
-}
-
-struct FieldInit {
-  string name;
-  Expr value;
-}
-
-struct Parameter {
-  TypeExpr type;
-  string name;
-}
-
-enum Stmt {
-  ExprStmt(Expr, int, int),
-  ReturnStmt(Expr, int, int),
-  VarDecl(string, TypeExpr, string, Expr, int, int),
-  Block(Stmt[], int, int),
-  If(Expr, Stmt, Stmt, int, int),
-  Guard(Expr, Stmt, int, int),
-  While(Expr, Stmt, int, int),
-  For(Stmt, Expr, Stmt, Stmt, int, int),
-  Break(int, int),
-  Continue(int, int),
-  None,
-}
-
-struct FieldDef {
-  TypeExpr type;
-  string name;
-}
-
-struct EnumVariant {
-  string name;
-  TypeExpr[] param_types;
-}
-
-struct ConceptMethod {
-  TypeExpr return_type;
-  string name;
-  Parameter[] params;
-}
-
-struct WhereClause {
-  string concept_name;
-  string[] type_args;
-}
-
-enum Decl {
-  FunctionDecl(string, TypeExpr, string[], Parameter[], WhereClause[], Stmt, bool, int, int),
-  StructDecl(string, string[], FieldDef[], bool, int, int),
-  EnumDecl(string, EnumVariant[], bool, int, int),
-  ConceptDecl(string, string[], ConceptMethod[], bool, int, int),
-  ImportDecl(string, string, string[], int, int),
-  UsingDecl(string, bool, int, int),
-  TopLevelStmt(Stmt, int, int),
-}
-
-struct Program {
-  Decl[] declarations;
-}
-
-// --- type system ----------------------------------------------------------
+// type system
 
 pub enum TypeKind {
   Int, Float, Bool, String, Void, Unknown,
-  Char, Null, Function, Struct, Enum, Array, Map,
 }
 
 pub struct Type {
   TypeKind kind;
-  string name;       // struct/enum/function name; "" for primitives
-  int type_id;       // index into Checker detail tables; 0 = no detail
 }
 
-pub Type type_int()     => Type { TypeKind::Int, "", 0 };
-pub Type type_float()   => Type { TypeKind::Float, "", 0 };
-pub Type type_bool()    => Type { TypeKind::Bool, "", 0 };
-pub Type type_string()  => Type { TypeKind::String, "", 0 };
-pub Type type_void()    => Type { TypeKind::Void, "", 0 };
-pub Type type_unknown() => Type { TypeKind::Unknown, "", 0 };
-pub Type type_char()    => Type { TypeKind::Char, "", 0 };
-pub Type type_null()    => Type { TypeKind::Null, "", 0 };
+pub Type type_int()     => Type { TypeKind::Int };
+pub Type type_float()   => Type { TypeKind::Float };
+pub Type type_bool()    => Type { TypeKind::Bool };
+pub Type type_string()  => Type { TypeKind::String };
+pub Type type_void()    => Type { TypeKind::Void };
+pub Type type_unknown() => Type { TypeKind::Unknown };
 
-pub string type_name(Type t) {
+pub string type_kind_name(Type t) {
   return t.kind match {
-    TypeKind::Int      => "int",
-    TypeKind::Float    => "float",
-    TypeKind::Bool     => "bool",
-    TypeKind::String   => "string",
-    TypeKind::Void     => "void",
-    TypeKind::Unknown  => "unknown",
-    TypeKind::Char     => "char",
-    TypeKind::Null     => "null",
-    TypeKind::Function => t.name,
-    TypeKind::Struct   => t.name,
-    TypeKind::Enum     => t.name,
-    TypeKind::Array    => "array",
-    TypeKind::Map      => "map",
+    TypeKind::Int     => "int",
+    TypeKind::Float   => "float",
+    TypeKind::Bool    => "bool",
+    TypeKind::String  => "string",
+    TypeKind::Void    => "void",
+    TypeKind::Unknown => "unknown",
   };
 }
 
 // Unknown is bidirectionally compatible so we don't cascade errors after a
 // first failure has already poisoned a subexpression's type.
-bool types_compatible(Checker c, Type a, Type b) {
+bool types_compatible(Type a, Type b) {
   if (a.kind == TypeKind::Unknown) { return true; }
   if (b.kind == TypeKind::Unknown) { return true; }
-  // Struct/Enum: name equality
-  if (a.kind == TypeKind::Struct && b.kind == TypeKind::Struct) {
-    return a.name == b.name;
-  }
-  if (a.kind == TypeKind::Enum && b.kind == TypeKind::Enum) {
-    return a.name == b.name;
-  }
-  // Array: same kind is sufficient for basic checking;
-  // full element-type compatibility depends on type-detail traversal
-  // which is deferred until the checker has better recursion support.
-  if (a.kind == TypeKind::Array && b.kind == TypeKind::Array) {
-    int aid = a.type_id;
-    int bid = b.type_id;
-    if (aid >= 1 && aid <= c.array_element_types.len() &&
-        bid >= 1 && bid <= c.array_element_types.len()) {
-      Type ea = c.array_element_types[aid - 1];
-      Type eb = c.array_element_types[bid - 1];
-      return ea.kind == eb.kind || ea.kind == TypeKind::Unknown || eb.kind == TypeKind::Unknown;
-    }
-    return true;
-  }
-  // Map: same kind is sufficient for basic checking.
-  if (a.kind == TypeKind::Map && b.kind == TypeKind::Map) {
-    return true;
-  }
   return a.kind == b.kind;
 }
 
 bool is_numeric(Type t) {
   if (t.kind == TypeKind::Int) { return true; }
   if (t.kind == TypeKind::Float) { return true; }
-  if (t.kind == TypeKind::Char) { return true; }
   return false;
 }
 
-// --- type detail storage --------------------------------------------------
-
-struct StructFieldInfo {
-  string name;
-  Type field_type;
-}
-
-struct EnumVariantInfo {
-  string name;
-  Type[] param_types;
-}
-
-struct FuncSignature {
-  Type[] param_types;
-  Type return_type;
-}
-
-// --- scope stack & checker state ------------------------------------------
+// scope stack & checker state
 
 pub struct Binding {
   string name;
@@ -234,75 +69,17 @@ pub struct CheckError {
 }
 
 pub struct Checker {
-  Binding[] bindings;           // flat stack across all open scopes
-  int[] scope_starts;           // bindings.len() snapshot at each push_scope()
+  Binding[] bindings;
+  int[] scope_starts;
   CheckError[] errors;
   string file;
-
-  // Type detail tables, indexed by type_id (1-based).
-  // type_id 0 is reserved for "primitive, no detail needed".
-  string[] type_names;                  // type_names[type_id] = registered name
-  StructFieldInfo[][] struct_fields;    // struct_fields[type_id] = field list
-  EnumVariantInfo[][] enum_variants;    // enum_variants[type_id] = variant list
-  FuncSignature[] func_signatures;      // func_signatures[type_id] = signature
-  Type[] array_element_types;           // array_element_types[type_id] = element type
-  Type[] map_key_types;                 // map_key_types[type_id] = key type
-  Type[] map_value_types;               // map_value_types[type_id] = value type
-  int next_type_id;                     // allocator counter, starts at 1
-
-  // Generic / parameterized type registries.
-  string[] generic_struct_names;           // base names of generic structs
-  string[][] generic_struct_type_params;   // type parameter names per generic struct
-  FieldDef[][] generic_struct_fields;      // original field defs (may ref T, U)
-  string[] generic_func_names;             // base names of generic functions
-  string[][] generic_func_type_params;     // type parameter names per generic function
-  TypeExpr[] generic_func_return_types;    // return type (may ref T, U)
-  Parameter[][] generic_func_params;       // parameter list (may ref T, U)
-
-  // Instantiation cache — mangled name → instantiated type_id.
-  string[] instantiated_names;            // mangled names already instantiated
-
-  // Concept registries.
-  string[] concept_names;
-  string[][] concept_type_params;
-  ConceptMethod[][] concept_methods;
-
-  // UFCS method registry — "StructName::funcName" → type_id of the function.
-  string[] method_keys;
-  int[] method_type_ids;
-
-  // Namespace tracking for `using` declarations.
-  string[] used_namespaces;             // "io", "fs", "sys"
 }
 
 pub Checker make_checker(string file) {
   Binding[] b = [];
   int[] s = [];
   CheckError[] e = [];
-  string[] tn = [];
-  StructFieldInfo[][] sf = [];
-  EnumVariantInfo[][] ev = [];
-  FuncSignature[] fs = [];
-  Type[] aet = [];
-  Type[] mkt = [];
-  Type[] mvt = [];
-  string[] gsn = [];
-  string[][] gstp = [];
-  FieldDef[][] gsf = [];
-  string[] gfn = [];
-  string[][] gftp = [];
-  TypeExpr[] gfr = [];
-  Parameter[][] gfp = [];
-  string[] inam = [];
-  string[] cn = [];
-  string[][] ctp = [];
-  ConceptMethod[][] cm = [];
-  string[] mk = [];
-  int[] mti = [];
-  string[] un = [];
-  return Checker { b, s, e, file, tn, sf, ev, fs, aet, mkt, mvt, 1,
-                   gsn, gstp, gsf, gfn, gftp, gfr, gfp, inam,
-                   cn, ctp, cm, mk, mti, un };
+  return Checker { b, s, e, file };
 }
 
 void push_scope(Checker c) {
@@ -323,7 +100,7 @@ int current_scope_start(Checker c) {
   return c.scope_starts[c.scope_starts.len() - 1];
 }
 
-void add_error(Checker c, int line, int col, string msg) {
+pub void add_error(Checker c, int line, int col, string msg) {
   CheckError e = CheckError { line, col, msg };
   c.errors.push(e);
 }
@@ -358,202 +135,26 @@ Type lookup_var(Checker c, string name) {
   return type_unknown();
 }
 
-// --- type id allocation ---------------------------------------------------
-
-int alloc_type_id(Checker c) {
-  int id = c.next_type_id;
-  c.next_type_id = c.next_type_id + 1;
-  return id;
-}
-
-Type lookup_type_by_name(Checker c, string name) {
-  for (int i = 0; i < c.type_names.len(); i = i + 1) {
-    if (c.type_names[i] == name) {
-      int id = i + 1;  // type_ids are 1-based
-      // Determine kind by which detail table has data
-      if (id < c.struct_fields.len() + 1 && c.struct_fields[id].len() >= 0) {
-        // Could be struct — check if we have field data
-        return Type { TypeKind::Struct, name, id };
-      }
-      return type_unknown();
-    }
-  }
-  return type_unknown();
-}
-
-Type lookup_struct_type(Checker c, string name) {
-  for (int i = 0; i < c.type_names.len(); i = i + 1) {
-    if (c.type_names[i] == name) {
-      int id = i + 1;
-      return Type { TypeKind::Struct, name, id };
-    }
-  }
-  return type_unknown();
-}
-
-Type lookup_enum_type(Checker c, string name) {
-  for (int i = 0; i < c.type_names.len(); i = i + 1) {
-    if (c.type_names[i] == name) {
-      int id = i + 1;
-      return Type { TypeKind::Enum, name, id };
-    }
-  }
-  return type_unknown();
-}
-
-// --- type-expression resolution ------------------------------------------
+// type-expression resolution
 
 bool is_auto_type(TypeExpr t) {
   if (t.type_args.len() != 0) { return false; }
   return t.name == "auto";
 }
 
-// Resolve a stringified type argument into a concrete Type.
-// The parser stores type_args as strings. Handles simple names and
-// single-level parameterized types like "Array<int>", "Map<int, string>".
-Type resolve_type_arg(Checker c, string arg_string) {
-  if (arg_string == "int")    { return type_int(); }
-  if (arg_string == "float")  { return type_float(); }
-  if (arg_string == "double") { return type_float(); }
-  if (arg_string == "bool")   { return type_bool(); }
-  if (arg_string == "string") { return type_string(); }
-  if (arg_string == "char")   { return type_char(); }
-  if (arg_string == "void")   { return type_void(); }
-  // User-defined type (non-generic) — look up by name
-  Type st = lookup_struct_type(c, arg_string);
-  if (st.kind != TypeKind::Unknown) { return st; }
-  Type et = lookup_enum_type(c, arg_string);
-  if (et.kind != TypeKind::Unknown) { return et; }
-  return type_unknown();
-}
-
-// Compute a mangled name for an instantiated generic type.
-string mangle_name(string base, string[] args) {
-  string result = base;
-  for (int i = 0; i < args.len(); i = i + 1) {
-    result = result + "__" + args[i];
-  }
-  return result;
-}
-
-// Substitute type parameter names with concrete type arg strings in a TypeExpr.
-// Only handles top-level substitution (no nested generics in field types).
-TypeExpr substitute_type_params(TypeExpr t, string[] param_names, string[] arg_strings) {
-  for (int i = 0; i < param_names.len(); i = i + 1) {
-    if (t.name == param_names[i] && t.type_args.len() == 0) {
-      return TypeExpr { arg_strings[i], [] };
-    }
-  }
-  return t;
-}
-
-// Resolve a TypeExpr to a Type, handling parameterized types (Array<T>,
-// Map<K,V>, generic structs) and falling back to simple name lookup.
-Type resolve_type_expr(Checker c, TypeExpr t) {
+Type resolve_type_expr(TypeExpr t) {
+  if (t.type_args.len() != 0) { return type_unknown(); }
   if (t.name == "int")    { return type_int(); }
-  if (t.name == "auto")   { return type_unknown(); }  // resolved by check_var_decl from initializer
+  if (t.name == "auto")   { return type_unknown(); }
   if (t.name == "float")  { return type_float(); }
   if (t.name == "double") { return type_float(); }
   if (t.name == "bool")   { return type_bool(); }
   if (t.name == "string") { return type_string(); }
   if (t.name == "void")   { return type_void(); }
-  if (t.name == "char")   { return type_char(); }
-
-  // Parameterized types
-  if (t.type_args.len() != 0) {
-    // Array<T>
-    if (t.name == "Array") {
-      if (t.type_args.len() == 1) {
-        Type elem = resolve_type_arg(c, t.type_args[0]);
-        int id = alloc_type_id(c);
-        c.array_element_types.push(elem);
-        c.type_names.push("Array");
-        return Type { TypeKind::Array, "", id };
-      }
-      return type_unknown();
-    }
-    // Map<K, V>
-    if (t.name == "Map") {
-      if (t.type_args.len() == 2) {
-        Type key = resolve_type_arg(c, t.type_args[0]);
-        Type val = resolve_type_arg(c, t.type_args[1]);
-        int id = alloc_type_id(c);
-        c.map_key_types.push(key);
-        c.map_value_types.push(val);
-        c.type_names.push("Map");
-        return Type { TypeKind::Map, "", id };
-      }
-      return type_unknown();
-    }
-    // Generic struct instantiation
-    for (int i = 0; i < c.generic_struct_names.len(); i = i + 1) {
-      if (c.generic_struct_names[i] == t.name) {
-        return instantiate_generic_struct(c, i, t.type_args);
-      }
-    }
-    return type_unknown();
-  }
-
-  // User-defined types (non-generic)
-  Type st = lookup_struct_type(c, t.name);
-  if (st.kind != TypeKind::Unknown) { return st; }
-  Type et = lookup_enum_type(c, t.name);
-  if (et.kind != TypeKind::Unknown) { return et; }
-
-  // Check generic registries — bare name without type args is an error
-  for (int i = 0; i < c.generic_struct_names.len(); i = i + 1) {
-    if (c.generic_struct_names[i] == t.name) { return type_unknown(); }
-  }
-
   return type_unknown();
 }
 
-Type instantiate_generic_struct(Checker c, int gen_idx, string[] type_args) {
-  string base_name = c.generic_struct_names[gen_idx];
-  string mangled = mangle_name(base_name, type_args);
-
-  // Check cache
-  for (int i = 0; i < c.instantiated_names.len(); i = i + 1) {
-    if (c.instantiated_names[i] == mangled) {
-      int id = i + 1;
-      return Type { TypeKind::Struct, mangled, id };
-    }
-  }
-
-  string[] param_names = c.generic_struct_type_params[gen_idx];
-  FieldDef[] orig_fields = c.generic_struct_fields[gen_idx];
-
-  // Validate arg count
-  if (type_args.len() != param_names.len()) {
-    return type_unknown();
-  }
-
-  // Allocate type_id
-  int id = alloc_type_id(c);
-  c.type_names.push(mangled);
-  c.instantiated_names.push(mangled);
-
-  // Substitute field types
-  StructFieldInfo[] finfo = [];
-  for (int i = 0; i < orig_fields.len(); i = i + 1) {
-    TypeExpr subst = substitute_type_params(orig_fields[i].type, param_names, type_args);
-    Type ft = resolve_type_expr(c, subst);
-    finfo.push(StructFieldInfo { orig_fields[i].name, ft });
-  }
-  c.struct_fields.push(finfo);
-
-  // Register constructor
-  Type[] ptypes = [];
-  for (int i = 0; i < finfo.len(); i = i + 1) {
-    ptypes.push(finfo[i].field_type);
-  }
-  Type struct_type = Type { TypeKind::Struct, mangled, id };
-  c.func_signatures.push(FuncSignature { ptypes, struct_type });
-
-  return struct_type;
-}
-
-// --- binary-op classification --------------------------------------------
+// binary-op classification
 
 bool is_arithmetic_op(BinaryOp op) {
   return op match {
@@ -601,7 +202,7 @@ bool op_is_add(BinaryOp op) {
   return op match { BinaryOp::Add => true, _ => false, };
 }
 
-// --- expression checking --------------------------------------------------
+// expression checking
 
 Type check_expr(Checker c, Expr e) {
   return e match {
@@ -613,21 +214,12 @@ Type check_expr(Checker c, Expr e) {
     Expr::Unary(let op, let r, let l, let co) => check_unary(c, op, r, l, co),
     Expr::Binary(let lhs, let op, let rhs, let l, let co) => check_binary(c, lhs, op, rhs, l, co),
     Expr::Assign(let n, let op, let v, let l, let co)     => check_assign(c, n, op, v, l, co),
-    Expr::Call(let callee, let _ta, let args, let l, let co)  => check_call(c, callee, args, l, co),
-    Expr::NsAccess(let ns, let member, let l, let co)         => check_ns_access(c, ns, member, l, co),
-    Expr::FieldAccess(let obj, let field, let l, let co)      => check_field_access(c, obj, field, l, co),
-    Expr::Index(let obj, let idx, let l, let co)              => check_index(c, obj, idx, l, co),
-    Expr::StructLit(let t, let fields, let l, let co)         => check_struct_lit(c, t, fields, l, co),
-    Expr::ArrayLit(let elems, let l, let co)                  => check_array_lit(c, elems, l, co),
-    Expr::Cast(let target, let value, let l, let co)          => check_cast(c, target, value, l, co),
-    Expr::NullCoalesce(let left, let _err, let right, let l, let co) =>
-      check_null_coalesce(c, left, right, l, co),
-    Expr::TryExpr(let value, let l, let co)                   => check_try_expr(c, value, l, co),
     _ => type_unknown(),
   };
 }
 
 Type check_ident(Checker c, string name, int line, int col) {
+  if (name == "null") { return type_unknown(); }
   if (!var_exists(c, name)) {
     add_error(c, line, col, "Undeclared variable '" + name + "'.");
     return type_unknown();
@@ -647,14 +239,14 @@ Type check_unary(Checker c, UnaryOp op, Expr r, int line, int col) {
 Type check_neg(Checker c, Type rt, int line, int col) {
   if (rt.kind == TypeKind::Unknown) { return type_int(); }
   if (is_numeric(rt)) { return rt; }
-  add_error(c, line, col, "Cannot negate non-numeric type '" + type_name(rt) + "'.");
+  add_error(c, line, col, "Cannot negate non-numeric type '" + type_kind_name(rt) + "'.");
   return type_int();
 }
 
 Type check_bitnot(Checker c, Type rt, int line, int col) {
   if (rt.kind == TypeKind::Unknown) { return type_int(); }
   if (rt.kind != TypeKind::Int) {
-    add_error(c, line, col, "Bitwise NOT requires an integer operand, got '" + type_name(rt) + "'.");
+    add_error(c, line, col, "Bitwise NOT requires an integer operand, got '" + type_kind_name(rt) + "'.");
   }
   return type_int();
 }
@@ -670,13 +262,13 @@ Type check_binary(Checker c, Expr lhs, BinaryOp op, Expr rhs, int line, int col)
 }
 
 Type check_arithmetic(Checker c, BinaryOp op, Type l, Type r, int line, int col) {
-  if (op_is_add(op) && l.kind == TypeKind::String && r.kind == TypeKind::String) {
+  if (op_is_add(op) && (l.kind == TypeKind::String || r.kind == TypeKind::String)) {
     return type_string();
   }
   if (l.kind == TypeKind::Unknown || r.kind == TypeKind::Unknown) { return type_int(); }
   if (!is_numeric(l) || !is_numeric(r)) {
     add_error(c, line, col,
-      "Arithmetic operands must be numeric, got '" + type_name(l) + "' and '" + type_name(r) + "'.");
+      "Arithmetic operands must be numeric, got '" + type_kind_name(l) + "' and '" + type_kind_name(r) + "'.");
     return type_int();
   }
   if (l.kind == TypeKind::Float || r.kind == TypeKind::Float) { return type_float(); }
@@ -684,9 +276,9 @@ Type check_arithmetic(Checker c, BinaryOp op, Type l, Type r, int line, int col)
 }
 
 Type check_comparison(Checker c, Type l, Type r, int line, int col) {
-  if (!types_compatible(c, l, r)) {
+  if (!types_compatible(l, r)) {
     add_error(c, line, col,
-      "Cannot compare '" + type_name(l) + "' and '" + type_name(r) + "'.");
+      "Cannot compare '" + type_kind_name(l) + "' and '" + type_kind_name(r) + "'.");
   }
   return type_bool();
 }
@@ -695,7 +287,7 @@ Type check_bitwise(Checker c, Type l, Type r, int line, int col) {
   if (l.kind == TypeKind::Unknown || r.kind == TypeKind::Unknown) { return type_int(); }
   if (l.kind != TypeKind::Int || r.kind != TypeKind::Int) {
     add_error(c, line, col,
-      "Bitwise operators require integer operands, got '" + type_name(l) + "' and '" + type_name(r) + "'.");
+      "Bitwise operators require integer operands, got '" + type_kind_name(l) + "' and '" + type_kind_name(r) + "'.");
   }
   return type_int();
 }
@@ -709,371 +301,24 @@ Type check_assign(Checker c, string name, AssignOp op, Expr value, int line, int
   Type target = lookup_var(c, name);
   bool is_plain = op match { AssignOp::Assign => true, _ => false, };
   if (is_plain) {
-    if (!types_compatible(c, vt, target)) {
+    if (!types_compatible(vt, target)) {
       add_error(c, line, col,
-        "Cannot assign '" + type_name(vt) + "' to variable '" + name + "' of type '" + type_name(target) + "'.");
+        "Cannot assign '" + type_kind_name(vt) + "' to variable '" + name + "' of type '" + type_kind_name(target) + "'.");
     }
   } else {
-    // Compound assignment: both sides must support the arithmetic op.
-    // += allows string+string; all others require numeric.
     bool is_add = op match { AssignOp::AddAssign => true, _ => false, };
     if (is_add && target.kind == TypeKind::String && vt.kind == TypeKind::String) {
       // string += string OK
     } else if (!is_numeric(target) || !is_numeric(vt)) {
       add_error(c, line, col,
         "Compound assignment requires numeric operands, got '" +
-        type_name(target) + "' and '" + type_name(vt) + "'.");
+        type_kind_name(target) + "' and '" + type_kind_name(vt) + "'.");
     }
   }
   return target;
 }
 
-// --- call checking --------------------------------------------------------
-
-Type check_call(Checker c, Expr callee, Expr[] args, int line, int col) {
-  // callee is an Ident — direct function call
-  if (callee match { Expr::Ident(let _n, let _l, let _co) => true, _ => false, }) {
-    string name = callee match {
-      Expr::Ident(let n, let _l, let _co) => n,
-      _ => "",
-    };
-    if (!var_exists(c, name)) {
-      add_error(c, line, col, "Undeclared function '" + name + "'.");
-      return type_unknown();
-    }
-    Type fn_type = lookup_var(c, name);
-    return check_call_args(c, fn_type, args, line, col);
-  }
-  // callee is a FieldAccess — method call (obj.method(args))
-  if (callee match { Expr::FieldAccess(let _o, let _f, let _l, let _co) => true, _ => false, }) {
-    // Delegate: evaluate the FieldAccess as the callee type
-    Type ct = check_expr(c, callee);
-    return check_call_args(c, ct, args, line, col);
-  }
-  // callee is NsAccess — namespace function call
-  if (callee match { Expr::NsAccess(let _ns, let _mb, let _l, let _co) => true, _ => false, }) {
-    return type_unknown();  // stdlib intrinsics deferred
-  }
-  // Unknown callee form
-  return type_unknown();
-}
-
-Type check_call_args(Checker c, Type fn_type, Expr[] args, int line, int col) {
-  if (fn_type.kind == TypeKind::Unknown) { return type_unknown(); }
-  if (fn_type.kind != TypeKind::Function) {
-    add_error(c, line, col, "Cannot call non-function type '" + type_name(fn_type) + "'.");
-    return type_unknown();
-  }
-  int id = fn_type.type_id;
-  if (id < 1 || id > c.func_signatures.len()) {
-    return type_unknown();
-  }
-  FuncSignature sig = c.func_signatures[id - 1];
-  if (args.len() != sig.param_types.len()) {
-    add_error(c, line, col,
-      "Function '" + fn_type.name + "' expects " + int_to_string(sig.param_types.len()) +
-      " argument(s), got " + int_to_string(args.len()) + ".");
-    return sig.return_type;
-  }
-  for (int i = 0; i < args.len(); i = i + 1) {
-    Type at = check_expr(c, args[i]);
-    if (!types_compatible(c, at, sig.param_types[i])) {
-      add_error(c, line, col,
-        "Argument " + int_to_string(i + 1) + " of '" + fn_type.name +
-        "': expected '" + type_name(sig.param_types[i]) +
-        "', got '" + type_name(at) + "'.");
-    }
-  }
-  return sig.return_type;
-}
-
-// Helper: int to string for error messages
-string int_to_string(int n) {
-  if (n == 0) { return "0"; }
-  bool neg = n < 0;
-  if (neg) { n = 0 - n; }
-  string result = "";
-  while (n > 0) {
-    int d = n % 10;
-    string ch = d match {
-      0 => "0", 1 => "1", 2 => "2", 3 => "3", 4 => "4",
-      5 => "5", 6 => "6", 7 => "7", 8 => "8", 9 => "9",
-      _ => "?",
-    };
-    result = ch + result;
-    n = n / 10;
-  }
-  if (neg) { result = "-" + result; }
-  return result;
-}
-
-// --- namespace access checking --------------------------------------------
-
-Type check_ns_access(Checker c, string ns, string member, int line, int col) {
-  // Check if namespace has been imported via using
-  bool found = false;
-  for (int i = 0; i < c.used_namespaces.len(); i = i + 1) {
-    if (c.used_namespaces[i] == ns) { found = true; }
-  }
-  if (found) {
-    // Known stdlib namespace — defer detailed member checking
-    return type_unknown();
-  }
-
-  // Check if it's a known enum type (EnumType::Variant access)
-  Type et = lookup_enum_type(c, ns);
-  if (et.kind != TypeKind::Unknown) {
-    // Validate variant exists
-    int id = et.type_id;
-    if (id >= 1 && id <= c.enum_variants.len()) {
-      EnumVariantInfo[] variants = c.enum_variants[id - 1];
-      for (int i = 0; i < variants.len(); i = i + 1) {
-        if (variants[i].name == member) { return et; }
-      }
-      add_error(c, line, col,
-        "Enum '" + ns + "' has no variant '" + member + "'.");
-    }
-    return et;
-  }
-
-  add_error(c, line, col, "Unknown namespace '" + ns + "'.");
-  return type_unknown();
-}
-
-// --- field access checking ------------------------------------------------
-
-Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
-  Type ot = check_expr(c, obj);
-
-  // Struct field access
-  if (ot.kind == TypeKind::Struct) {
-    int id = ot.type_id;
-    if (id >= 1 && id <= c.struct_fields.len()) {
-      StructFieldInfo[] fields = c.struct_fields[id - 1];
-      for (int i = 0; i < fields.len(); i = i + 1) {
-        if (fields[i].name == field) { return fields[i].field_type; }
-      }
-    }
-    // UFCS: try "StructName::methodName"
-    string method_key = ot.name + "::" + field;
-    for (int i = 0; i < c.method_keys.len(); i = i + 1) {
-      if (c.method_keys[i] == method_key) {
-        int mid = c.method_type_ids[i];
-        return c.func_signatures[mid - 1].return_type;
-      }
-    }
-    add_error(c, line, col,
-      "Struct '" + ot.name + "' has no field or method '" + field + "'.");
-    return type_unknown();
-  }
-
-  // String methods
-  if (ot.kind == TypeKind::String) {
-    return check_string_method(c, field, line, col);
-  }
-
-  // Array methods
-  if (ot.kind == TypeKind::Array) {
-    return check_array_method(c, ot, field, line, col);
-  }
-
-  // Unknown — permissive
-  if (ot.kind == TypeKind::Unknown) { return type_unknown(); }
-
-  add_error(c, line, col,
-    "Cannot access field '" + field + "' on type '" + type_name(ot) + "'.");
-  return type_unknown();
-}
-
-Type check_string_method(Checker c, string method, int line, int col) {
-  // String methods that return int
-  if (method == "len" || method == "index_of") { return type_int(); }
-  // String methods that return bool
-  if (method == "contains" || method == "starts_with" || method == "ends_with") { return type_bool(); }
-  // String methods that return string
-  if (method == "slice" || method == "replace" || method == "trim" ||
-      method == "to_upper" || method == "to_lower") { return type_string(); }
-  // split returns string[]
-  if (method == "split") { return type_unknown(); }  // array type deferred
-  add_error(c, line, col, "String has no method '" + method + "'.");
-  return type_unknown();
-}
-
-Type check_array_method(Checker c, Type arr_type, string method, int line, int col) {
-  // Array methods that return int
-  if (method == "len" || method == "index_of") { return type_int(); }
-  // Array methods that return bool
-  if (method == "contains") { return type_bool(); }
-  // Array methods that return void
-  if (method == "push" || method == "pop" || method == "remove" ||
-      method == "clear" || method == "insert" || method == "resize" ||
-      method == "reverse") { return type_void(); }
-  // slice returns same array type
-  if (method == "slice") { return arr_type; }
-  add_error(c, line, col, "Array has no method '" + method + "'.");
-  return type_unknown();
-}
-
-// --- index checking -------------------------------------------------------
-
-Type check_index(Checker c, Expr obj, Expr idx, int line, int col) {
-  Type ot = check_expr(c, obj);
-  Type it = check_expr(c, idx);
-
-  if (ot.kind == TypeKind::Array) {
-    if (it.kind != TypeKind::Int && it.kind != TypeKind::Unknown) {
-      add_error(c, line, col, "Array index must be 'int', got '" + type_name(it) + "'.");
-    }
-    int id = ot.type_id;
-    if (id >= 1 && id <= c.array_element_types.len()) {
-      return c.array_element_types[id - 1];
-    }
-    return type_unknown();
-  }
-
-  if (ot.kind == TypeKind::String) {
-    if (it.kind != TypeKind::Int && it.kind != TypeKind::Unknown) {
-      add_error(c, line, col, "String index must be 'int', got '" + type_name(it) + "'.");
-    }
-    return type_char();
-  }
-
-  if (ot.kind == TypeKind::Unknown) { return type_unknown(); }
-
-  add_error(c, line, col, "Cannot index type '" + type_name(ot) + "'.");
-  return type_unknown();
-}
-
-// --- struct literal checking ----------------------------------------------
-
-Type check_struct_lit(Checker c, TypeExpr t, FieldInit[] fields, int line, int col) {
-  Type st = resolve_type_expr(c, t);
-  if (st.kind == TypeKind::Unknown) {
-    // If type_args present, resolve_type_expr may have failed because
-    // the generic struct wasn't registered yet. Try resolve by name only.
-    if (t.type_args.len() == 0) {
-      add_error(c, line, col, "Unknown struct type '" + t.name + "'.");
-    } else {
-      add_error(c, line, col,
-        "Cannot construct generic struct '" + t.name + "'.");
-    }
-    return type_unknown();
-  }
-  if (st.kind != TypeKind::Struct) {
-    add_error(c, line, col, "'" + t.name + "' is not a struct type.");
-    return type_unknown();
-  }
-  int id = st.type_id;
-  if (id < 1 || id > c.struct_fields.len()) { return type_unknown(); }
-  StructFieldInfo[] expected = c.struct_fields[id - 1];
-  if (fields.len() != expected.len()) {
-    add_error(c, line, col,
-      "Struct '" + st.name + "' expects " + int_to_string(expected.len()) +
-      " fields, got " + int_to_string(fields.len()) + ".");
-    return st;
-  }
-  for (int i = 0; i < fields.len(); i = i + 1) {
-    Type vt = check_expr(c, fields[i].value);
-    if (!types_compatible(c, vt, expected[i].field_type)) {
-      add_error(c, line, col,
-        "Field '" + fields[i].name + "' of '" + st.name +
-        "': expected '" + type_name(expected[i].field_type) +
-        "', got '" + type_name(vt) + "'.");
-    }
-  }
-  return st;
-}
-
-// --- array literal checking -----------------------------------------------
-
-Type check_array_lit(Checker c, Expr[] elems, int line, int col) {
-  if (elems.len() == 0) { return type_unknown(); }
-  Type first = check_expr(c, elems[0]);
-  for (int i = 1; i < elems.len(); i = i + 1) {
-    Type et = check_expr(c, elems[i]);
-    if (!types_compatible(c, first, et)) {
-      add_error(c, line, col,
-        "Array element type mismatch: '" + type_name(first) +
-        "' vs '" + type_name(et) + "'.");
-    }
-  }
-  // Allocate array type
-  int id = alloc_type_id(c);
-  c.array_element_types.push(first);
-  c.type_names.push("array");
-  return Type { TypeKind::Array, "", id };
-}
-
-// --- cast checking --------------------------------------------------------
-
-Type check_cast(Checker c, TypeExpr target, Expr value, int line, int col) {
-  Type vt = check_expr(c, value);
-  string t = target.name;
-
-  // Cast to int
-  if (t == "int") {
-    if (vt.kind == TypeKind::Int || vt.kind == TypeKind::Float ||
-        vt.kind == TypeKind::Char || vt.kind == TypeKind::String ||
-        vt.kind == TypeKind::Unknown) {
-      return type_int();
-    }
-    add_error(c, line, col, "Cannot cast '" + type_name(vt) + "' to 'int'.");
-    return type_int();
-  }
-  // Cast to float
-  if (t == "float" || t == "double") {
-    if (vt.kind == TypeKind::Int || vt.kind == TypeKind::Float ||
-        vt.kind == TypeKind::Char || vt.kind == TypeKind::String ||
-        vt.kind == TypeKind::Unknown) {
-      return type_float();
-    }
-    add_error(c, line, col, "Cannot cast '" + type_name(vt) + "' to 'float'.");
-    return type_float();
-  }
-  // Cast to string
-  if (t == "string") {
-    if (vt.kind == TypeKind::Int || vt.kind == TypeKind::Float ||
-        vt.kind == TypeKind::Char || vt.kind == TypeKind::String ||
-        vt.kind == TypeKind::Bool || vt.kind == TypeKind::Unknown) {
-      return type_string();
-    }
-    add_error(c, line, col, "Cannot cast '" + type_name(vt) + "' to 'string'.");
-    return type_string();
-  }
-  // Cast to char
-  if (t == "char") {
-    if (vt.kind == TypeKind::Int || vt.kind == TypeKind::Char ||
-        vt.kind == TypeKind::String || vt.kind == TypeKind::Unknown) {
-      return type_char();
-    }
-    add_error(c, line, col, "Cannot cast '" + type_name(vt) + "' to 'char'.");
-    return type_char();
-  }
-  // User-defined type cast — deferred
-  return type_unknown();
-}
-
-// --- null coalesce checking -----------------------------------------------
-
-Type check_null_coalesce(Checker c, Expr left, Expr right, int line, int col) {
-  Type lt = check_expr(c, left);
-  Type rt = check_expr(c, right);
-  // Both branches should be compatible
-  if (!types_compatible(c, lt, rt)) {
-    add_error(c, line, col,
-      "Null coalesce branches have incompatible types: '" +
-      type_name(lt) + "' vs '" + type_name(rt) + "'.");
-  }
-  return lt;
-}
-
-// --- try expr checking ----------------------------------------------------
-
-Type check_try_expr(Checker c, Expr value, int _line, int _col) {
-  return check_expr(c, value);
-}
-
-// --- statement checking ---------------------------------------------------
+// statement checking
 
 void check_stmt(Checker c, Stmt s) {
   s match {
@@ -1105,7 +350,7 @@ void check_return(Checker c, Expr v) {
 }
 
 void check_var_decl(Checker c, TypeExpr t, string n, Expr init, int line, int col) {
-  Type declared = resolve_type_expr(c, t);
+  Type declared = resolve_type_expr(t);
   bool auto_typed = is_auto_type(t);
   Type final_type = declared;
   bool has_init = init match { Expr::None => false, _ => true, };
@@ -1118,9 +363,9 @@ void check_var_decl(Checker c, TypeExpr t, string n, Expr init, int line, int co
     Type init_type = check_expr(c, init);
     if (auto_typed) {
       final_type = init_type;
-    } else if (!types_compatible(c, init_type, declared)) {
+    } else if (!types_compatible(init_type, declared)) {
       add_error(c, line, col,
-        "Cannot assign '" + type_name(init_type) + "' to variable '" + n + "' of type '" + type_name(declared) + "'.");
+        "Cannot assign '" + type_kind_name(init_type) + "' to variable '" + n + "' of type '" + type_kind_name(declared) + "'.");
     }
   }
   declare_var(c, n, final_type, line, col);
@@ -1137,15 +382,15 @@ void check_block(Checker c, Stmt[] stmts) {
 void check_if(Checker c, Expr cond, Stmt th, Stmt el, int line, int col) {
   Type ct = check_expr(c, cond);
   if (ct.kind != TypeKind::Bool && ct.kind != TypeKind::Int && ct.kind != TypeKind::Unknown) {
-    add_error(c, line, col, "If condition must be 'bool', got '" + type_name(ct) + "'.");
+    add_error(c, line, col, "If condition must be 'bool', got '" + type_kind_name(ct) + "'.");
   }
   Type then_type = branch_result_type(c, th);
   Type else_type = branch_result_type(c, el);
   bool has_then_value = then_type.kind != TypeKind::Void;
   bool has_else_value = else_type.kind != TypeKind::Void;
-  if (has_then_value && has_else_value && !types_compatible(c, then_type, else_type)) {
+  if (has_then_value && has_else_value && !types_compatible(then_type, else_type)) {
     add_error(c, line, col,
-      "If branches have incompatible types: '" + type_name(then_type) + "' vs '" + type_name(else_type) + "'.");
+      "If branches have incompatible types: '" + type_kind_name(then_type) + "' vs '" + type_kind_name(else_type) + "'.");
   }
 }
 
@@ -1202,122 +447,20 @@ void check_for(Checker c, Stmt init, Expr cond, Stmt step, Stmt body) {
   pop_scope(c);
 }
 
-// --- declaration registration ---------------------------------------------
+// declaration checking
 
 void register_decl(Checker c, Decl d) {
   d match {
-    Decl::FunctionDecl(let n, let rt, let tps, let params, let _w, let _body, let _is_pub, let line, let col) =>
-      register_function(c, n, rt, tps, params, _w, line, col),
-    Decl::StructDecl(let n, let tps, let fields, let _is_pub, let _l, let _co) =>
-      register_struct(c, n, tps, fields),
-    Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _co) =>
-      register_enum(c, n, variants),
-    Decl::ConceptDecl(let n, let tps, let methods, let _is_pub, let _l, let _co) =>
-      register_concept(c, n, tps, methods),
-    Decl::UsingDecl(let n, let _is_ns, let _l, let _co) =>
-      register_using(c, n),
+    Decl::FunctionDecl(let n, let rt, let _tps, let _params, let _w, let _body, let _is_pub, let line, let col) =>
+      register_function(c, n, rt, line, col),
     _ => check_void(),
   };
 }
 
-void register_function(Checker c, string n, TypeExpr rt, string[] tps, Parameter[] params, WhereClause[] _where_clauses, int line, int col) {
-  if (tps.len() > 0) {
-    // Generic function — register template, not a concrete callable
-    c.generic_func_names.push(n);
-    c.generic_func_type_params.push(tps);
-    c.generic_func_return_types.push(rt);
-    c.generic_func_params.push(params);
-    return;
-  }
-  int id = alloc_type_id(c);
-  Type ret = resolve_type_expr(c, rt);
-
-  // Build param types array
-  Type[] ptypes = [];
-  for (int i = 0; i < params.len(); i = i + 1) {
-    ptypes.push(resolve_type_expr(c, params[i].type));
-  }
-  FuncSignature sig = FuncSignature { ptypes, ret };
-  c.func_signatures.push(sig);
-  c.type_names.push(n);
-
-  Type fn_type = Type { TypeKind::Function, n, id };
-  declare_var(c, n, fn_type, line, col);
-
-  // UFCS: if first param is a known struct, register as method
-  if (params.len() > 0) {
-    Type first = ptypes[0];
-    if (first.kind == TypeKind::Struct) {
-      string key = first.name + "::" + n;
-      c.method_keys.push(key);
-      c.method_type_ids.push(id);
-    }
-  }
+void register_function(Checker c, string n, TypeExpr rt, int line, int col) {
+  Type t = resolve_type_expr(rt);
+  declare_var(c, n, t, line, col);
 }
-
-void register_struct(Checker c, string name, string[] tps, FieldDef[] fields) {
-  if (tps.len() > 0) {
-    // Generic struct — register template, not a concrete type
-    c.generic_struct_names.push(name);
-    c.generic_struct_type_params.push(tps);
-    c.generic_struct_fields.push(fields);
-    return;
-  }
-
-  int id = alloc_type_id(c);
-
-  // Build field info
-  StructFieldInfo[] finfo = [];
-  for (int i = 0; i < fields.len(); i = i + 1) {
-    Type ft = resolve_type_expr(c, fields[i].type);
-    finfo.push(StructFieldInfo { fields[i].name, ft });
-  }
-  c.struct_fields.push(finfo);
-  c.type_names.push(name);
-
-  // Register constructor function
-  Type[] ptypes = [];
-  for (int i = 0; i < fields.len(); i = i + 1) {
-    ptypes.push(resolve_type_expr(c, fields[i].type));
-  }
-  Type struct_type = Type { TypeKind::Struct, name, id };
-  FuncSignature sig = FuncSignature { ptypes, struct_type };
-  c.func_signatures.push(sig);
-  Type fn_type = Type { TypeKind::Function, name, id };
-  declare_var(c, name, fn_type, 0, 0);
-}
-
-void register_enum(Checker c, string name, EnumVariant[] variants) {
-  int id = alloc_type_id(c);
-
-  // Build variant info
-  EnumVariantInfo[] vinfo = [];
-  for (int i = 0; i < variants.len(); i = i + 1) {
-    Type[] ptypes = [];
-    for (int j = 0; j < variants[i].param_types.len(); j = j + 1) {
-      ptypes.push(resolve_type_expr(c, variants[i].param_types[j]));
-    }
-    vinfo.push(EnumVariantInfo { variants[i].name, ptypes });
-  }
-  c.enum_variants.push(vinfo);
-  c.type_names.push(name);
-}
-
-void register_concept(Checker c, string name, string[] tps, ConceptMethod[] methods) {
-  c.concept_names.push(name);
-  c.concept_type_params.push(tps);
-  c.concept_methods.push(methods);
-}
-
-void register_using(Checker c, string name) {
-  // Check for duplicate
-  for (int i = 0; i < c.used_namespaces.len(); i = i + 1) {
-    if (c.used_namespaces[i] == name) { return; }
-  }
-  c.used_namespaces.push(name);
-}
-
-// --- declaration checking -------------------------------------------------
 
 void check_decl(Checker c, Decl d) {
   d match {
@@ -1332,7 +475,7 @@ void check_function(Checker c, Parameter[] params, Stmt body) {
   push_scope(c);
   for (int i = 0; i < params.len(); i = i + 1) {
     Parameter p = params[i];
-    Type pt = resolve_type_expr(c, p.type);
+    Type pt = resolve_type_expr(p.type);
     declare_var(c, p.name, pt, 0, 0);
   }
   check_stmt(c, body);
@@ -1341,40 +484,12 @@ void check_function(Checker c, Parameter[] params, Stmt body) {
 
 pub int check_program(Checker c, Program prog) {
   push_scope(c);
-  // Pass 1: register types and concepts (needed before functions for UFCS/concept lookup)
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
-    Decl d = prog.declarations[i];
-    d match {
-      Decl::StructDecl(let n, let tps, let fields, let _is_pub, let _l, let _co) =>
-        register_struct(c, n, tps, fields),
-      Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _co) =>
-        register_enum(c, n, variants),
-      Decl::ConceptDecl(let n, let tps, let methods, let _is_pub, let _l, let _co) =>
-        register_concept(c, n, tps, methods),
-      Decl::ImportDecl(let _p, let _a, let _s, let _l, let _co) =>
-        check_void(),
-      Decl::UsingDecl(let n, let _is_ns, let _l, let _co) =>
-        register_using(c, n),
-      _ => check_void(),
-    };
+    register_decl(c, prog.declarations[i]);
   }
-  // Pass 2: register functions (may inject UFCS keys referencing pass-1 structs)
-  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
-    Decl d = prog.declarations[i];
-    d match {
-      Decl::FunctionDecl(let n, let rt, let tps, let params, let _w, let _body, let _is_pub, let line, let col) =>
-        register_function(c, n, rt, tps, params, _w, line, col),
-      _ => check_void(),
-    };
-  }
-  // Pass 3: type-check bodies
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     check_decl(c, prog.declarations[i]);
   }
   pop_scope(c);
   return c.errors.len();
-}
-
-pub int run_checker(Program prog) {
-  return check_program(make_checker("check"), prog);
 }
