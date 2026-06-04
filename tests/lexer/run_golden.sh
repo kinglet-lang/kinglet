@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Lexer golden tests for the self-hosted Kinglet lexer.
-# Runs `kinglet --run cli.kbc <case>.kl` (default mode → token dump) and
-# diffs stdout against `<case>.tokens`. Uses the cached cli.kbc artefact so
+# Runs `kinglet --run compiler.kbc <case>.kl` (default mode → token dump) and
+# diffs stdout against `<case>.tokens`. Uses the cached compiler.kbc artefact so
 # each case takes ~70ms instead of recompiling cli/main.kl from source.
 set -u
 

@@ -1,5 +1,4 @@
 # Compiled bytecode artefacts (slow to produce, easy to regenerate)
-cli.kbc
 *.kbc
 
 # Scratch files used during local development
@@ -11,4 +10,4 @@ err.log
 .claude/
 
 # Smoke / scratch drivers (underscore prefix = excluded from suite)
-compiler/_*.kl
+codegen/_*.kl

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Checker golden tests for the self-hosted Kinglet checker.
-# Runs `kinglet --run cli.kbc <case>.kl --check` and verifies expected
+# Runs `kinglet --run compiler.kbc <case>.kl --check` and verifies expected
 # (file path before --check: bootstrap binary consumes leading --* flags)
-# pass/fail. Uses the cached cli.kbc artefact so each case takes ~70ms
+# pass/fail. Uses the cached compiler.kbc artefact so each case takes ~70ms
 # instead of recompiling cli/main.kl from source.
 set -u
 

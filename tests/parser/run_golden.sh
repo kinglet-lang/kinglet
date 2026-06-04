@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Parser golden tests for the self-hosted Kinglet parser.
-# Runs `kinglet --run cli.kbc --ast <case>.kl` and diffs stdout against
-# `<case>.ast`. Uses the cached cli.kbc artefact so each case takes ~70ms
+# Runs `kinglet --run compiler.kbc --ast <case>.kl` and diffs stdout against
+# `<case>.ast`. Uses the cached compiler.kbc artefact so each case takes ~70ms
 # instead of recompiling cli/main.kl from source.
 set -u
 

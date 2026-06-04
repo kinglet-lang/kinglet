@@ -2,7 +2,7 @@
 # Codegen golden tests for the self-hosted Kinglet bytecode compiler.
 #
 # For each case <name>.kl we run:
-#   self-host:  kinglet --run cli.kbc --bytecode <name>.kl
+#   self-host:  kinglet --run compiler.kbc --bytecode <name>.kl
 # and compare against the stored <name>.bytecode golden file.
 #
 # Golden files were regenerated from self-host output when the test suite
