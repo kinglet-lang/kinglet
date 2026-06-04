@@ -3,15 +3,15 @@ using fs;
 using sys;
 
 import {
-  "../lexer/token.kl"
-  "../lexer/scanner.kl"
-  "../parser/ast.kl"
-  "../parser/helpers.kl"
-  "../parser/parser.kl"
-  "../compiler/compiler_state.kl"
-  "../compiler/compiler.kl"
-  "../compiler/disasm.kl"
-  "../compiler/bytecode.kl"
+  "//lexer/token.kl"
+  "//lexer/scanner.kl"
+  "//parser/ast.kl"
+  "//parser/helpers.kl"
+  "//parser/parser.kl"
+  "//compiler/compiler_state.kl"
+  "//compiler/compiler.kl"
+  "//compiler/disasm.kl"
+  "//compiler/bytecode.kl"
   "ast_printer.kl"
   "checker_driver.kl"
 }

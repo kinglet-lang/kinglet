@@ -3,12 +3,12 @@
 // `../checker/checker.kl`.
 
 import {
-  "../lexer/token.kl"
-  "../lexer/scanner.kl"
-  "../parser/ast.kl"
-  "../parser/helpers.kl"
-  "../parser/parser.kl"
-  "../checker/checker.kl"
+  "//lexer/token.kl"
+  "//lexer/scanner.kl"
+  "//parser/ast.kl"
+  "//parser/helpers.kl"
+  "//parser/parser.kl"
+  "//checker/checker.kl"
 }
 
 using io;

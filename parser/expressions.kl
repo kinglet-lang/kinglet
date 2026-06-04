@@ -4,7 +4,7 @@
 import {
   "ast.kl"
   "helpers.kl"
-  "../lexer/token.kl"
+  "//lexer/token.kl"
 }
 
 using ast {

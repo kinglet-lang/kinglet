@@ -3,7 +3,7 @@
 
 import {
   "ast.kl"
-  "../lexer/token.kl"
+  "//lexer/token.kl"
 }
 
 using ast {

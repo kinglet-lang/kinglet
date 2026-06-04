@@ -3,8 +3,8 @@
 
 import {
   "bytecode.kl"
-  "../parser/ast.kl"
-  "../lexer/token.kl"
+  "//parser/ast.kl"
+  "//lexer/token.kl"
 }
 
 using ast {

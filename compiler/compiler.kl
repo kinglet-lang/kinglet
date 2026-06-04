@@ -7,11 +7,11 @@ import {
   "bytecode.kl"
   "compiler_state.kl"
   "codegen.kl"
-  "../parser/ast.kl"
-  "../parser/helpers.kl"
-  "../parser/parser.kl"
-  "../lexer/scanner.kl"
-  "../lexer/token.kl"
+  "//parser/ast.kl"
+  "//parser/helpers.kl"
+  "//parser/parser.kl"
+  "//lexer/scanner.kl"
+  "//lexer/token.kl"
 }
 
 using io;

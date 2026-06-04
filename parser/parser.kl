@@ -8,7 +8,7 @@ import {
   "ast.kl"
   "helpers.kl"
   "expressions.kl"
-  "../lexer/token.kl"
+  "//lexer/token.kl"
 }
 
 using ast {

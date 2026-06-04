@@ -4,7 +4,7 @@
 import {
   "bytecode.kl"
   "compiler_state.kl"
-  "../parser/ast.kl"
+  "//parser/ast.kl"
 }
 
 using ast {

@@ -4,7 +4,7 @@
 // CLI entry points (run_check, run_checker) live in cli/checker_driver.kl.
 
 import {
-  "../parser/ast.kl"
+  "//parser/ast.kl"
 }
 
 using ast {
