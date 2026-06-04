@@ -1,0 +1,153 @@
+#pragma once
+
+#include "vm/value.h"
+
+#include <cstdint>
+#include <ostream>
+#include <string>
+#include <vector>
+
+namespace kinglet {
+
+enum class OpCode : uint8_t {
+  Constant,
+  Null,
+  True,
+  False,
+  Add,
+  Subtract,
+  Multiply,
+  Divide,
+  Modulo,
+  Negate,
+  Not,
+  BitNot,
+  BitAnd,
+  BitOr,
+  BitXor,
+  Shl,
+  Shr,
+  LoadLocal,
+  StoreLocal,
+  Pop,
+  Dup,
+  CastTo, FloatToBits,
+  Call,
+  Return,
+  Jmp,
+  JmpFalse,
+  JmpIfErr,
+  Eq,
+  Neq,
+  Lt,
+  Gt,
+  Le,
+  Ge,
+  NativeOut,
+  NativeOutLn,
+  NativeErr,
+  NativeErrLn,
+  NativeIn,
+  NativeInSecret,
+  NativeFsRead,
+  NativeFsWrite,
+  NativeSysArgs,
+  StructNew,
+  FieldGet,
+  FieldSet,
+  EnumVariant,
+  ArrayNew,
+  IndexGet,
+  IndexSet,
+  ArrayLen,
+  ArrayPush,
+  ArrayResize,
+  ArrayPop,
+  ArrayRemove,
+  ArrayContains,
+  ArrayClear,
+  ArrayInsert,
+  ArrayIndexOf,
+  ArraySlice,
+  ArrayReverse,
+  StringStartsWith,
+  StringEndsWith,
+  StringReplace,
+  StringSplit,
+  StringTrim,
+  StringToUpper,
+  StringToLower,
+  EnumVariantPayload,
+  EnumPayloadGet,
+  MapNew,
+  MapGet,
+  MapSet,
+  MapHas,
+  MapRemove,
+  MapKeys,
+  MapLen,
+  PushHandler,
+  PopHandler,
+  PropagateErr,
+};
+
+struct Instruction {
+  OpCode op;
+  int32_t operand = 0;
+  int line = 0;
+  int column = 0;
+};
+
+struct FunctionInfo {
+  std::string name;
+  std::size_t entry = 0;
+  int param_count = 0;
+};
+
+struct StructMeta {
+  std::string name;
+  std::vector<std::string> field_names;
+};
+
+struct EnumMeta {
+  std::string name;
+  std::vector<std::string> variants;
+  std::vector<int> variant_param_counts;
+};
+
+class Chunk {
+public:
+  uint32_t add_constant(Value value);
+  void write(OpCode op, int line, int column);
+  void write_operand(OpCode op, uint32_t operand, int line, int column);
+  void write_constant(Value value, int line, int column);
+
+  int add_function(FunctionInfo info);
+  int add_struct_meta(StructMeta meta);
+  int add_enum_meta(EnumMeta meta);
+  const std::vector<FunctionInfo> &functions() const;
+  const std::vector<StructMeta> &struct_metas() const;
+  const std::vector<EnumMeta> &enum_metas() const;
+
+  const std::vector<Value> &constants() const;
+  const std::vector<Instruction> &instructions() const;
+  void disassemble(std::ostream &out) const;
+  void patch_operand(std::size_t index, int32_t operand);
+
+  // Bytecode serialization (.kbc format)
+  // When strip_debug is true, line/column info is omitted from the output,
+  // producing smaller .kbc files suitable for deployment.
+  bool serialize(const std::string &path, bool strip_debug = false) const;
+  static Chunk deserialize(const std::string &path, std::string *error);
+
+private:
+  std::vector<Value> constants_;
+  std::vector<Instruction> instructions_;
+  std::vector<FunctionInfo> functions_;
+  std::vector<StructMeta> struct_metas_;
+  std::vector<EnumMeta> enum_metas_;
+};
+
+const char *opcode_name(OpCode op);
+
+} // namespace kinglet
