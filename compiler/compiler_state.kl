@@ -1,0 +1,198 @@
+// Compiler state: Compiler struct definition and pure state-access helpers.
+// No emit calls. Imported by both codegen.kl and compiler.kl.
+
+import {
+  "bytecode.kl"
+  "../parser/ast.kl"
+  "../lexer/token.kl"
+}
+
+using ast {
+  Parameter, Stmt, FieldDef, EnumVariant, TypeExpr, Expr
+};
+
+pub struct Local {
+  string name;
+  int slot;
+  int scope_depth;
+}
+
+pub struct FuncEntry {
+  string name;
+  int func_index;     // index into chunk.functions[]
+  int const_index;    // index into chunk.constants[] (Function_ value)
+  int param_count;
+}
+
+pub struct EnumEntry {
+  string name;
+  int type_idx;
+}
+
+pub struct StructEntry {
+  string name;
+  int type_idx;
+}
+
+pub struct CompileError {
+  int line;
+  int col;
+  string message;
+}
+
+pub struct ImportedFunc {
+  string qualified_name;
+  Parameter[] params;
+  Stmt body;
+  int line;
+  int col;
+}
+
+pub struct ImportState {
+  string[] loaded_paths;
+  string[] loading_paths;
+  ImportedFunc[] pending;
+  string[] namespaces;
+}
+
+pub struct Compiler {
+  Chunk chunk;
+  Local[] locals;
+  int[] scope_starts;
+  int scope_depth;
+  FuncEntry[] funcs;
+  CompileError[] errors;
+  int[] loop_breaks;
+  int[] loop_continues;
+  int loop_depth;
+  string[] usings;
+  EnumEntry[] enums;
+  StructEntry[] structs;
+  ImportState imports;
+  bool in_try;
+}
+
+pub Compiler make_compiler() {
+  Chunk c = bytecode::make_chunk();
+  bytecode::register_builtin_enums(c);
+  return Compiler { c, [], [], 0, [], [], [], [], 0, [], [], [],
+    ImportState { [], [], [], [] }, false };
+}
+
+// Indices of pre-registered built-in enums (mirrors bytecode::register_builtin_enums
+// order). Used by Cast/??/try compilation to encode (type_idx, variant_idx) operands.
+pub int castError_type_idx() => 0;
+pub int intResult_type_idx() => 1;
+pub int floatResult_type_idx() => 2;
+pub int castError_variant_NotANumber() => 1;
+pub int result_variant_Ok() => 0;
+pub int result_variant_Err() => 1;
+
+// jump backpatching
+
+pub int emit_jump(Compiler co, OpCode op, int line, int col) {
+  bytecode::write_operand(co.chunk, op, 0, line, col);
+  return co.chunk.instructions.len() - 1;
+}
+
+pub void patch_jump(Compiler co, int offset) {
+  int jump = co.chunk.instructions.len() - offset - 1;
+  co.chunk.instructions[offset].operand = jump;
+}
+
+pub void patch_jump_to(Compiler co, int offset, int target) {
+  co.chunk.instructions[offset].operand = target - offset - 1;
+}
+
+pub void compile_error(Compiler co, int line, int col, string msg) {
+  CompileError e = CompileError { line, col, msg };
+  co.errors.push(e);
+}
+
+// scope / locals
+// Renamed away from the obvious push_scope/pop_scope to avoid colliding with
+// the typechecker's helpers in cli/main.kl — the bootstrap registers every
+// function by bare name globally, last write wins, so a generic name from
+// the entry module silently shadows ours.
+
+pub void compiler_push_scope(Compiler co) {
+  co.scope_starts.push(co.locals.len());
+  co.scope_depth = co.scope_depth + 1;
+}
+
+pub void compiler_pop_scope(Compiler co) {
+  if (co.scope_starts.len() == 0) { return; }
+  int start = co.scope_starts[co.scope_starts.len() - 1];
+  co.scope_starts.pop();
+  while (co.locals.len() > start) {
+    co.locals.pop();
+  }
+  co.scope_depth = co.scope_depth - 1;
+}
+
+pub int declare_local(Compiler co, string name) {
+  int slot = co.locals.len();
+  Local l = Local { name, slot, co.scope_depth };
+  co.locals.push(l);
+  return slot;
+}
+
+pub int resolve_local(Compiler co, string name) {
+  int i = co.locals.len() - 1;
+  while (i >= 0) {
+    if (co.locals[i].name == name) { return co.locals[i].slot; }
+    i = i - 1;
+  }
+  return -1;
+}
+
+pub int resolve_function(Compiler co, string name) {
+  for (int i = 0; i < co.funcs.len(); i = i + 1) {
+    if (co.funcs[i].name == name) { return i; }
+  }
+  return -1;
+}
+
+pub int resolve_enum(Compiler co, string name) {
+  for (int i = 0; i < co.enums.len(); i = i + 1) {
+    if (co.enums[i].name == name) { return co.enums[i].type_idx; }
+  }
+  return -1;
+}
+
+pub int resolve_struct(Compiler co, string name) {
+  for (int i = 0; i < co.structs.len(); i = i + 1) {
+    if (co.structs[i].name == name) { return co.structs[i].type_idx; }
+  }
+  return -1;
+}
+
+// Look up variant index within an enum type. Returns -1 if not found.
+pub int resolve_variant(Compiler co, int type_idx, string variant_name) {
+  EnumMeta meta = co.chunk.enum_metas[type_idx];
+  for (int i = 0; i < meta.variants.len(); i = i + 1) {
+    if (meta.variants[i] == variant_name) { return i; }
+  }
+  return -1;
+}
+
+pub int callee_ident_line(Expr callee, int fallback) {
+  return callee match {
+    Expr::Ident(let _n, let l, let _c) => l,
+    _ => fallback,
+  };
+}
+
+pub int callee_ident_col(Expr callee, int fallback) {
+  return callee match {
+    Expr::Ident(let _n, let _l, let c) => c,
+    _ => fallback,
+  };
+}
+
+pub bool is_imported_ns(Compiler co, string ns) {
+  for (int i = 0; i < co.imports.namespaces.len(); i = i + 1) {
+    if (co.imports.namespaces[i] == ns) { return true; }
+  }
+  return false;
+}
