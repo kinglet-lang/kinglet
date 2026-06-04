@@ -188,7 +188,8 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   string ns = alias;
   if (ns.len() == 0) { ns = stem_of(import_path); }
   co.imports.loading_paths.push(resolved);
-  // Transitive imports
+  // Transitive imports — single pass in declaration order (matching bootstrap's
+  // compiler.cc:42-53) so imported function indices are byte-identical.
   string mod_dir = dir_of(resolved);
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
