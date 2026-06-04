@@ -30,11 +30,9 @@ pub enum OpCode {
   // locals / stack
   LoadLocal, StoreLocal, Pop, Dup,
   // misc
-  IsNull, CastTo, FloatToBits,
+  CastTo, FloatToBits,
   // calls / control
   Call, Return_, Jmp, JmpFalse, JmpIfErr,
-  // error handling
-  PushHandler, PopHandler, PropagateErr,
   // comparison
   Eq, Neq, Lt, Gt, Le, Ge,
   // native intrinsics (io / fs / sys)
@@ -53,12 +51,14 @@ pub enum OpCode {
   // strings
   StringStartsWith, StringEndsWith, StringReplace, StringSplit,
   StringTrim, StringToUpper, StringToLower,
-  StringToInt, StringToFloat,
-  StringCode, StringCodeAt,
   // enum payloads
   EnumVariantPayload, EnumPayloadGet,
   // maps
   MapNew, MapGet, MapSet, MapHas, MapRemove, MapKeys, MapLen,
+  // error handling
+  PushHandler, PopHandler, PropagateErr,
+  // added after the original VM opcode order
+  IsNull, StringToInt, StringToFloat, StringCode, StringCodeAt,
 }
 
 // Constant pool entry. Tag dispatches which storage field to read.
