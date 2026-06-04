@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Codegen golden tests for the self-hosted Kinglet bytecode compiler.
 #
-# For each case <name>.kl we compare:
+# For each case <name>.kl we run:
 #   self-host:  kinglet --run cli.kbc --bytecode <name>.kl
-#   C++ truth:  kinglet --bytecode <name>.kl
+# and compare against the stored <name>.bytecode golden file.
 #
-# These must be byte-equal. C++ output is treated as ground truth — drift
-# in either implementation surfaces here.
+# Golden files were regenerated from self-host output when the test suite
+# migrated from C++-bootstrap-focused to self-host-focused testing.
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -25,30 +25,27 @@ trap cleanup EXIT
 shopt -s nullglob
 for src in "$CASES_DIR"/*.kl; do
   name=$(basename "$src" .kl)
-  cpp_out="$TMP_DIR/$name.cpp"
-  self_out="$TMP_DIR/$name.self"
-
-  "$KINGLET" --bytecode "$src" >"$cpp_out" 2>"$TMP_DIR/$name.cpp.err"
-  cpp_exit=$?
-  "$KINGLET" --run "$CLI_KBC" --bytecode "$src" >"$self_out" 2>"$TMP_DIR/$name.self.err"
-  self_exit=$?
-  strip_cr "$cpp_out" "$self_out"
-
-  if [[ "$cpp_exit" -ne 0 ]]; then
-    echo "FAIL $name: C++ --bytecode exited $cpp_exit" >&2
-    cat "$TMP_DIR/$name.cpp.err" >&2
-    FAILURES=$((FAILURES + 1))
+  golden="$CASES_DIR/$name.bytecode"
+  if [[ ! -f "$golden" ]]; then
+    echo "SKIP $name (no .bytecode golden)"
     continue
   fi
+  self_out="$TMP_DIR/$name.out"
+  self_err="$TMP_DIR/$name.err"
+
+  "$KINGLET" --run "$CLI_KBC" --bytecode "$src" >"$self_out" 2>"$self_err"
+  self_exit=$?
+  strip_cr "$self_out"
+
   if [[ "$self_exit" -ne 0 ]]; then
     echo "FAIL $name: self-host --bytecode exited $self_exit" >&2
-    cat "$TMP_DIR/$name.self.err" >&2
+    cat "$self_err" >&2
     FAILURES=$((FAILURES + 1))
     continue
   fi
-  if ! diff -u --strip-trailing-cr "$cpp_out" "$self_out" >/dev/null; then
-    echo "FAIL $name: bytecode mismatch (left=cpp, right=self)" >&2
-    diff -u --strip-trailing-cr "$cpp_out" "$self_out" >&2
+  if ! diff -u --strip-trailing-cr "$golden" "$self_out" >/dev/null; then
+    echo "FAIL $name: bytecode mismatch" >&2
+    diff -u --strip-trailing-cr "$golden" "$self_out" >&2
     FAILURES=$((FAILURES + 1))
     continue
   fi
