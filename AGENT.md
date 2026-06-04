@@ -26,7 +26,7 @@ Source (.kl)
   ├── Checker (checker/checker.kl)
   │     Type checking, declaration registration, diagnostics
   │
-  ├── Codegen (codegen/compiler.kl + compiler_state.kl + codegen.kl + bytecode.kl + disasm.kl)
+  ├── Compiler (compiler/compiler.kl + compiler_state.kl + codegen.kl + bytecode.kl + disasm.kl)
   │     AST → bytecode for the C++ VM
   │     Supports imports, enums, match, built-in methods
   │
@@ -145,9 +145,9 @@ When adding a feature:
 - **One module per file**, file name matches module purpose
 - The parser is split across `parser/parser.kl` (top-level + decl/stmt),
   `parser/helpers.kl` (cursor + type-expr helpers), and `parser/expressions.kl`
-  (expression precedence climbing). The code generator is split across
-  `codegen/compiler.kl`, `codegen/compiler_state.kl`, and
-  `codegen/codegen.kl`. The type checker lives in `checker/checker.kl`,
+  (expression precedence climbing). The compiler is split across
+  `compiler/compiler.kl`, `compiler/compiler_state.kl`, and
+  `compiler/codegen.kl`. The type checker lives in `checker/checker.kl`,
   with thin CLI drivers in `core/main.kl`, `core/ast_printer.kl`, and
   `core/checker_driver.kl`. Each split was enabled by decision 0011's module
   system redesign.

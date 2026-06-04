@@ -29,7 +29,7 @@ resolve_kinglet() {
 }
 
 # Ensure $ROOT/compiler.kbc exists and is newer than every .kl under core/,
-# parser/, codegen/, checker/, lexer/. Rebuild it via
+# parser/, compiler/, checker/, lexer/. Rebuild it via
 # `kinglet --save-bytecode compiler.kbc core/main.kl` only when stale. ROOT and
 # KINGLET_BIN must be set by the caller. Prints the .kbc path on stdout.
 ensure_cli_kbc() {
@@ -42,7 +42,7 @@ ensure_cli_kbc() {
   if [[ ! -f "$cli_kbc" ]]; then
     needs_rebuild=1
   else
-    for kl in "$root"/core/*.kl "$root"/parser/*.kl "$root"/codegen/*.kl "$root"/checker/*.kl "$root"/lexer/*.kl; do
+    for kl in "$root"/core/*.kl "$root"/parser/*.kl "$root"/compiler/*.kl "$root"/checker/*.kl "$root"/lexer/*.kl; do
       [[ -f "$kl" ]] || continue
       if [[ "$kl" -nt "$cli_kbc" ]]; then
         needs_rebuild=1
