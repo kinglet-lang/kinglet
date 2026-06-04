@@ -16,32 +16,32 @@ bytecode to the bootstrap compiler.
 ```
 Source (.kl)
   │
-  ├── Lexer (scanner.kl + token.kl + keywords.kl)
+  ├── Lexer (lexer/scanner.kl + token.kl + keywords.kl)
   │     Produces Token stream with line/col positions
   │
-  ├── Parser (parser.kl + ast.kl)
+  ├── Parser (parser/parser.kl + helpers.kl + expressions.kl + ast.kl)
   │     Recursive-descent + Pratt parser → Program AST
   │     Every node carries (line, col)
   │
-  ├── Checker (checker.kl)
+  ├── Checker (checker/checker.kl)
   │     Type checking, declaration registration, diagnostics
   │
-  ├── Compiler (compiler.kl + bytecode.kl + disasm.kl)
+  ├── Compiler (compiler/compiler.kl + compiler_state.kl + codegen.kl + bytecode.kl + disasm.kl)
   │     AST → bytecode for the C++ VM
   │     Supports imports, enums, match, built-in methods
   │
-  └── CLI (cli/main.kl)
+  └── CLI (cli/main.kl + ast_printer.kl + checker_driver.kl)
         Entry point; wires scanner → parser → checker → compiler
 ```
 
 ### Key Properties
 
-- **6,273 lines** of Kinglet source across 10 files (no external dependencies)
+- **5,396 lines** of Kinglet source across 16 files (no external dependencies)
 - **57 test files**: golden tests for lexer, parser, checker, and codegen
-- **AST mirror pattern**: `checker.kl` and `cli/main.kl` maintain local copies of the
-  AST enums from `ast.kl` instead of importing them, due to a bootstrap compiler bug
-  where duplicate pub-function registration across transitive imports corrupts function
-  indices. See the header comment in `parser/parser.kl` for details.
+- **Module system**: per decision 0011, modules use `import { "path.kl" }` blocks
+  with file-stem namespaces and `using module { syms };` to pull symbols into scope.
+  Each module is parsed and registered exactly once; no AST mirror or duplicate
+  registration workaround is needed.
 - **Bytecode compatibility**: self-host output must match the C++ bootstrap compiler
   byte-for-byte. OpCode order in `bytecode.kl` is frozen to match `chunk.h`.
 
@@ -53,8 +53,9 @@ Kinglet is a C-family language designed as "C++ after completing worthwhile stan
 // Types: int, float, double, bool, string, byte, void, auto
 // Structs, Enums (with payload variants)
 // match expressions, ?? (null coalesce), try (error propagation)
-// Import system: import "../path/module.kl" { sym1, sym2 }
-// Namespaces: io::out, io::err (built-in), user-defined via namespace
+// Module system: import { "../path/module.kl" } + using module { sym1, sym2 };
+// Namespaces: io::out, io::err (built-in), file-stem (e.g. ast::, parser::) for
+//             user modules
 // Built-in methods: .len(), .push(), .pop(), .slice(), .split(), etc.
 
 int example(int x) {
@@ -136,10 +137,16 @@ When adding a feature:
 ### File Organization
 
 - **One module per file**, file name matches module purpose
-- **Parser stays in one file** (`parser/parser.kl`) — splitting it triggers the
-  bootstrap compiler's struct-meta registration bug
-- AST enums are defined in `parser/ast.kl`; mirrors in `checker/checker.kl` and
-  `cli/main.kl` must be kept in sync manually
+- The parser is split across `parser/parser.kl` (top-level + decl/stmt),
+  `parser/helpers.kl` (cursor + type-expr helpers), and `parser/expressions.kl`
+  (expression precedence climbing). The compiler is split across
+  `compiler/compiler.kl`, `compiler/compiler_state.kl`, and
+  `compiler/codegen.kl`. The type checker lives in `checker/checker.kl`,
+  with thin CLI drivers in `cli/main.kl`, `cli/ast_printer.kl`, and
+  `cli/checker_driver.kl`. Each split was enabled by decision 0011's module
+  system redesign.
+- AST enums live in `parser/ast.kl` and are imported via `using ast { ... };`.
+  No mirrors or hand-synced copies exist after decision 0011.
 - Design documents live in `decisions/` (see `decisions/README.md` for index)
 
 ### Bootstrap Compiler Quirks
@@ -152,8 +159,6 @@ the C++ bootstrap:
 3. **Function preamble**: `Constant<main_fn>; Call 0; Return` at instruction offset 0-2.
 4. **Function fallthrough**: every function body ends with `Null; Return`.
 5. **VarDecl**: emits `StoreLocal + Pop` (StoreLocal copies, does not pop).
-6. **Import dedup**: the bootstrap dedups imports by resolved path, but transitive
-   re-imports of the same module can still corrupt function indices in edge cases.
 
 ### Design Decisions
 
