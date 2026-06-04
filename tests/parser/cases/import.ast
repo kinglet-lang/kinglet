@@ -1,9 +1,10 @@
 (program
   (using io)
   (using fs)
-  (import "../lib/util.kl")
-  (import "../lib/math.kl" as m)
-  (import "../lib/text.kl" {trim, lower})
+  (import-block
+      (import "../lib/util.kl")
+      (import "../lib/math.kl" as m)
+      (import "../lib/text.kl"))
   (function int main (params)
     (block
       (return

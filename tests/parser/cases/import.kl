@@ -1,9 +1,11 @@
 using io;
 using fs;
 
-import "../lib/util.kl"
-import "../lib/math.kl" as m
-import "../lib/text.kl" { trim, lower }
+import {
+  "../lib/util.kl"
+  "../lib/math.kl" as m
+  "../lib/text.kl"
+}
 
 int main() {
   return 0;

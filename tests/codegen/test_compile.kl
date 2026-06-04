@@ -8,8 +8,10 @@
 using io;
 using sys;
 
-import "../compiler/compiler.kl"
-import "../compiler/disasm.kl"
+import {
+  "../compiler/compiler.kl"
+  "../compiler/disasm.kl"
+}
 
 // --- AST type helpers (need to match compiler.kl's enum variant indices) ---
 
