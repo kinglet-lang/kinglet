@@ -1,0 +1,22 @@
+static_library("vm") {
+  sources = [
+    "chunk.cc",
+    "chunk.h",
+    "value.cc",
+    "value.h",
+    "vm.cc",
+    "vm.h",
+  ]
+
+  include_dirs = [ "//backend" ]
+}
+
+executable("kinglet") {
+  sources = [
+    "vm_main.cc",
+  ]
+
+  include_dirs = [ "//backend" ]
+
+  deps = [ ":vm" ]
+}
