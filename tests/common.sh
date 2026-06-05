@@ -75,3 +75,146 @@ strip_cr() {
     tr -d '\r' <"$f" >"$f.nocr" && mv -f "$f.nocr" "$f"
   done
 }
+
+# Compile .kl source to .kbc bytecode using the selfhost compiler.
+# Usage: compile_kl <src.kl> <out.kbc> [--strip-debug]
+# Returns: compiler exit code
+# Side effects: stderr captured to <out.kbc>.stderr
+compile_kl() {
+  local src="$1"
+  local out="$2"
+  local strip_flag=""
+  shift 2
+  if [[ "${1:-}" == "--strip-debug" ]]; then
+    strip_flag="--strip-debug"
+  fi
+  local kinglet="${KINGLET_BIN:-$KINGLET}"
+  "$kinglet" --save-bytecode "$out" $strip_flag "$src" 2>"$out.stderr"
+  return $?
+}
+
+# Run compiled .kbc bytecode file using the selfhost VM.
+# Usage: run_kbc <prog.kbc> [args...]
+# Returns: program exit code
+run_kbc() {
+  local kbc="$1"
+  shift
+  local kinglet="${KINGLET_BIN:-$KINGLET}"
+  "$kinglet" "$kbc" "$@"
+  return $?
+}
+
+# Test case runner: compile .kl, run in specified mode, compare outputs.
+# Usage: run_case <name> <mode> <expected_exit> <expected_stdout> <expected_stderr>
+# mode: "run" (execute) | "--ast" | "--check" | "--bytecode"
+run_case() {
+  local name="$1"
+  local mode="$2"
+  local expected_exit="$3"
+  local expected_stdout="$4"
+  local expected_stderr="$5"
+  local source="${TEST_CASES_DIR:-.}/$name.kl"
+  local stdout="${TMP_DIR:-.}/$name.stdout"
+  local stderr="${TMP_DIR:-.}/$name.stderr"
+  local kinglet="${KINGLET_BIN:-$KINGLET}"
+
+  if [[ "$mode" == "run" ]]; then
+    "$kinglet" "$source" >"$stdout" 2>"$stderr"
+  else
+    "$kinglet" "$mode" "$source" >"$stdout" 2>"$stderr"
+  fi
+  local actual_exit=$?
+
+  strip_cr "$stdout" "$stderr"
+
+  local failed=0
+  if [[ "$actual_exit" -ne "$expected_exit" ]]; then
+    echo "FAIL $name: exit code expected $expected_exit, got $actual_exit" >&2
+    failed=1
+  fi
+  if ! diff -u <(printf "%s" "$expected_stdout") "$stdout" >/dev/null; then
+    echo "FAIL $name: stdout mismatch" >&2
+    diff -u <(printf "%s" "$expected_stdout") "$stdout" >&2
+    failed=1
+  fi
+  if ! diff -u <(printf "%s" "$expected_stderr") "$stderr" >/dev/null; then
+    echo "FAIL $name: stderr mismatch" >&2
+    diff -u <(printf "%s" "$expected_stderr") "$stderr" >&2
+    failed=1
+  fi
+
+  return $failed
+}
+
+# Test case runner with program arguments (forwarded to sys::args()).
+# Usage: run_args_case <name> <expected_exit> <expected_stdout> <expected_stderr> [program args...]
+run_args_case() {
+  local name="$1"
+  local expected_exit="$2"
+  local expected_stdout="$3"
+  local expected_stderr="$4"
+  shift 4
+  local source="${TEST_CASES_DIR:-.}/$name.kl"
+  local stdout="${TMP_DIR:-.}/$name.stdout"
+  local stderr="${TMP_DIR:-.}/$name.stderr"
+  local kinglet="${KINGLET_BIN:-$KINGLET}"
+
+  "$kinglet" "$source" "$@" >"$stdout" 2>"$stderr"
+  local actual_exit=$?
+
+  strip_cr "$stdout" "$stderr"
+
+  local failed=0
+  if [[ "$actual_exit" -ne "$expected_exit" ]]; then
+    echo "FAIL $name: exit code expected $expected_exit, got $actual_exit" >&2
+    failed=1
+  fi
+  if ! diff -u <(printf "%s" "$expected_stdout") "$stdout" >/dev/null; then
+    echo "FAIL $name: stdout mismatch" >&2
+    diff -u <(printf "%s" "$expected_stdout") "$stdout" >&2
+    failed=1
+  fi
+  if ! diff -u <(printf "%s" "$expected_stderr") "$stderr" >/dev/null; then
+    echo "FAIL $name: stderr mismatch" >&2
+    diff -u <(printf "%s" "$expected_stderr") "$stderr" >&2
+    failed=1
+  fi
+
+  return $failed
+}
+
+# Test case runner: run in mode, assert exit 0, no stderr, stdout contains patterns.
+# Usage: run_contains_case <name> <mode> [pattern1] [pattern2] ...
+run_contains_case() {
+  local name="$1"
+  local mode="$2"
+  shift 2
+  local source="${TEST_CASES_DIR:-.}/$name.kl"
+  local stdout="${TMP_DIR:-.}/$name.stdout"
+  local stderr="${TMP_DIR:-.}/$name.stderr"
+  local kinglet="${KINGLET_BIN:-$KINGLET}"
+
+  "$kinglet" "$mode" "$source" >"$stdout" 2>"$stderr"
+  local actual_exit=$?
+
+  strip_cr "$stdout" "$stderr"
+
+  local failed=0
+  if [[ "$actual_exit" -ne 0 ]]; then
+    echo "FAIL $name: exit code expected 0, got $actual_exit" >&2
+    failed=1
+  fi
+  if [[ -s "$stderr" ]]; then
+    echo "FAIL $name: unexpected stderr output" >&2
+    cat "$stderr" >&2
+    failed=1
+  fi
+  for pattern in "$@"; do
+    if ! grep -q "$pattern" "$stdout"; then
+      echo "FAIL $name: stdout missing pattern '$pattern'" >&2
+      failed=1
+    fi
+  done
+
+  return $failed
+}
