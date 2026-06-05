@@ -1,0 +1,9 @@
+// Test array out of bounds access
+using io;
+
+int main() {
+  int[] arr = [1, 2, 3];
+  int x = arr[10];  // Should cause runtime error
+  io::out.line(x);
+  return 0;
+}

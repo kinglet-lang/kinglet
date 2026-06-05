@@ -1,0 +1,39 @@
+// Test nested enum with multiple payload types
+using io;
+
+enum Result {
+  Ok(int),
+  Err(string)
+}
+
+enum Container {
+  Empty,
+  Single(Result),
+  Multiple(Result, Result)
+}
+
+int main() {
+  Container c = Container::Multiple(Result::Ok(42), Result::Err("failed"));
+
+  match c {
+    Container::Empty => io::out.line("empty"),
+    Container::Single(r) => {
+      match r {
+        Result::Ok(v) => io::out.line(v),
+        Result::Err(e) => io::err.line(e),
+      }
+    },
+    Container::Multiple(r1, r2) => {
+      match r1 {
+        Result::Ok(v) => io::out.line(v),
+        Result::Err(e) => io::err.line(e),
+      }
+      match r2 {
+        Result::Ok(v) => io::out.line(v),
+        Result::Err(e) => io::err.line(e),
+      }
+    },
+  }
+
+  return 0;
+}

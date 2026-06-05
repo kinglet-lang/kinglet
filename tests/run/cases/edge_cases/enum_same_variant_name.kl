@@ -1,0 +1,33 @@
+// Test enum with same variant name in different enums
+using io;
+
+enum Color {
+  Red,
+  Green,
+  Blue
+}
+
+enum Status {
+  Red,     // Same name as Color::Red
+  Yellow,
+  Green    // Same name as Color::Green
+}
+
+int main() {
+  Color c = Color::Red;
+  Status s = Status::Red;
+
+  match c {
+    Color::Red => io::out.line("color red"),
+    Color::Green => io::out.line("color green"),
+    Color::Blue => io::out.line("color blue"),
+  }
+
+  match s {
+    Status::Red => io::out.line("status red"),
+    Status::Yellow => io::out.line("status yellow"),
+    Status::Green => io::out.line("status green"),
+  }
+
+  return 0;
+}
