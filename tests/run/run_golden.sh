@@ -87,6 +87,20 @@ run_golden "if_else_basic"
 run_golden "while_basic"
 run_golden "for_basic"
 
+# --- Edge cases ---
+echo
+echo "Running edge case tests..."
+export TEST_CASES_DIR="$ROOT/tests/run/cases/edge_cases"
+
+run_golden "enum_no_payload"
+run_golden "nested_enum"
+run_golden "enum_same_variant_name"
+run_golden "nested_match"
+run_golden "elvis_fallback"
+run_golden "array_oob"
+
+export TEST_CASES_DIR="$ROOT/tests/run/cases"
+
 # --- Known gaps (from capability matrix) ---
 echo
 echo "Known capability gaps (xfail):"
