@@ -46,7 +46,7 @@ pub TypeExpr make_type(string name) => TypeExpr { name, [] };
 //   Index(object, index, line, col)
 //   StructLit(struct_type, fields, line, col)
 //   ArrayLit(elements, line, col)
-//   NullCoalesce(left, err_binding, right, line, col)  // left ?? right  or  left ?? |e| right
+//   NullCoalesce(left, err_binding, right, line, col)  // left ?: right  or  left ?: |e| right
 //   TryExpr(value, line, col)                   // try expr — Ok(v)→v, Err→early return
 //   None                                       // sentinel for "no expression"
 pub enum Expr {

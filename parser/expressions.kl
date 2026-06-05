@@ -83,7 +83,7 @@ Expr ternary(Parser p) {
   return expr;
 }
 
-// lhs ?? rhs  and  lhs ?? |e| rhs  — right-associative.
+// lhs ?: rhs  and  lhs ?: |e| rhs  — right-associative (Elvis operator).
 // Sits between assignment (above) and pipeline (below).
 Expr coalesce(Parser p) {
   Expr left = pipeline(p);
@@ -91,9 +91,9 @@ Expr coalesce(Parser p) {
   Token qq = previous(p);
   string err_binding = "";
   if (match_tt(p, TokenType::Pipe)) {
-    Token e = consume(p, TokenType::Identifier, "Expected error binding name after '|' in '?? |e|'.");
+    Token e = consume(p, TokenType::Identifier, "Expected error binding name after '|' in '?: |e|'.");
     err_binding = e.lexeme;
-    consume(p, TokenType::Pipe, "Expected '|' to close '?? |e|' binding.");
+    consume(p, TokenType::Pipe, "Expected '|' to close '?: |e|' binding.");
   }
   Expr right = coalesce(p);
   return Expr::NullCoalesce(left, err_binding, right, qq.line, qq.col);
