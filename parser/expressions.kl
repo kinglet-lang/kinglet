@@ -87,7 +87,7 @@ Expr ternary(Parser p) {
 // Sits between assignment (above) and pipeline (below).
 Expr coalesce(Parser p) {
   Expr left = pipeline(p);
-  if (!match_tt(p, TokenType::QuestionQuestion)) { return left; }
+  if (!match_tt(p, TokenType::QuestionColon)) { return left; }
   Token qq = previous(p);
   string err_binding = "";
   if (match_tt(p, TokenType::Pipe)) {
