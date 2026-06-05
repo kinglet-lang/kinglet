@@ -1,0 +1,4 @@
+int main() {
+  int x = nonexistent_function();
+  return 0;
+}

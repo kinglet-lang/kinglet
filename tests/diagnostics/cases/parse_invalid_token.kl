@@ -1,0 +1,4 @@
+int main() {
+  @invalid_token
+  return 0;
+}
