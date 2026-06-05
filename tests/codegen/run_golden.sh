@@ -33,7 +33,7 @@ for src in "$CASES_DIR"/*.kl; do
   self_out="$TMP_DIR/$name.out"
   self_err="$TMP_DIR/$name.err"
 
-  "$KINGLET" --run "$CLI_KBC" --bytecode "$src" >"$self_out" 2>"$self_err"
+  run_kbc "$CLI_KBC" --bytecode "$src" >"$self_out" 2>"$self_err"
   self_exit=$?
   strip_cr "$self_out"
 
