@@ -1,0 +1,6 @@
+using io;
+
+int main() {
+  io::out("hello world\n");
+  return 0;
+}
