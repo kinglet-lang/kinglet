@@ -1,0 +1,11 @@
+using io;
+
+int main() {
+  int x = 10;
+  int y = 20;
+  bool greater = x > y;
+  bool equal = x == y;
+  bool not_equal = x != y;
+  io::out("done\n");
+  return 0;
+}
