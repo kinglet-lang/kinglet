@@ -1,0 +1,11 @@
+// EXPECT_OUT: positive
+using io;
+int main() {
+  int x = 5;
+  if x > 0 {
+    io::out.line("positive");
+  } else {
+    io::out.line("negative");
+  }
+  return 0;
+}

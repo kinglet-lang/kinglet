@@ -1,0 +1,12 @@
+// EXPECT_OUT: 10
+using io;
+int main() {
+  int sum = 0;
+  int i = 0;
+  while i < 5 {
+    sum = sum + i;
+    i = i + 1;
+  }
+  io::out.line(sum);
+  return 0;
+}

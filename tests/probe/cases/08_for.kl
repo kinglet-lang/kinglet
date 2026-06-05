@@ -1,0 +1,10 @@
+// EXPECT_OUT: 6
+using io;
+int main() {
+  int sum = 0;
+  for (int i = 1; i <= 3; i = i + 1) {
+    sum = sum + i;
+  }
+  io::out.line(sum);
+  return 0;
+}
