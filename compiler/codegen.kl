@@ -791,17 +791,40 @@ pub void compile_stmt(Compiler co, Stmt s) {
   };
 }
 
+// Compile an expression in tail position as the function's return value.
+bool emit_expr_return(Compiler co, Expr e, int line, int col) {
+  compile_expr(co, e);
+  bytecode::write_op(co.chunk, OpCode::Return_, line, col);
+  return true;
+}
+
 void compile_block(Compiler co, Stmt[] stmts) {
+  // One-shot: consume the implicit-return flag set by compile_function_body, so
+  // only THIS block (the function body) can turn its last statement into an
+  // implicit return; nested blocks read it as already-false.
+  bool tail = co.fn_tail_return;
+  co.fn_tail_return = false;
   compiler_push_scope(co);
   bool returned = false;
   for (int i = 0; i < stmts.len(); i = i + 1) {
     if (returned) { i = stmts.len(); }
     if (!returned) {
-      compile_stmt(co, stmts[i]);
-      returned = stmts[i] match {
-        Stmt::ReturnStmt(let _v, let _l, let _c) => true,
-        _ => false,
-      };
+      bool implicit = false;
+      if (tail && i == stmts.len() - 1) {
+        implicit = stmts[i] match {
+          Stmt::ExprStmt(let e, let el, let ec) => emit_expr_return(co, e, el, ec),
+          _ => false,
+        };
+      }
+      if (implicit) {
+        returned = true;
+      } else {
+        compile_stmt(co, stmts[i]);
+        returned = stmts[i] match {
+          Stmt::ReturnStmt(let _v, let _l, let _c) => true,
+          _ => false,
+        };
+      }
     }
   }
   compiler_pop_scope(co);

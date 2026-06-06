@@ -72,13 +72,14 @@ pub struct Compiler {
   StructEntry[] structs;
   ImportState imports;
   bool in_try;
+  bool fn_tail_return;
 }
 
 pub Compiler make_compiler() {
   Chunk c = bytecode::make_chunk();
   bytecode::register_builtin_enums(c);
   return Compiler { c, [], [], 0, [], [], [], [], 0, [], [], [],
-    ImportState { [], [], [], [], "" }, false };
+    ImportState { [], [], [], [], "" }, false, false };
 }
 
 // Indices of pre-registered built-in enums (mirrors bytecode::register_builtin_enums

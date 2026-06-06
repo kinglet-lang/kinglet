@@ -349,7 +349,24 @@ void register_compiler_function(Compiler co, string chunk_name, string lookup_na
   co.funcs.push(fe);
 }
 
-void compile_function_body(Compiler co, string name, Parameter[] params, Stmt body, int line, int col) {
+// True if `stmts` ends with a bare expression statement (implicit-return tail).
+bool block_last_is_expr(Stmt[] stmts) {
+  if (stmts.len() == 0) { return false; }
+  return stmts[stmts.len() - 1] match {
+    Stmt::ExprStmt(let _e, let _l, let _c) => true,
+    _ => false,
+  };
+}
+
+// True if a function body (a block) ends with a bare expression statement.
+bool body_has_tail_expr(Stmt body) {
+  return body match {
+    Stmt::Block(let stmts, let _bl, let _bc) => block_last_is_expr(stmts),
+    _ => false,
+  };
+}
+
+void compile_function_body(Compiler co, string name, string ret_type, Parameter[] params, Stmt body, int line, int col) {
   int fi = resolve_function(co, name);
   if (fi < 0) {
     compile_error(co, line, col, "Internal: function '" + name + "' not registered.");
@@ -367,6 +384,11 @@ void compile_function_body(Compiler co, string name, Parameter[] params, Stmt bo
     Parameter p = params[i];
     declare_local(co, p.name);
   }
+  // Implicit return: if the body's last statement is a bare expression and the
+  // function is non-void, compile it as the return value (mirrors
+  // compiler.cc:367-378). Signalled via co.fn_tail_return, consumed by
+  // compile_block on the body's outermost block.
+  co.fn_tail_return = !(ret_type == "void") && body_has_tail_expr(body);
   compile_stmt(co, body);
   // Fallthrough safety: every body ends with Null + Return in case the user
   // forgot. Matches compiler.cc:424.
@@ -456,8 +478,8 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
     d match {
-      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _w, let body, let _is_pub, let l, let c) =>
-        compile_function_body(co, n, params, body, l, c),
+      Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let body, let _is_pub, let l, let c) =>
+        compile_function_body(co, n, rt.name, params, body, l, c),
       _ => skip_decl(co),
     };
     if (co.errors.len() > 0) { return co.errors.len(); }
@@ -476,7 +498,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   }
   for (int i = 0; i < co.imports.pending.len(); i = i + 1) {
     ImportedFunc ifn = co.imports.pending[i];
-    compile_function_body(co, ifn.qualified_name, ifn.params, ifn.body, ifn.line, ifn.col);
+    compile_function_body(co, ifn.qualified_name, "", ifn.params, ifn.body, ifn.line, ifn.col);
     if (co.errors.len() > 0) { return co.errors.len(); }
   }
   return 0;
