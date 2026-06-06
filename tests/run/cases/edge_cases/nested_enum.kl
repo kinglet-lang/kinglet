@@ -12,28 +12,27 @@ enum Container {
   Multiple(Result, Result)
 }
 
+void print_result(Result r) {
+  r match {
+    Result::Ok(let v) => io::out.line(v),
+    Result::Err(let e) => io::out.line(e),
+  };
+}
+
 int main() {
   Container c = Container::Multiple(Result::Ok(42), Result::Err("failed"));
 
-  match c {
+  c match {
     Container::Empty => io::out.line("empty"),
-    Container::Single(r) => {
-      match r {
-        Result::Ok(v) => io::out.line(v),
-        Result::Err(e) => io::err.line(e),
-      }
-    },
-    Container::Multiple(r1, r2) => {
-      match r1 {
-        Result::Ok(v) => io::out.line(v),
-        Result::Err(e) => io::err.line(e),
-      }
-      match r2 {
-        Result::Ok(v) => io::out.line(v),
-        Result::Err(e) => io::err.line(e),
-      }
-    },
-  }
+    Container::Single(let r) => print_result(r),
+    Container::Multiple(let r1, let r2) => print_result(r1),
+  };
+
+  // Second match to handle r2 — Multiple arm must run again to bind r2.
+  c match {
+    Container::Multiple(let r1, let r2) => print_result(r2),
+    _ => {},
+  };
 
   return 0;
 }

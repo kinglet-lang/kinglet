@@ -17,17 +17,17 @@ int main() {
   Color c = Color::Red;
   Status s = Status::Red;
 
-  match c {
+  c match {
     Color::Red => io::out.line("color red"),
     Color::Green => io::out.line("color green"),
     Color::Blue => io::out.line("color blue"),
-  }
+  };
 
-  match s {
+  s match {
     Status::Red => io::out.line("status red"),
     Status::Yellow => io::out.line("status yellow"),
     Status::Green => io::out.line("status green"),
-  }
+  };
 
   return 0;
 }

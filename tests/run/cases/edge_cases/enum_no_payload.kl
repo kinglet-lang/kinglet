@@ -10,11 +10,11 @@ enum Status {
 int main() {
   Status s = Status::Active;
 
-  match s {
+  s match {
     Status::Pending => io::out.line("pending"),
     Status::Active => io::out.line("active"),
     Status::Inactive => io::out.line("inactive"),
-  }
+  };
 
   return 0;
 }

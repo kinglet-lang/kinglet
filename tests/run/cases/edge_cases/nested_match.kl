@@ -11,10 +11,10 @@ int main() {
   Option o2 = Option::Some(2);
   Option o3 = Option::None;
 
-  int result = match o1 {
-    Option::Some(v1) => match o2 {
-      Option::Some(v2) => match o3 {
-        Option::Some(v3) => v1 + v2 + v3,
+  int result = o1 match {
+    Option::Some(let v1) => o2 match {
+      Option::Some(let v2) => o3 match {
+        Option::Some(let v3) => v1 + v2 + v3,
         Option::None => v1 + v2,
       },
       Option::None => v1,

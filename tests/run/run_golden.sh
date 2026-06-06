@@ -25,7 +25,8 @@ PASSES=0
 cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
 
-# Test runner that reads .expected files
+# Test runner that reads .expected files and diffs against actual output.
+# Compares files directly (not via $(cat) which strips trailing newlines).
 run_golden() {
   local name="$1"
   local expected_file="$TEST_CASES_DIR/$name.expected"
@@ -42,26 +43,52 @@ run_golden() {
     expected_exit=$(cat "$exit_file")
   fi
 
-  local expected_stdout
-  expected_stdout=$(cat "$expected_file")
+  local source="$TEST_CASES_DIR/$name.kl"
+  local stdout="$TMP_DIR/$name.stdout"
+  local stderr="$TMP_DIR/$name.stderr"
 
+  local actual_exit=0
   if [[ -f "$args_file" ]]; then
-    # Read args from file (one per line or space-separated)
     local -a args
     mapfile -t args < "$args_file"
-    if run_args_case "$name" "$expected_exit" "$expected_stdout" "" "${args[@]}"; then
-      echo "PASS $name"
-      PASSES=$((PASSES + 1))
-    else
-      FAILURES=$((FAILURES + 1))
-    fi
+    "$KINGLET" "$source" "${args[@]}" >"$stdout" 2>"$stderr" || actual_exit=$?
   else
-    if run_case "$name" "run" "$expected_exit" "$expected_stdout" ""; then
-      echo "PASS $name"
-      PASSES=$((PASSES + 1))
-    else
-      FAILURES=$((FAILURES + 1))
+    "$KINGLET" "$source" >"$stdout" 2>"$stderr" || actual_exit=$?
+  fi
+  strip_cr "$stdout" "$stderr"
+
+  local failed=0
+  if [[ "$actual_exit" -ne "$expected_exit" ]]; then
+    echo "FAIL $name: exit code expected $expected_exit, got $actual_exit" >&2
+    failed=1
+  fi
+  if ! diff -u "$expected_file" "$stdout" >/dev/null 2>&1; then
+    echo "FAIL $name: stdout mismatch" >&2
+    diff -u "$expected_file" "$stdout" | sed 's/^/      /' | head -20 >&2
+    failed=1
+  fi
+  # stderr check: if .stderr_contains exists, assert stderr contains that text;
+  # otherwise assert stderr is empty.
+  local stderr_contains_file="$TEST_CASES_DIR/$name.stderr_contains"
+  if [[ -f "$stderr_contains_file" ]]; then
+    local pattern
+    pattern=$(cat "$stderr_contains_file")
+    if ! grep -q "$pattern" "$stderr"; then
+      echo "FAIL $name: stderr missing expected pattern '$pattern'" >&2
+      cat "$stderr" | sed 's/^/      /' >&2
+      failed=1
     fi
+  elif [[ -s "$stderr" ]]; then
+    echo "FAIL $name: unexpected stderr output" >&2
+    cat "$stderr" | sed 's/^/      /' >&2
+    failed=1
+  fi
+
+  if [[ "$failed" -eq 0 ]]; then
+    echo "PASS $name"
+    PASSES=$((PASSES + 1))
+  else
+    FAILURES=$((FAILURES + 1))
   fi
 }
 
