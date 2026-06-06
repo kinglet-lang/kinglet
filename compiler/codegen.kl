@@ -924,9 +924,14 @@ void compile_continue(Compiler co, int line, int col) {
   co.loop_continues.push(emit_jump(co, OpCode::Jmp, line, col));
 }
 
-// guard <cond> { <body> } => JmpFalse past body; body; patch.
+// guard <cond> else { <body> } => run the else-body ONLY when cond is false.
+// Negate cond (Not_), then JmpFalse past the body: when cond is true, !cond is
+// false and we jump past the body; when cond is false, !cond is true and the
+// body runs. (Previously emitted JmpFalse on the bare cond, which inverted it —
+// the else-body ran when cond was true.)
 void compile_guard(Compiler co, Expr cond, Stmt body, int line, int col) {
   compile_expr(co, cond);
+  bytecode::write_op(co.chunk, OpCode::Not_, line, col);
   int exit_jump = emit_jump(co, OpCode::JmpFalse, line, col);
   compile_stmt(co, body);
   patch_jump(co, exit_jump);
