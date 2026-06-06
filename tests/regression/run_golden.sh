@@ -28,12 +28,13 @@ MUST_PASS=(
   guard_stmt 18_guard implicit_return                 # fixed sh control-flow bugs
   12_enum_match try_catch                             # sh correct; bootstrap leaks <enum>
   enum_destructure_test match_enum_destruct enum_guard_test
+  match_basic match_binding                           # trailing newline corrected (io::out no \n)
+  map_basic map_symbol_table                          # map type + literal support added
 )
 # Known remaining gaps (tracked, non-gating). Oracle = correct (bootstrap) output.
 KNOWN_FAIL=(
-  chained_comparisons match_basic match_binding       # no chained cmp / trailing newline
+  chained_comparisons                                 # no chained cmp desugaring
   arrays_type_error arrays_bytecode cat               # shallow checker / exit-code mismatch
-  map_basic map_symbol_table                          # map literals unsupported
 )
 
 # Run case $1; sets OUT_OK / EXIT_OK / GOT_EXIT / WANT_EXIT.
