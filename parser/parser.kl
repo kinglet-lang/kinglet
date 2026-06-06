@@ -233,7 +233,45 @@ bool is_var_decl_start(Parser p) {
   if (peek_tok(p).type == TokenType::Const) { return true; }
   if (!is_type_start(peek_tok(p).type)) { return false; }
   int pos = p.current + 1;
-  if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Less) {
+  // Skip over map type {K: V}
+  if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::LeftBrace) {
+    pos = pos + 1;
+    // Skip key type (simple name or generic)
+    if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Less) {
+      int depth = 1;
+      pos = pos + 1;
+      while (pos < p.tokens.len() && depth > 0) {
+        TokenType t = p.tokens[pos].type;
+        if (t == TokenType::Less)         { depth = depth + 1; }
+        else if (t == TokenType::Greater) { depth = depth - 1; }
+        pos = pos + 1;
+      }
+    } else {
+      pos = pos + 1; // skip simple key type name
+    }
+    // Expect ':'
+    if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Colon) {
+      pos = pos + 1;
+    }
+    // Skip value type (simple name or generic)
+    if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Less) {
+      int depth = 1;
+      pos = pos + 1;
+      while (pos < p.tokens.len() && depth > 0) {
+        TokenType t = p.tokens[pos].type;
+        if (t == TokenType::Less)         { depth = depth + 1; }
+        else if (t == TokenType::Greater) { depth = depth - 1; }
+        pos = pos + 1;
+      }
+    } else {
+      pos = pos + 1; // skip simple value type name
+    }
+    // Expect '}'
+    if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::RightBrace) {
+      pos = pos + 1;
+    }
+  } else if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Less) {
+    // Skip over generic <T>
     int depth = 1;
     pos = pos + 1;
     while (pos < p.tokens.len() && depth > 0) {
@@ -311,8 +349,36 @@ Stmt parse_block_after_brace(Parser p, Token lb) {
   return Stmt::Block(stmts, lb.line, lb.col);
 }
 
+// Heuristic: after '{' was consumed, is the next content a map-type pattern?
+// True when: current position starts with a type-start token, followed by ':'.
+// E.g. after consuming '{', we see `string : int }` — that's a map type.
+bool starts_map_type_after_brace(Parser p) {
+  int pos = p.current;
+  if (pos >= p.tokens.len()) { return false; }
+  if (!is_type_start(p.tokens[pos].type)) { return false; }
+  // Skip over generic <T> on key type
+  pos = pos + 1;
+  if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Less) {
+    int depth = 1;
+    pos = pos + 1;
+    while (pos < p.tokens.len() && depth > 0) {
+      if (p.tokens[pos].type == TokenType::Less) { depth = depth + 1; }
+      else if (p.tokens[pos].type == TokenType::Greater) { depth = depth - 1; }
+      pos = pos + 1;
+    }
+  }
+  // Expect ':'
+  return pos < p.tokens.len() && p.tokens[pos].type == TokenType::Colon;
+}
+
 Stmt parse_statement(Parser p) {
   if (match_tt(p, TokenType::LeftBrace)) {
+    // Distinguish map-type var decl {K:V} from block statement
+    if (starts_map_type_after_brace(p)) {
+      // Put '{' back and parse as var decl
+      p.current = p.current - 1;
+      return parse_var_decl(p);
+    }
     Token lb = previous(p);
     return parse_block_after_brace(p, lb);
   }

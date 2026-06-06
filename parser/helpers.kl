@@ -79,6 +79,7 @@ bool is_type_start(TokenType t) {
   if (t == TokenType::Void)   { return true; }
   if (t == TokenType::Byte)   { return true; }
   if (t == TokenType::Identifier) { return true; }
+  if (t == TokenType::LeftBrace)  { return true; }
   return false;
 }
 
@@ -144,6 +145,27 @@ TypeExpr parse_type_expr(Parser p) {
   if (!is_type_start(peek_tok(p).type)) {
     error_at(p, peek_tok(p), "Expected type name.");
     return make_type("<error>");
+  }
+  // Map type: {K: V}
+  if (check(p, TokenType::LeftBrace)) {
+    Token lb = advance_tok(p);
+    TypeExpr key_ty = parse_type_expr(p);
+    consume(p, TokenType::Colon, "Expected ':' between map key and value types.");
+    TypeExpr val_ty = parse_type_expr(p);
+    consume(p, TokenType::RightBrace, "Expected '}' after map type.");
+    string[] map_args = [];
+    map_args.push(type_to_string(key_ty));
+    map_args.push(type_to_string(val_ty));
+    TypeExpr t = TypeExpr { "Map", map_args };
+    // Map arrays: {K: V}[]
+    while (match_tt(p, TokenType::LeftBracket)) {
+      consume(p, TokenType::RightBracket, "Expected ']' after array type suffix.");
+      string inner_name = type_to_string(t);
+      string[] arg = [];
+      arg.push(inner_name);
+      t = TypeExpr { "Array", arg };
+    }
+    return t;
   }
   Token name_tok = advance_tok(p);
   string[] type_args = [];
