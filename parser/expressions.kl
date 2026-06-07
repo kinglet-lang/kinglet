@@ -53,6 +53,10 @@ Expr assignment(Parser p) {
       Expr::Index(_, _, _, _) => true,
       _ => false,
     }) {
+      if (aop != AssignOp::Assign) {
+        error_at(p, op, "Compound assignment to indexed expression is not supported.");
+        return Expr::Assign("<error>", aop, value, expr_line(left), expr_col(left));
+      }
       Expr obj = left match {
         Expr::Index(let o, _, _, _) => o,
         _ => left,
@@ -83,17 +87,17 @@ Expr ternary(Parser p) {
   return expr;
 }
 
-// lhs ?: rhs  and  lhs ?: |e| rhs  — right-associative (Elvis operator).
+// lhs ?: rhs  and  lhs ?: let e => rhs  — right-associative (Elvis operator).
 // Sits between assignment (above) and pipeline (below).
 Expr coalesce(Parser p) {
   Expr left = pipeline(p);
   if (!match_tt(p, TokenType::QuestionColon)) { return left; }
   Token qq = previous(p);
   string err_binding = "";
-  if (match_tt(p, TokenType::Pipe)) {
-    Token e = consume(p, TokenType::Identifier, "Expected error binding name after '|' in '?: |e|'.");
+  if (match_tt(p, TokenType::Let)) {
+    Token e = consume(p, TokenType::Identifier, "Expected error binding name after 'let' in '?: let'.");
     err_binding = e.lexeme;
-    consume(p, TokenType::Pipe, "Expected '|' to close '?: |e|' binding.");
+    consume(p, TokenType::FatArrow, "Expected '=>' after error binding name.");
   }
   Expr right = coalesce(p);
   return Expr::NullCoalesce(left, err_binding, right, qq.line, qq.col);
@@ -260,12 +264,62 @@ Expr unary(Parser p) {
   return call_chain(p);
 }
 
+bool expr_is_ident(Expr e) {
+  return e match { Expr::Ident(_, _, _) => true, _ => false, };
+}
+
+// True when callee is an identifier followed by <...>(  (explicit generic call).
+bool looks_like_generic_call(Parser p, Expr callee) {
+  if (!expr_is_ident(callee)) { return false; }
+  if (!check(p, TokenType::Less) || p.pending_greater) { return false; }
+  int saved = p.current;
+  advance_tok(p);
+  int depth = 1;
+  while (p.current < p.tokens.len() && depth > 0) {
+    TokenType t = p.tokens[p.current].type;
+    if (t == TokenType::Less)              { depth = depth + 1; }
+    else if (t == TokenType::Greater)      { depth = depth - 1; }
+    else if (t == TokenType::GreaterGreater) { depth = depth - 2; }
+    else if (t == TokenType::Semicolon || t == TokenType::Eof) { break; }
+    p.current = p.current + 1;
+  }
+  bool ok = depth == 0 && p.current < p.tokens.len() &&
+            p.tokens[p.current].type == TokenType::LeftParen;
+  p.current = saved;
+  return ok;
+}
+
+TypeExpr[] parse_call_type_args(Parser p) {
+  TypeExpr[] type_args = [];
+  advance_tok(p);
+  TypeExpr inner = parse_type_expr(p);
+  type_args.push(inner);
+  while (match_tt(p, TokenType::Comma)) {
+    TypeExpr more = parse_type_expr(p);
+    type_args.push(more);
+  }
+  consume_type_greater(p);
+  return type_args;
+}
+
 Expr call_chain(Parser p) {
   Expr expr = primary(p);
   while (true) {
     int el = expr_line(expr);
     int ec = expr_col(expr);
-    if (match_tt(p, TokenType::LeftParen)) {
+    if (looks_like_generic_call(p, expr)) {
+      TypeExpr[] ta = parse_call_type_args(p);
+      consume(p, TokenType::LeftParen, "Expected '(' after type arguments.");
+      Expr[] args = [];
+      if (!check(p, TokenType::RightParen)) {
+        args.push(expression(p));
+        while (match_tt(p, TokenType::Comma)) {
+          args.push(expression(p));
+        }
+      }
+      consume(p, TokenType::RightParen, "Expected ')' after arguments.");
+      expr = Expr::Call(expr, ta, args, el, ec);
+    } else if (match_tt(p, TokenType::LeftParen)) {
       Expr[] args = [];
       if (!check(p, TokenType::RightParen)) {
         args.push(expression(p));

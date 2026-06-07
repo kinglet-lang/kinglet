@@ -1,0 +1,7 @@
+int? parse_int(string s) {
+  return 0;
+}
+
+int main() {
+  return 0;
+}

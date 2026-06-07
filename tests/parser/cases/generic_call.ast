@@ -1,0 +1,15 @@
+Program
+  FunctionDecl T id<T>
+    param T x
+    Block
+      Return
+        Ident x
+  FunctionDecl int main
+    Block
+      VarDecl int v
+        Call
+          Ident id
+          TypeArg int
+          IntLit 42
+      Return
+        Ident v

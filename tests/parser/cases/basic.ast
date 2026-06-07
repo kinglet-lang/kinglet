@@ -1,1 +1,7 @@
 Program
+  FunctionDecl int main
+    Block
+      VarDecl int x
+        IntLit 1
+      Return
+        Ident x

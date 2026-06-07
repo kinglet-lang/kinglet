@@ -1,0 +1,6 @@
+T id<T>(T x) { return x; }
+
+int main() {
+  int v = id<int>(42);
+  return v;
+}

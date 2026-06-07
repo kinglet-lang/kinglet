@@ -1,0 +1,15 @@
+Program
+  FunctionDecl int main
+    Block
+      VarDecl int x
+        ?: 
+          IntLit 1
+          IntLit 0
+      VarDecl int y
+        ?: e
+          IntLit 2
+          IntLit 0
+      Return
+        Binary +
+          Ident x
+          Ident y

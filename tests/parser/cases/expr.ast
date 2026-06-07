@@ -1,1 +1,44 @@
 Program
+  FunctionDecl int compute
+    param int a
+    param int b
+    Block
+      Return
+        Binary -
+          Binary *
+            Binary +
+              Ident a
+              Ident b
+            IntLit 2
+          Binary /
+            Ident a
+            Ident b
+  FunctionDecl bool check
+    param int n
+    Block
+      Return
+        Binary ||
+          Binary &&
+            Binary >
+              Ident n
+              IntLit 0
+            Binary <
+              Ident n
+              IntLit 100
+          Binary ==
+            Ident n
+            Unary -
+              IntLit 1
+  FunctionDecl int main
+    Block
+      VarDecl int z
+        Call
+          Ident compute
+          IntLit 3
+          IntLit 4
+      VarDecl bool ok
+        Call
+          Ident check
+          Ident z
+      Return
+        Ident z

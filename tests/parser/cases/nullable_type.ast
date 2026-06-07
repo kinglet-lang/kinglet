@@ -1,0 +1,10 @@
+Program
+  FunctionDecl Nullable<int> parse_int
+    param string s
+    Block
+      Return
+        IntLit 0
+  FunctionDecl int main
+    Block
+      Return
+        IntLit 0

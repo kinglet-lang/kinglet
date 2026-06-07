@@ -1,1 +1,79 @@
 Program
+  FunctionDecl int main
+    Block
+      VarDecl int n
+        IntLit 0
+      If
+        cond
+          Binary >
+            Ident n
+            IntLit 5
+        then
+          Block
+            ExprStmt
+              Assign n =
+                Binary -
+                  Ident n
+                  IntLit 1
+        else
+          Block
+            ExprStmt
+              Assign n =
+                Binary +
+                  Ident n
+                  IntLit 1
+      While
+        cond
+          Binary <
+            Ident n
+            IntLit 10
+        body
+          Block
+            ExprStmt
+              Assign n =
+                Binary +
+                  Ident n
+                  IntLit 1
+            If
+              cond
+                Binary ==
+                  Ident n
+                  IntLit 7
+              then
+                Block
+                  Break
+              else
+                None
+      For
+        init
+          VarDecl int i
+            IntLit 0
+        cond
+          Binary <
+            Ident i
+            IntLit 3
+        step
+          ExprStmt
+            Assign i =
+              Binary +
+                Ident i
+                IntLit 1
+        body
+          Block
+            If
+              cond
+                Binary ==
+                  Ident i
+                  IntLit 1
+              then
+                Block
+                  Continue
+              else
+                None
+            ExprStmt
+              Assign n =
+                Binary +
+                  Ident n
+                  Ident i
+      Return
+        Ident n

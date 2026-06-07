@@ -20,7 +20,7 @@ using ast {
   Stmt, FieldDef, EnumVariant, ConceptMethod, WhereClause,
   Decl, Program, make_type
 };
-using helpers { Parser, ParseError };
+using helpers { Parser, ParseError, type_to_string };
 
 // token printer (--tokens mode)
 
@@ -239,7 +239,7 @@ void print_expr(Expr e, int depth) {
     Expr::Unary(let op, let r, let _l, let _c) => print_unary(op, r, depth),
     Expr::Binary(let l, let op, let r, let _l, let _c) => print_binary(l, op, r, depth),
     Expr::Assign(let n, let op, let v, let _l, let _c) => print_assign(n, op, v, depth),
-    Expr::Call(let callee, let _ta, let args, let _l, let _c) => print_call(callee, args, depth),
+    Expr::Call(let callee, let ta, let args, let _l, let _c) => print_call(callee, ta, args, depth),
     Expr::BindingPat(let n, let _l, let _c) => io::out.line("{}BindingPat {}", pad, n),
     Expr::ArrayPat(let elems, let _l, let _c) => print_array_pat(elems, depth),
     Expr::EnumPat(let en, let v, let fields, let _l, let _c) => print_enum_pat(en, v, fields, depth),
@@ -272,9 +272,12 @@ void print_assign(string n, AssignOp op, Expr v, int depth) {
   print_expr(v, depth + 1);
 }
 
-void print_call(Expr callee, Expr[] args, int depth) {
+void print_call(Expr callee, TypeExpr[] type_args, Expr[] args, int depth) {
   io::out.line("{}Call", indent_str(depth));
   print_expr(callee, depth + 1);
+  for (int i = 0; i < type_args.len(); i = i + 1) {
+    io::out.line("{}TypeArg {}", indent_str(depth + 1), type_to_string(type_args[i]));
+  }
   for (int i = 0; i < args.len(); i = i + 1) {
     print_expr(args[i], depth + 1);
   }
@@ -315,7 +318,7 @@ void print_cast(TypeExpr t, Expr v, int depth) {
 }
 
 void print_coalesce(Expr left, string err_binding, Expr right, int depth) {
-  io::out.line("{}?? {}", indent_str(depth), err_binding);
+  io::out.line("{}?: {}", indent_str(depth), err_binding);
   print_expr(left, depth + 1);
   print_expr(right, depth + 1);
 }
