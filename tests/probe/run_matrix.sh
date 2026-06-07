@@ -18,6 +18,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/common.sh"
 
 KINGLET=$(resolve_kinglet "$ROOT") || exit 2
+CLI_KBC=$(ensure_cli_kbc "$ROOT" "$KINGLET") || exit 2
 
 CASES="$ROOT/tests/probe/cases"
 TMP="$(mktemp -d)"
@@ -34,11 +35,12 @@ classify() {
     return
   }
 
-  # Stage 2: Check (--check)
-  "$KINGLET" --check "$f" >/dev/null 2>"$TMP/e" || {
+  # Stage 2: Check (selfhost checker via compiler.kbc)
+  "$KINGLET" --run "$CLI_KBC" "$f" --check >/dev/null 2>"$TMP/e"
+  if grep -q "type error" "$TMP/e"; then
     echo "chk✗|$(head -1 "$TMP/e")"
     return
-  }
+  fi
 
   # Stage 3: Codegen (--bytecode)
   "$KINGLET" --bytecode "$f" >/dev/null 2>"$TMP/e" || {
