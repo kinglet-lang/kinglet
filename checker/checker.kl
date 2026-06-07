@@ -41,6 +41,12 @@ pub struct FuncSig {
   Type ret_type;
 }
 
+pub struct NativeUsingAlias {
+  string short_name;
+  string ns;
+  string member;
+}
+
 pub Type type_int()     => Type { TypeKind::Int,     "" };
 pub Type type_float()   => Type { TypeKind::Float,   "" };
 pub Type type_bool()    => Type { TypeKind::Bool,    "" };
@@ -120,13 +126,14 @@ pub struct Checker {
   string file;
   StructInfo[] structs;
   FuncSig[] funcs;
+  NativeUsingAlias[] native_usings;
   int loop_depth;
   bool has_expected_return;
   Type expected_return;
 }
 
 pub Checker make_checker(string file) {
-  return Checker { [], [], [], file, [], [], 0, false, type_void() };
+  return Checker { [], [], [], file, [], [], [], 0, false, type_void() };
 }
 
 void push_scope(Checker c) { c.scope_starts.push(c.bindings.len()); }
@@ -316,8 +323,69 @@ Type check_expr(Checker c, Expr e) {
   };
 }
 
+bool is_native_namespace(string ns) {
+  if (ns == "io") { return true; }
+  if (ns == "fs") { return true; }
+  if (ns == "sys") { return true; }
+  return false;
+}
+
+bool is_native_member(string ns, string member) {
+  if (ns == "io") {
+    if (member == "out") { return true; }
+    if (member == "outln") { return true; }
+    if (member == "err") { return true; }
+    if (member == "errln") { return true; }
+    if (member == "in") { return true; }
+    return false;
+  }
+  if (ns == "fs") {
+    if (member == "__read") { return true; }
+    if (member == "__write") { return true; }
+    return false;
+  }
+  if (ns == "sys") {
+    if (member == "args") { return true; }
+    return false;
+  }
+  return false;
+}
+
+NativeUsingAlias no_native_alias() {
+  return NativeUsingAlias { "", "", "" };
+}
+
+void register_native_using_alias(Checker c, string short_name, string ns, string member) {
+  c.native_usings.push(NativeUsingAlias { short_name, ns, member });
+}
+
+NativeUsingAlias resolve_native_using_alias(Checker c, string short_name) {
+  for (int i = 0; i < c.native_usings.len(); i = i + 1) {
+    if (c.native_usings[i].short_name == short_name) {
+      return c.native_usings[i];
+    }
+  }
+  return no_native_alias();
+}
+
+string expr_ident_name(Expr e) {
+  return e match { Expr::Ident(let n, _, _) => n, _ => "", };
+}
+
+Type check_native_member_access(Checker c, string ns, string member, string field, int line, int col) {
+  if (ns == "io") {
+    if (member == "out" && field == "line") { return type_void(); }
+    if (member == "err" && field == "line") { return type_void(); }
+    if (member == "in" && field == "secret") { return type_void(); }
+  }
+  add_error(c, line, col, "Unknown method '" + field + "' on native '" + ns + "::" + member + "'.");
+  return type_unknown();
+}
+
 Type check_ident(Checker c, string name, int line, int col) {
   if (name == "null") { return type_null(); }
+  NativeUsingAlias alias = resolve_native_using_alias(c, name);
+  if (alias.short_name.len() > 0) { return type_unknown(); }
   if (!var_exists(c, name)) {
     add_error(c, line, col, "Undeclared variable '" + name + "'.");
     return type_unknown();
@@ -507,6 +575,13 @@ Type lookup_field_type(Checker c, StructInfo info, string field) {
 }
 
 Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
+  string oname = expr_ident_name(obj);
+  if (oname.len() > 0) {
+    NativeUsingAlias alias = resolve_native_using_alias(c, oname);
+    if (alias.short_name.len() > 0) {
+      return check_native_member_access(c, alias.ns, alias.member, field, line, col);
+    }
+  }
   Type ot = check_expr(c, obj);
   if (ot.kind != TypeKind::Struct && ot.kind != TypeKind::Unknown) {
     add_error(c, line, col, "Cannot access field on non-struct type.");
@@ -721,6 +796,25 @@ void forward_enum(Checker c, string name) {
   register_struct_info(c, StructInfo { name, [] });
 }
 
+void register_using_aliases(Checker c, string ns, string[] selected) {
+  if (selected.len() == 0) { return; }
+  if (!is_native_namespace(ns)) { return; }
+  for (int i = 0; i < selected.len(); i = i + 1) {
+    string sym = selected[i];
+    if (is_native_member(ns, sym)) {
+      register_native_using_alias(c, sym, ns, sym);
+    }
+  }
+}
+
+void register_using_decl(Checker c, Decl d) {
+  d match {
+    Decl::UsingDecl(let n, let _is_ns, let selected, let _l, let _c) =>
+      register_using_aliases(c, n, selected),
+    _ => check_void(),
+  };
+}
+
 void forward_decl(Checker c, Decl d) {
   d match {
     Decl::StructDecl(let n, let _tps, let fields, let _is_pub, let _l, let _c) =>
@@ -780,6 +874,9 @@ void check_function(Checker c, TypeExpr rt, Parameter[] params, Stmt body, int l
 
 pub int check_program(Checker c, Program prog) {
   push_scope(c);
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    register_using_decl(c, prog.declarations[i]);
+  }
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     forward_decl(c, prog.declarations[i]);
   }

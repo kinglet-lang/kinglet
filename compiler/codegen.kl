@@ -12,7 +12,7 @@ using ast {
   MatchArm, FieldInit, CatchArm, Parameter
 };
 using compiler_state {
-  Compiler,
+  Compiler, NativeUsingAlias,
   compile_error, emit_jump, patch_jump, patch_jump_to,
   compiler_push_scope, compiler_pop_scope,
   declare_local, resolve_local,
@@ -20,7 +20,7 @@ using compiler_state {
   callee_ident_line, callee_ident_col,
   castError_type_idx, intResult_type_idx, floatResult_type_idx,
   castError_variant_NotANumber, result_variant_Ok, result_variant_Err,
-  is_imported_ns
+  is_imported_ns, resolve_native_using_alias
 };
 
 void compile_expr(Compiler co, Expr e) {
@@ -659,25 +659,45 @@ void emit_ns_access(Compiler co, string ns, string member, int line, int col) {
 // Handle method calls: obj.method(args). Compiles the receiver first, then
 // dispatches on method name to emit the appropriate array/string/map opcode.
 // Mirrors compiler.cc:1015-1121.
+bool emit_native_io_member_method(Compiler co, string member, string method, Expr[] args, int line, int col) {
+  if (member == "out" && method == "line") {
+    for (int i = 0; i < args.len(); i = i + 1) { compile_expr(co, args[i]); }
+    bytecode::write_operand(co.chunk, OpCode::NativeOutLn, args.len(), line, col);
+    return true;
+  }
+  if (member == "err" && method == "line") {
+    for (int i = 0; i < args.len(); i = i + 1) { compile_expr(co, args[i]); }
+    bytecode::write_operand(co.chunk, OpCode::NativeErrLn, args.len(), line, col);
+    return true;
+  }
+  if (member == "in" && method == "secret") {
+    for (int i = 0; i < args.len(); i = i + 1) { compile_expr(co, args[i]); }
+    bytecode::write_operand(co.chunk, OpCode::NativeInSecret, args.len(), line, col);
+    return true;
+  }
+  return false;
+}
+
 void emit_method_call(Compiler co, Expr obj, string method, Expr[] args, int line, int col) {
-  // Check for io::out.line(...), io::err.line(...), io::in.secret(...)
+  // using io { out }; → out.line(...)
+  bool obj_is_ident = obj match { Expr::Ident(_, _, _) => true, _ => false, };
+  if (obj_is_ident) {
+    string name = obj match { Expr::Ident(let n, _, _) => n, _ => "", };
+    NativeUsingAlias alias = resolve_native_using_alias(co, name);
+    if (alias.short_name.len() > 0) {
+      if (alias.ns == "io" && emit_native_io_member_method(co, alias.member, method, args, line, col)) {
+        return;
+      }
+      compile_error(co, line, col, "Unknown method '" + method + "' on native '" + alias.ns + "::" + alias.member + "'.");
+      return;
+    }
+  }
+  // io::out.line(...), io::err.line(...), io::in.secret(...)
   bool obj_is_ns = obj match { Expr::NsAccess(let _ns, let _m, let _l, let _c) => true, _ => false, };
   if (obj_is_ns && has_using(co, "io")) {
     string ns = obj match { Expr::NsAccess(let ns, let _m, let _l, let _c) => ns, _ => "", };
     string member = obj match { Expr::NsAccess(let _ns, let m, let _l, let _c) => m, _ => "", };
-    if (ns == "io" && member == "out" && method == "line") {
-      for (int i = 0; i < args.len(); i = i + 1) { compile_expr(co, args[i]); }
-      bytecode::write_operand(co.chunk, OpCode::NativeOutLn, args.len(), line, col);
-      return;
-    }
-    if (ns == "io" && member == "err" && method == "line") {
-      for (int i = 0; i < args.len(); i = i + 1) { compile_expr(co, args[i]); }
-      bytecode::write_operand(co.chunk, OpCode::NativeErrLn, args.len(), line, col);
-      return;
-    }
-    if (ns == "io" && member == "in" && method == "secret") {
-      for (int i = 0; i < args.len(); i = i + 1) { compile_expr(co, args[i]); }
-      bytecode::write_operand(co.chunk, OpCode::NativeInSecret, args.len(), line, col);
+    if (ns == "io" && emit_native_io_member_method(co, member, method, args, line, col)) {
       return;
     }
   }

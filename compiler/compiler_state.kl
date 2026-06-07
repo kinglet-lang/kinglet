@@ -57,6 +57,13 @@ pub struct ImportState {
   string project_root;
 }
 
+// Short name from `using io { out };` → native io::out for method dispatch.
+pub struct NativeUsingAlias {
+  string short_name;
+  string ns;
+  string member;
+}
+
 pub struct Compiler {
   Chunk chunk;
   Local[] locals;
@@ -68,6 +75,7 @@ pub struct Compiler {
   int[] loop_continues;
   int loop_depth;
   string[] usings;
+  NativeUsingAlias[] native_usings;
   EnumEntry[] enums;
   StructEntry[] structs;
   ImportState imports;
@@ -78,7 +86,7 @@ pub struct Compiler {
 pub Compiler make_compiler() {
   Chunk c = bytecode::make_chunk();
   bytecode::register_builtin_enums(c);
-  return Compiler { c, [], [], 0, [], [], [], [], 0, [], [], [],
+  return Compiler { c, [], [], 0, [], [], [], [], 0, [], [], [], [],
     ImportState { [], [], [], [], "" }, false, false };
 }
 
@@ -198,4 +206,49 @@ pub bool is_imported_ns(Compiler co, string ns) {
     if (co.imports.namespaces[i] == ns) { return true; }
   }
   return false;
+}
+
+pub bool is_native_namespace(string ns) {
+  if (ns == "io") { return true; }
+  if (ns == "fs") { return true; }
+  if (ns == "sys") { return true; }
+  return false;
+}
+
+pub bool is_native_member(string ns, string member) {
+  if (ns == "io") {
+    if (member == "out") { return true; }
+    if (member == "outln") { return true; }
+    if (member == "err") { return true; }
+    if (member == "errln") { return true; }
+    if (member == "in") { return true; }
+    return false;
+  }
+  if (ns == "fs") {
+    if (member == "__read") { return true; }
+    if (member == "__write") { return true; }
+    return false;
+  }
+  if (ns == "sys") {
+    if (member == "args") { return true; }
+    return false;
+  }
+  return false;
+}
+
+pub NativeUsingAlias no_native_alias() {
+  return NativeUsingAlias { "", "", "" };
+}
+
+pub void register_native_using_alias(Compiler co, string short_name, string ns, string member) {
+  co.native_usings.push(NativeUsingAlias { short_name, ns, member });
+}
+
+pub NativeUsingAlias resolve_native_using_alias(Compiler co, string short_name) {
+  for (int i = 0; i < co.native_usings.len(); i = i + 1) {
+    if (co.native_usings[i].short_name == short_name) {
+      return co.native_usings[i];
+    }
+  }
+  return no_native_alias();
 }

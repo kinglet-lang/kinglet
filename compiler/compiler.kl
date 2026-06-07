@@ -26,7 +26,8 @@ using compiler_state {
   make_compiler, compile_error,
   compiler_push_scope, compiler_pop_scope,
   declare_local, resolve_local, resolve_function,
-  emit_jump, patch_jump, patch_jump_to
+  emit_jump, patch_jump, patch_jump_to,
+  is_native_namespace, is_native_member, register_native_using_alias
 };
 using scanner { scan };
 using codegen { compile_stmt };
@@ -325,6 +326,10 @@ void register_using_aliases(Compiler co, string ns, string[] selected) {
     int fi = resolve_function(co, qualified);
     if (fi >= 0 && !func_exists(co, sym)) {
       register_func_alias(co, sym, co.funcs[fi].func_index, co.funcs[fi].const_index, co.funcs[fi].param_count);
+      continue;
+    }
+    if (is_native_namespace(ns) && is_native_member(ns, sym)) {
+      register_native_using_alias(co, sym, ns, sym);
     }
   }
 }
