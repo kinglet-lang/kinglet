@@ -10,7 +10,7 @@ import {
 using ast {
   BinaryOp, UnaryOp, AssignOp, TypeExpr,
   Expr, Parameter, Stmt, Decl, Program,
-  FieldDef, FieldInit
+  FieldDef, FieldInit, EnumVariant, MatchArm
 };
 
 // Flat type representation (no recursive Type fields — avoids infinite init).
@@ -39,6 +39,16 @@ pub struct FuncSig {
   string name;
   Type[] param_types;
   Type ret_type;
+}
+
+pub struct EnumVariantInfo {
+  string name;
+  string[] payload_encs;
+}
+
+pub struct EnumInfo {
+  string name;
+  EnumVariantInfo[] variants;
 }
 
 pub struct NativeUsingAlias {
@@ -125,6 +135,7 @@ pub struct Checker {
   CheckError[] errors;
   string file;
   StructInfo[] structs;
+  EnumInfo[] enums;
   FuncSig[] funcs;
   NativeUsingAlias[] native_usings;
   int loop_depth;
@@ -133,7 +144,7 @@ pub struct Checker {
 }
 
 pub Checker make_checker(string file) {
-  return Checker { [], [], [], file, [], [], [], 0, false, type_void() };
+  return Checker { [], [], [], file, [], [], [], [], 0, false, type_void() };
 }
 
 void push_scope(Checker c) { c.scope_starts.push(c.bindings.len()); }
@@ -199,6 +210,22 @@ bool struct_exists(Checker c, string name) {
 
 void register_struct_info(Checker c, StructInfo info) {
   c.structs.push(info);
+}
+
+void register_enum_info(Checker c, EnumInfo info) {
+  c.enums.push(info);
+}
+
+EnumVariantInfo lookup_enum_variant(Checker c, string enum_name, string variant_name) {
+  for (int i = 0; i < c.enums.len(); i = i + 1) {
+    if (c.enums[i].name != enum_name) { continue; }
+    for (int j = 0; j < c.enums[i].variants.len(); j = j + 1) {
+      if (c.enums[i].variants[j].name == variant_name) {
+        return c.enums[i].variants[j];
+      }
+    }
+  }
+  return EnumVariantInfo { "", [] };
 }
 
 void register_func(Checker c, FuncSig sig) { c.funcs.push(sig); }
@@ -318,7 +345,7 @@ Type check_expr(Checker c, Expr e) {
     Expr::Ternary(let cond, let th, let el, let l, let co) => check_ternary(c, cond, th, el, l, co),
     Expr::NullCoalesce(let left, let _eb, let right, let l, let co) => check_coalesce(c, left, right, l, co),
     Expr::Cast(let target, let val, let l, let co) => check_cast(c, target, val, l, co),
-    Expr::Match(let val, let _arms, let _l, let _co) => check_expr(c, val),
+    Expr::Match(let val, let arms, let l, let co) => check_match(c, val, arms, l, co),
     _ => type_unknown(),
   };
 }
@@ -478,6 +505,17 @@ string callee_name(Expr callee) {
 }
 
 Type check_call(Checker c, Expr callee, TypeExpr[] type_args, Expr[] args, int line, int col) {
+  bool is_field = callee match {
+    Expr::FieldAccess(let _o, let _f, let _l, let _c) => true,
+    _ => false,
+  };
+  if (is_field) {
+    return callee match {
+      Expr::FieldAccess(let obj, let method, let fl, let fc) =>
+        check_method_call(c, obj, method, args, fl, fc),
+      _ => type_unknown(),
+    };
+  }
   string fname = callee_name(callee);
   if (fname.len() == 0) {
     check_expr(c, callee);
@@ -581,6 +619,55 @@ Type lookup_field_type(Checker c, StructInfo info, string field) {
   return type_unknown();
 }
 
+Type check_method_call(Checker c, Expr obj, string method, Expr[] args, int line, int col) {
+  Type ot = check_expr(c, obj);
+  if (method == "len") {
+    if (ot.kind == TypeKind::String || ot.kind == TypeKind::Array ||
+        ot.kind == TypeKind::Unknown) {
+      return type_int();
+    }
+    add_error(c, line, col, "Method 'len' is not available on '" + type_kind_name(ot) + "'.");
+    return type_int();
+  }
+  if (method == "push") {
+    if (args.len() != 1) {
+      add_error(c, line, col, "Method 'push' expects 1 argument.");
+      return type_void();
+    }
+    Type at = check_expr(c, args[0]);
+    if (ot.kind == TypeKind::Array) {
+      Type elem = resolve_type_name(c, ot.tag);
+      if (!types_compatible(at, elem)) {
+        add_error(c, line, col, "Array element type mismatch.");
+      }
+    }
+    return type_void();
+  }
+  if (method == "pop" || method == "clear" || method == "reverse") {
+    if (ot.kind == TypeKind::Array || ot.kind == TypeKind::Unknown) {
+      if (method == "pop" && ot.kind == TypeKind::Array) {
+        return resolve_type_name(c, ot.tag);
+      }
+      return type_unknown();
+    }
+  }
+  if (method == "starts_with" || method == "ends_with" || method == "replace" ||
+      method == "split" || method == "trim" || method == "to_upper" || method == "to_lower") {
+    if (ot.kind == TypeKind::String || ot.kind == TypeKind::Unknown) {
+      return type_bool();
+    }
+  }
+  if (ot.kind == TypeKind::Array || ot.kind == TypeKind::String ||
+      ot.kind == TypeKind::Map || ot.kind == TypeKind::Unknown) {
+    for (int i = 0; i < args.len(); i = i + 1) {
+      Type _at = check_expr(c, args[i]);
+    }
+    return type_unknown();
+  }
+  add_error(c, line, col, "Unknown method '" + method + "' on '" + type_kind_name(ot) + "'.");
+  return type_unknown();
+}
+
 Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
   string oname = expr_ident_name(obj);
   if (oname.len() > 0) {
@@ -643,6 +730,138 @@ Type check_coalesce(Checker c, Expr left, Expr right, int line, int col) {
 Type check_cast(Checker c, TypeExpr target, Expr val, int line, int col) {
   Type _vt = check_expr(c, val);
   return resolve_type_expr(c, target);
+}
+
+Type unify_match_types(Checker c, Type acc, Type next, int line, int col) {
+  if (acc.kind == TypeKind::Unknown) { return next; }
+  if (next.kind == TypeKind::Unknown) { return acc; }
+  if (types_compatible(acc, next)) { return acc; }
+  add_error(c, line, col, "Match arms have incompatible types.");
+  return acc;
+}
+
+void bind_enum_pattern(Checker c, Expr pattern) {
+  bool is_pat = pattern match {
+    Expr::EnumPat(let _en, let _vn, let _fs, let _l, let _c) => true,
+    _ => false,
+  };
+  if (!is_pat) { return; }
+  string enum_name = pattern match {
+    Expr::EnumPat(let en, let _vn, let _fs, let _l, let _c) => en,
+    _ => "",
+  };
+  string variant_name = pattern match {
+    Expr::EnumPat(let _en, let vn, let _fs, let _l, let _c) => vn,
+    _ => "",
+  };
+  Expr[] fields = pattern match {
+    Expr::EnumPat(let _en, let _vn, let fs, let _l, let _c) => fs,
+    _ => [],
+  };
+  EnumVariantInfo variant = lookup_enum_variant(c, enum_name, variant_name);
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    bool is_bind = fields[i] match {
+      Expr::BindingPat(let _n, let _l, let _c) => true,
+      _ => false,
+    };
+    if (!is_bind) { continue; }
+    string n = fields[i] match {
+      Expr::BindingPat(let n, let _l, let _c) => n,
+      _ => "",
+    };
+    int l = fields[i] match {
+      Expr::BindingPat(let _n, let ln, let _c) => ln,
+      _ => 0,
+    };
+    int co = fields[i] match {
+      Expr::BindingPat(let _n, let _l, let cn) => cn,
+      _ => 0,
+    };
+    Type pt = type_unknown();
+    if (i < variant.payload_encs.len()) {
+      pt = resolve_type_name(c, variant.payload_encs[i]);
+    }
+    declare_var(c, n, pt, l, co);
+  }
+}
+
+void bind_match_pattern(Checker c, Expr pattern, Type scrutinee, int line, int col) {
+  bool is_binding = pattern match {
+    Expr::BindingPat(let _n, let _l, let _c) => true,
+    _ => false,
+  };
+  if (is_binding) {
+    string n = pattern match {
+      Expr::BindingPat(let n, let _l, let _c) => n,
+      _ => "",
+    };
+    int l = pattern match {
+      Expr::BindingPat(let _n, let ln, let _c) => ln,
+      _ => 0,
+    };
+    int co = pattern match {
+      Expr::BindingPat(let _n, let _l, let cn) => cn,
+      _ => 0,
+    };
+    declare_var(c, n, scrutinee, l, co);
+    return;
+  }
+  bool is_enum = pattern match {
+    Expr::EnumPat(let _en, let _vn, let _fs, let _l, let _c) => true,
+    _ => false,
+  };
+  if (is_enum) {
+    bind_enum_pattern(c, pattern);
+    return;
+  }
+  bool is_ident = pattern match {
+    Expr::Ident(let _n, let _l, let _c) => true,
+    _ => false,
+  };
+  if (is_ident) {
+    string n = pattern match {
+      Expr::Ident(let n, let _l, let _c) => n,
+      _ => "",
+    };
+    int l = pattern match {
+      Expr::Ident(let _n, let ln, let _c) => ln,
+      _ => 0,
+    };
+    int co = pattern match {
+      Expr::Ident(let _n, let _l, let cn) => cn,
+      _ => 0,
+    };
+    if (n != "_") {
+      add_error(c, l, co, "Expected a pattern, got identifier '" + n + "'.");
+    }
+    return;
+  }
+  Type _pt = check_expr(c, pattern);
+}
+
+Type check_match_arm(Checker c, MatchArm arm, Type scrutinee, int line, int col) {
+  push_scope(c);
+  bind_match_pattern(c, arm.pattern, scrutinee, line, col);
+  if (arm.guard_expr match { Expr::None => false, _ => true, }) {
+    Type gt = check_expr(c, arm.guard_expr);
+    if (gt.kind != TypeKind::Bool && gt.kind != TypeKind::Int && gt.kind != TypeKind::Unknown) {
+      add_error(c, line, col, "Match guard must be 'bool'.");
+    }
+  }
+  Type bt = check_expr(c, arm.body);
+  pop_scope(c);
+  return bt;
+}
+
+Type check_match(Checker c, Expr val, MatchArm[] arms, int line, int col) {
+  Type vt = check_expr(c, val);
+  if (arms.len() == 0) { return type_unknown(); }
+  Type result = type_unknown();
+  for (int i = 0; i < arms.len(); i = i + 1) {
+    Type bt = check_match_arm(c, arms[i], vt, line, col);
+    result = unify_match_types(c, result, bt, line, col);
+  }
+  return result;
 }
 
 // statements
@@ -799,8 +1018,17 @@ void check_for(Checker c, Stmt init, Expr cond, Stmt step, Stmt body) {
 
 // declarations
 
-void forward_enum(Checker c, string name) {
+void forward_enum(Checker c, string name, EnumVariant[] variants) {
   register_struct_info(c, StructInfo { name, [] });
+  EnumVariantInfo[] vis = [];
+  for (int i = 0; i < variants.len(); i = i + 1) {
+    string[] encs = [];
+    for (int j = 0; j < variants[i].param_types.len(); j = j + 1) {
+      encs.push(type_expr_encode(variants[i].param_types[j]));
+    }
+    vis.push(EnumVariantInfo { variants[i].name, encs });
+  }
+  register_enum_info(c, EnumInfo { name, vis });
 }
 
 void open_native_namespace(Checker c, string ns) {
@@ -855,8 +1083,8 @@ void forward_decl(Checker c, Decl d) {
   d match {
     Decl::StructDecl(let n, let _tps, let fields, let _is_pub, let _l, let _c) =>
       forward_struct(c, n, fields),
-    Decl::EnumDecl(let n, let _variants, let _is_pub, let _l, let _c) =>
-      forward_enum(c, n),
+    Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _c) =>
+      forward_enum(c, n, variants),
     _ => check_void(),
   };
 }

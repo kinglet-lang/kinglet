@@ -63,6 +63,8 @@ run_case fail_wrong_arity fail
 run_case fail_array_mixed fail
 run_case fail_struct_field fail
 run_case fail_break_outside_loop fail
+run_case pass_enum_match pass
+run_case pass_array_methods pass
 
 echo "===================="
 echo "$PASS/$TOTAL passed"
