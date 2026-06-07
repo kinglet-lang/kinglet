@@ -32,8 +32,9 @@ MUST_PASS=(
   map_basic map_symbol_table                          # map type + literal support added
 )
 # Known remaining gaps (tracked, non-gating). Oracle = correct (bootstrap) output.
+# Note: chained_comparisons sh coverage lives in tests/run_selfhost/ (this suite
+# runs .kl through bootstrap directly, so it cannot measure sh parser gaps).
 KNOWN_FAIL=(
-  chained_comparisons                                 # no chained cmp desugaring
   arrays_type_error arrays_bytecode cat               # shallow checker / exit-code mismatch
 )
 

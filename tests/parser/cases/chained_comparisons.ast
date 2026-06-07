@@ -1,0 +1,52 @@
+Program
+  FunctionDecl int main
+    Block
+      VarDecl int x
+        IntLit 5
+      If
+        cond
+          Binary &&
+            Binary <=
+              IntLit 1
+              Ident x
+            Binary <=
+              Ident x
+              IntLit 10
+        then
+          Block
+            Return
+              IntLit 1
+        else
+          None
+      If
+        cond
+          Binary &&
+            Binary <
+              IntLit 0
+              Ident x
+            Binary <
+              Ident x
+              IntLit 3
+        then
+          Block
+            Return
+              IntLit 2
+        else
+          None
+      If
+        cond
+          Binary &&
+            Binary <=
+              IntLit 1
+              IntLit 1
+            Binary <=
+              IntLit 1
+              IntLit 1
+        then
+          Block
+            Return
+              IntLit 3
+        else
+          None
+      Return
+        IntLit 0

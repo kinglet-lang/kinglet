@@ -76,7 +76,7 @@ strip_cr() {
   done
 }
 
-# Compile .kl source to .kbc bytecode using the selfhost compiler.
+# Compile .kl source to .kbc bytecode using the bootstrap compiler.
 # Usage: compile_kl <src.kl> <out.kbc> [--strip-debug]
 # Returns: compiler exit code
 # Side effects: stderr captured to <out.kbc>.stderr
@@ -93,14 +93,32 @@ compile_kl() {
   return $?
 }
 
-# Run compiled .kbc bytecode file using the selfhost VM.
+# Compile .kl with the self-hosted compiler (compiler.kbc artefact).
+# Usage: compile_selfhost <cli_kbc> <src.kl> <out.kbc> [--strip-debug]
+# Returns: compiler exit code
+# Side effects: stderr captured to <out.kbc>.stderr
+compile_selfhost() {
+  local cli_kbc="$1"
+  local src="$2"
+  local out="$3"
+  local strip_flag=""
+  shift 3
+  if [[ "${1:-}" == "--strip-debug" ]]; then
+    strip_flag="--strip-debug"
+  fi
+  local kinglet="${KINGLET_BIN:-$KINGLET}"
+  "$kinglet" --run "$cli_kbc" --save-bytecode "$out" $strip_flag "$src" 2>"$out.stderr"
+  return $?
+}
+
+# Run compiled .kbc bytecode file using the host VM.
 # Usage: run_kbc <prog.kbc> [args...]
 # Returns: program exit code
 run_kbc() {
   local kbc="$1"
   shift
   local kinglet="${KINGLET_BIN:-$KINGLET}"
-  "$kinglet" "$kbc" "$@"
+  "$kinglet" --run "$kbc" "$@"
   return $?
 }
 
