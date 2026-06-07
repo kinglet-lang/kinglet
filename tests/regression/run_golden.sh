@@ -30,12 +30,13 @@ MUST_PASS=(
   enum_destructure_test match_enum_destruct enum_guard_test
   match_basic match_binding                           # trailing newline corrected (io::out no \n)
   map_basic map_symbol_table                          # map type + literal support added
+  arrays_type_error                                   # checker catches mixed array literals
 )
 # Known remaining gaps (tracked, non-gating). Oracle = correct (bootstrap) output.
 # Note: chained_comparisons sh coverage lives in tests/run_selfhost/ (this suite
 # runs .kl through bootstrap directly, so it cannot measure sh parser gaps).
 KNOWN_FAIL=(
-  arrays_type_error arrays_bytecode cat               # shallow checker / exit-code mismatch
+  arrays_bytecode cat                                 # tracked sh-vs-bs divergences
 )
 
 # Run case $1; sets OUT_OK / EXIT_OK / GOT_EXIT / WANT_EXIT.
