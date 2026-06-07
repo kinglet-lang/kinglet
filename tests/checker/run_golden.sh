@@ -59,6 +59,10 @@ run_case pass_auto_int pass
 run_case pass_auto_array pass
 run_case fail_auto_no_init fail
 run_case pass_concept_basic pass
+run_case fail_wrong_arity fail
+run_case fail_array_mixed fail
+run_case fail_struct_field fail
+run_case fail_break_outside_loop fail
 
 echo "===================="
 echo "$PASS/$TOTAL passed"
