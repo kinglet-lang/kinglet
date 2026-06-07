@@ -483,6 +483,13 @@ Type check_call(Checker c, Expr callee, TypeExpr[] type_args, Expr[] args, int l
     check_expr(c, callee);
     return type_unknown();
   }
+  NativeUsingAlias alias = resolve_native_using_alias(c, fname);
+  if (alias.short_name.len() > 0) {
+    for (int i = 0; i < args.len(); i = i + 1) {
+      Type _at = check_expr(c, args[i]);
+    }
+    return type_void();
+  }
   if (!func_exists(c, fname)) {
     add_error(c, line, col, "Undeclared variable '" + fname + "'.");
     return type_unknown();
@@ -796,6 +803,25 @@ void forward_enum(Checker c, string name) {
   register_struct_info(c, StructInfo { name, [] });
 }
 
+void open_native_namespace(Checker c, string ns) {
+  if (ns == "io") {
+    register_native_using_alias(c, "out", "io", "out");
+    register_native_using_alias(c, "outln", "io", "outln");
+    register_native_using_alias(c, "err", "io", "err");
+    register_native_using_alias(c, "errln", "io", "errln");
+    register_native_using_alias(c, "in", "io", "in");
+    return;
+  }
+  if (ns == "fs") {
+    register_native_using_alias(c, "__read", "fs", "__read");
+    register_native_using_alias(c, "__write", "fs", "__write");
+    return;
+  }
+  if (ns == "sys") {
+    register_native_using_alias(c, "args", "sys", "args");
+  }
+}
+
 void register_using_aliases(Checker c, string ns, string[] selected) {
   if (selected.len() == 0) { return; }
   if (!is_native_namespace(ns)) { return; }
@@ -807,10 +833,20 @@ void register_using_aliases(Checker c, string ns, string[] selected) {
   }
 }
 
+void apply_using_decl(Checker c, string n, bool is_ns, string[] selected) {
+  if (is_ns && is_native_namespace(n)) {
+    open_native_namespace(c, n);
+    return;
+  }
+  if (selected.len() > 0) {
+    register_using_aliases(c, n, selected);
+  }
+}
+
 void register_using_decl(Checker c, Decl d) {
   d match {
-    Decl::UsingDecl(let n, let _is_ns, let selected, let _l, let _c) =>
-      register_using_aliases(c, n, selected),
+    Decl::UsingDecl(let n, let is_ns, let selected, let _l, let _c) =>
+      apply_using_decl(c, n, is_ns, selected),
     _ => check_void(),
   };
 }

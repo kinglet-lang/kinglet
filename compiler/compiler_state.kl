@@ -252,3 +252,22 @@ pub NativeUsingAlias resolve_native_using_alias(Compiler co, string short_name) 
   }
   return no_native_alias();
 }
+
+pub void open_native_namespace(Compiler co, string ns) {
+  if (ns == "io") {
+    register_native_using_alias(co, "out", "io", "out");
+    register_native_using_alias(co, "outln", "io", "outln");
+    register_native_using_alias(co, "err", "io", "err");
+    register_native_using_alias(co, "errln", "io", "errln");
+    register_native_using_alias(co, "in", "io", "in");
+    return;
+  }
+  if (ns == "fs") {
+    register_native_using_alias(co, "__read", "fs", "__read");
+    register_native_using_alias(co, "__write", "fs", "__write");
+    return;
+  }
+  if (ns == "sys") {
+    register_native_using_alias(co, "args", "sys", "args");
+  }
+}

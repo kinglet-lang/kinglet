@@ -760,6 +760,14 @@ void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
     };
     return;
   }
+  if (callee_name.len() > 0) {
+    NativeUsingAlias alias = resolve_native_using_alias(co, callee_name);
+    if (alias.short_name.len() > 0) {
+      if (emit_native_call(co, alias.ns, alias.member, args, cl, cc)) { return; }
+      compile_error(co, cl, cc, "Unknown native '" + alias.ns + "::" + alias.member + "'.");
+      return;
+    }
+  }
   if (callee_name.len() == 0) {
     compile_error(co, cl, cc, "Only direct function calls supported in VM compiler.");
     return;

@@ -27,7 +27,8 @@ using compiler_state {
   compiler_push_scope, compiler_pop_scope,
   declare_local, resolve_local, resolve_function,
   emit_jump, patch_jump, patch_jump_to,
-  is_native_namespace, is_native_member, register_native_using_alias
+  is_native_namespace, is_native_member, register_native_using_alias,
+  open_native_namespace
 };
 using scanner { scan };
 using codegen { compile_stmt };
@@ -319,6 +320,24 @@ void _handle_transitive_block(Compiler co, string[] paths, string[] aliases, str
   }
 }
 
+void process_using_decl(Compiler co, Decl d) {
+  d match {
+    Decl::UsingDecl(let n, let is_ns, let selected, let _l, let _c) =>
+      apply_using_decl(co, n, is_ns, selected),
+    _ => skip_decl(co),
+  };
+}
+
+void apply_using_decl(Compiler co, string n, bool is_ns, string[] selected) {
+  if (is_ns && is_native_namespace(n)) {
+    open_native_namespace(co, n);
+    return;
+  }
+  if (selected.len() > 0) {
+    register_using_aliases(co, n, selected);
+  }
+}
+
 void register_using_aliases(Compiler co, string ns, string[] selected) {
   for (int i = 0; i < selected.len(); i = i + 1) {
     string sym = selected[i];
@@ -432,15 +451,10 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
       if (co.errors.len() > 0) { return co.errors.len(); }
     }
   }
-  // Pass 0c: lower `using mod { sym1, sym2 };` to short-name function aliases.
-  // Mirrors compiler.cc:56-69 in the bootstrap. Each selected symbol resolves
-  // to ns::sym and gets a short-name FuncEntry pointing at the same slot.
+  // Pass 0c: `using namespace io;` opens native members; `using mod { sym };`
+  // lowers imported or native symbols to short-name aliases.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
-    prog.declarations[i] match {
-      Decl::UsingDecl(let n, let _is_ns, let selected, let _l, let _c) =>
-        register_using_aliases(co, n, selected),
-      _ => skip_decl(co),
-    };
+    process_using_decl(co, prog.declarations[i]);
   }
   // Pass 0b: register struct and enum declarations.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
