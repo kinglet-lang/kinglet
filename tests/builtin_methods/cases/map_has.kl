@@ -1,0 +1,3 @@
+// EXPECT_OUT: true
+using io;
+int main() { {string: int} m = {}; m["k"] = 1; io::out.line(m.has("k")); return 0; }

@@ -1,0 +1,3 @@
+// EXPECT_OUT: true
+using io;
+int main() { int[] a = [1, 2, 3]; io::out.line(a.contains(2)); return 0; }

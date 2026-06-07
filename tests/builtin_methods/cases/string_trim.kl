@@ -1,0 +1,3 @@
+// EXPECT_OUT: hi
+using io;
+int main() { string s = "  hi  "; io::out.line(s.trim()); return 0; }

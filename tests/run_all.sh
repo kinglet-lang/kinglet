@@ -37,6 +37,9 @@ run_suite "Behavioral tests" "$ROOT/run/run_golden.sh"
 bash "$ROOT/probe/run_matrix.sh"
 TOTAL=$((TOTAL + 1))
 PASSED=$((PASSED + 1))
+bash "$ROOT/builtin_methods/run_matrix.sh"
+TOTAL=$((TOTAL + 1))
+PASSED=$((PASSED + 1))
 run_suite "Diagnostic tests" "$ROOT/diagnostics/run_golden.sh"
 run_suite "KBC tests" "$ROOT/kbc/run_golden.sh"
 run_suite "Regression (sh-vs-bs)" "$ROOT/regression/run_golden.sh"

@@ -97,6 +97,17 @@ classify() {
   fi
 }
 
+probe_category() {
+  case "$1" in
+    01_*|02_*|03_*|04_*|05_*|06_*|07_*|08_*|09_*|10_*) echo "core" ;;
+    11_*|12_*|13_*|25_*) echo "types" ;;
+    14_*|15_*|16_*|17_*|18_*|19_*|20_*|21_*) echo "syntax" ;;
+    23_*|24_*|26_*|27_*) echo "generics" ;;
+    28_*|29_*) echo "platform" ;;
+    *) echo "other" ;;
+  esac
+}
+
 echo "# Kinglet capability matrix (selfhost via compiler.kbc)"
 echo "# Generated: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "# VM host: ${KINGLET}"
@@ -108,10 +119,26 @@ reached_run=0
 total=0
 chk_fail=0
 
+# Per-category counters (bash 3.x — no associative arrays on macOS)
+for _cat in core types syntax generics platform other; do
+  eval "cat_total_${_cat}=0 cat_run_${_cat}=0 cat_cg_${_cat}=0 cat_out_${_cat}=0"
+done
+
+bump_cat() {
+  local cat="$1" stage="$2"
+  eval "cat_total_${cat}=\$((cat_total_${cat} + 1))"
+  case "$stage" in
+    run✓) eval "cat_run_${cat}=\$((cat_run_${cat} + 1))" ;;
+    cg✗) eval "cat_cg_${cat}=\$((cat_cg_${cat} + 1))" ;;
+    run≠out) eval "cat_out_${cat}=\$((cat_out_${cat} + 1))" ;;
+  esac
+}
+
 shopt -s nullglob
 for f in "$CASES"/*.kl; do
   [[ -f "$f" ]] || continue
   name=$(basename "$f" .kl)
+  cat=$(probe_category "$name")
 
   expect=$(head -1 "$f" | sed -n 's/.*EXPECT_OUT:[[:space:]]*\(.*\)/\1/p')
   [[ -z "$expect" ]] && expect="<no oracle>"
@@ -127,12 +154,23 @@ for f in "$CASES"/*.kl; do
 
   [[ "$stage" == "run✓" ]] && reached_run=$((reached_run + 1))
   [[ "$check_cell" == "chk✗" ]] && chk_fail=$((chk_fail + 1))
+  bump_cat "$cat" "$stage"
 
   printf '| %-28s | %-12s | %-8s | %-10s | %s |\n' "$name" "$expect" "$check_cell" "$stage" "$note"
 done
 
 echo
 echo "Total: $total probes, run✓: $reached_run, checker failures (non-blocking): $chk_fail"
+echo
+echo "By category (stage):"
+for cat in core types syntax generics platform other; do
+  eval "t=\$cat_total_${cat} r=\$cat_run_${cat} c=\$cat_cg_${cat} o=\$cat_out_${cat}"
+  [[ "$t" -eq 0 ]] && continue
+  printf '  %-10s run✓ %d/%d' "$cat" "$r" "$t"
+  [[ "$c" -gt 0 ]] && printf '  cg✗ %d' "$c"
+  [[ "$o" -gt 0 ]] && printf '  run≠out %d' "$o"
+  echo
+done
 echo
 echo "Legend:"
 echo "  check chk✓/chk✗  — selfhost --check (informational; does not gate stage)"
@@ -141,3 +179,4 @@ echo "  cg✗              — selfhost compile failed"
 echo "  run✗             — runtime error"
 echo "  run≠out          — output mismatch vs EXPECT_OUT"
 echo "  run✓             — compile + run matched oracle (chk✗ may still appear in note)"
+echo "  categories       — see tests/probe/README.md"

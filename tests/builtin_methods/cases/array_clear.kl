@@ -1,0 +1,3 @@
+// EXPECT_OUT: 0
+using io;
+int main() { int[] a = [1, 2, 3]; a.clear(); io::out.line(a.len()); return 0; }

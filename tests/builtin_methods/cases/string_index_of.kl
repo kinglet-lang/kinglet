@@ -1,0 +1,3 @@
+// EXPECT_OUT: 1
+using io;
+int main() { string s = "hello"; io::out.line(s.index_of("e")); return 0; }

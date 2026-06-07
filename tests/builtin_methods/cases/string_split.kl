@@ -1,0 +1,3 @@
+// EXPECT_OUT: 2
+using io;
+int main() { string s = "a,b"; io::out.line(s.split(",").len()); return 0; }

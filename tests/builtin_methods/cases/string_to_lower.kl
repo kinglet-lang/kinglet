@@ -1,0 +1,3 @@
+// EXPECT_OUT: hi
+using io;
+int main() { string s = "HI"; io::out.line(s.to_lower()); return 0; }
