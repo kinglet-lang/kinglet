@@ -31,6 +31,7 @@ int[]              // array (sugar for Array<int>)
 int[][]            // nested array
 Map<string, int>   // generic with angle brackets
 Box<T>             // user-defined generic
+int?               // nullable suffix (desugars to Nullable<int>)
 ```
 
 ## Literals
@@ -130,7 +131,7 @@ Lowest to highest (actual parser levels):
 |-------|-----------|-------|
 | assignment | `=` `+=` `-=` `*=` `/=` | right |
 | ternary | `? :` | right |
-| null coalesce | `??`, `?? \|e\|` | right |
+| null coalesce | `?:`, `?: let e =>` | right |
 | pipeline | `\|>` | left |
 | logical or | `\|\|` | left |
 | logical and | `&&` | left |
@@ -209,11 +210,11 @@ auto v = try parse(s);
 // postfix ?: error propagation
 auto v = parse(s)?;
 
-// ?? null coalesce
-auto x = maybe() ?? fallback;
+// ?: null coalesce (Elvis)
+auto x = maybe() ?: fallback;
 
-// ?? |e| coalesce with error binding
-auto x = risky() ?? |e| handle(e);
+// ?: let e => coalesce with error binding
+auto x = risky() ?: let e => handle(e);
 
 // try / catch statement (one or more catch arms)
 try {
@@ -303,6 +304,8 @@ syntax (char *literals* `'a'` work; the `char` *type* keyword is unregistered â€
 ## Planned (not yet implemented)
 
 From `decisions/0001-pending-syntax-and-perf.md`: `once` lazy blocks,
-`retry N { }`, `test "name" { }`, `scope` resource management, `int?` nullable
-types, struct patterns in match, `[[nodiscard]]`, and `spawn`/`channel`/`select`
-concurrency.
+`retry N { }`, `test "name" { }`, `scope` resource management, struct patterns
+in match, `[[nodiscard]]`, and `spawn`/`channel`/`select` concurrency.
+
+Selfhost-only syntax not in bootstrap: `?:` / `?: let e =>` (bootstrap uses
+`??`), and call-site generic type args `f<T>(args)`.
