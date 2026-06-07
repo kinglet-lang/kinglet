@@ -172,15 +172,45 @@ Expr equality(Parser p) {
   return left;
 }
 
+bool is_cmp_op_token(TokenType t) {
+  if (t == TokenType::Less)         { return true; }
+  if (t == TokenType::LessEqual)    { return true; }
+  if (t == TokenType::Greater)      { return true; }
+  if (t == TokenType::GreaterEqual) { return true; }
+  return false;
+}
+
+// Chained comparisons (P0893): `1 <= x <= 10` desugars to `1 <= x && x <= 10`.
+// Mirrors kinglet-bootstrap/src/parser/parser.cc Parser::comparison().
 Expr comparison(Parser p) {
   Expr left = shift(p);
-  while (peek_tok(p).type == TokenType::Less || peek_tok(p).type == TokenType::LessEqual ||
-         peek_tok(p).type == TokenType::Greater || peek_tok(p).type == TokenType::GreaterEqual) {
-    Token op = advance_tok(p);
-    Expr right = shift(p);
-    left = Expr::Binary(left, token_to_binary_op(op.type), right, op.line, op.col);
+
+  if (!is_cmp_op_token(peek_tok(p).type)) {
+    return left;
   }
-  return left;
+
+  Token op1 = advance_tok(p);
+  BinaryOp bin_op1 = token_to_binary_op(op1.type);
+  int mid_start = p.current;
+  Expr mid = shift(p);
+
+  if (!is_cmp_op_token(peek_tok(p).type)) {
+    return Expr::Binary(left, bin_op1, mid, op1.line, op1.col);
+  }
+
+  int saved = p.current;
+  p.current = mid_start;
+  Expr mid_copy = shift(p);
+  p.current = saved;
+
+  Expr left_cmp = Expr::Binary(left, bin_op1, mid, op1.line, op1.col);
+
+  Token op2 = advance_tok(p);
+  BinaryOp bin_op2 = token_to_binary_op(op2.type);
+  Expr right_term = shift(p);
+  Expr right_cmp = Expr::Binary(mid_copy, bin_op2, right_term, op2.line, op2.col);
+
+  return Expr::Binary(left_cmp, BinaryOp::And, right_cmp, op1.line, op1.col);
 }
 
 Expr shift(Parser p) {
