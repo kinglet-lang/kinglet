@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# Capability matrix probe runner for selfhost compiler.
+# Capability matrix probe runner for the self-hosted Kinglet compiler.
 #
-# For each probe in cases/*.kl, runs the compiler through four stages:
-# parse → check → codegen → run, recording the FURTHEST stage reached.
+# Every stage goes through compiler.kbc (bootstrap kinglet is only the VM host):
+#   parse  → kinglet --run compiler.kbc --ast <probe>
+#   check  → kinglet --run compiler.kbc --check <probe>   (informational)
+#   compile→ kinglet --run compiler.kbc --save-bytecode <tmp> <probe>
+#   run    → kinglet --run <tmp>
 #
-# The run-stage oracle is the probe's line-1 `// EXPECT_OUT: <text>` comment.
+# The `check` column is reported separately and does NOT gate compile/run: the
+# selfhost checker is still shallow on match, builtins, and using-selective.
+# The `stage` column reflects the end-to-end pipeline (parse → compile → run).
 #
-# This is a capability SNAPSHOT, not a pass/fail gate: it always exits 0 and
-# prints how far each probe gets, documenting known gaps as well as supported
-# features.
+# Run-stage oracle: line-1 `// EXPECT_OUT: <text>` in each probe file.
 #
-# Ported from kinglet-bootstrap/tests/probe/run_matrix.sh.
-# Implements Phase 2a from handoff/02-test-suite-plan.md.
+# Snapshot only — always exits 0.
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -24,82 +26,118 @@ CASES="$ROOT/tests/probe/cases"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# Classify probe by furthest stage reached.
-# parse / check / codegen expect clean exit; run compares stdout to EXPECT_OUT.
+# classify <file> <expect> <tmp_kbc>
+# Prints: stage|check|note  (pipe-delimited; note may be empty)
 classify() {
-  local f="$1" expect="$2"
+  local f="$1"
+  local expect="$2"
+  local kbc="$3"
+  local check_cell="chk✓"
+  local note=""
 
-  # Stage 1: Parse (--ast)
-  "$KINGLET" --ast "$f" >/dev/null 2>"$TMP/e" || {
-    echo "parse✗|$(head -1 "$TMP/e")"
-    return
-  }
-
-  # Stage 2: Check (selfhost checker via compiler.kbc)
-  "$KINGLET" --run "$CLI_KBC" "$f" --check >/dev/null 2>"$TMP/e"
-  if grep -q "type error" "$TMP/e"; then
-    echo "chk✗|$(head -1 "$TMP/e")"
+  # Parse
+  if ! "$KINGLET" --run "$CLI_KBC" --ast "$f" >/dev/null 2>"$TMP/e"; then
+    echo "parse✗|chk-|$(head -1 "$TMP/e")"
     return
   fi
 
-  # Stage 3: Codegen (--bytecode)
-  "$KINGLET" --bytecode "$f" >/dev/null 2>"$TMP/e" || {
-    echo "cg✗|$(head -1 "$TMP/e")"
+  # Check (non-blocking; match "N type error(s)", not "OK: no type errors")
+  "$KINGLET" --run "$CLI_KBC" "$f" --check >/dev/null 2>"$TMP/e"
+  if grep -qE '[0-9]+ type error' "$TMP/e"; then
+    check_cell="chk✗"
+    note=$(head -1 "$TMP/e")
+  fi
+
+  # Compile
+  : >"$TMP/e"
+  "$KINGLET" --run "$CLI_KBC" --save-bytecode "$kbc" "$f" >/dev/null 2>"$TMP/e" || true
+  if grep -q 'compile error' "$TMP/e"; then
+    local cg_note
+    cg_note=$(head -1 "$TMP/e")
+    if [[ -n "$note" ]]; then
+      echo "cg✗|${check_cell}|${note}; ${cg_note}"
+    else
+      echo "cg✗|${check_cell}|${cg_note}"
+    fi
     return
-  }
+  fi
+  if [[ ! -f "$kbc" ]]; then
+    echo "cg✗|${check_cell}|failed to write bytecode"
+    return
+  fi
 
-  # Stage 4: Run (execute and compare output)
-  local out
-  out=$("$KINGLET" "$f" 2>"$TMP/e"); local ec=$?
-
-  if [[ $ec -ne 0 ]]; then
-    echo "run✗(rt)|$(head -1 "$TMP/e")"
+  # Run
+  local out ec
+  out=$("$KINGLET" --run "$kbc" 2>"$TMP/e") || ec=$?
+  ec=${ec:-0}
+  if [[ "$ec" -ne 0 ]]; then
+    local rt_note
+    rt_note=$(head -1 "$TMP/e")
+    if [[ -n "$note" ]]; then
+      echo "run✗|${check_cell}|${note}; ${rt_note}"
+    else
+      echo "run✗|${check_cell}|${rt_note}"
+    fi
     return
   fi
 
   if [[ "$out" == "$expect" ]]; then
-    echo "run✓|"
+    if [[ -n "$note" ]]; then
+      echo "run✓|${check_cell}|${note}"
+    else
+      echo "run✓|${check_cell}|"
+    fi
+    return
+  fi
+
+  if [[ -n "$note" ]]; then
+    echo "run≠out|${check_cell}|${note}; got:'${out}'"
   else
-    echo "run≠out|got:'$out'"
+    echo "run≠out|${check_cell}|got:'${out}'"
   fi
 }
 
-echo "# Kinglet capability matrix (selfhost)"
+echo "# Kinglet capability matrix (selfhost via compiler.kbc)"
 echo "# Generated: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "# VM host: ${KINGLET}"
 echo
-printf '| %-30s | %-12s | %-12s | %s |\n' "probe" "expect" "stage" "note"
-printf '|%s|%s|%s|%s|\n' "--------------------------------" "--------------" "--------------" "----------------"
+printf '| %-28s | %-12s | %-8s | %-10s | %s |\n' "probe" "expect" "check" "stage" "note"
+printf '|%s|%s|%s|%s|%s|\n' "----------------------------" "------------" "--------" "----------" "----------------"
 
 reached_run=0
 total=0
+chk_fail=0
 
 shopt -s nullglob
 for f in "$CASES"/*.kl; do
   [[ -f "$f" ]] || continue
   name=$(basename "$f" .kl)
 
-  # Extract oracle from line 1: // EXPECT_OUT: <text>
   expect=$(head -1 "$f" | sed -n 's/.*EXPECT_OUT:[[:space:]]*\(.*\)/\1/p')
   [[ -z "$expect" ]] && expect="<no oracle>"
 
   total=$((total + 1))
+  kbc="$TMP/${name}.kbc"
 
-  res=$(classify "$f" "$expect")
-  cell=${res%%|*}
-  note=${res#*|}
+  res=$(classify "$f" "$expect" "$kbc")
+  stage=${res%%|*}
+  rest=${res#*|}
+  check_cell=${rest%%|*}
+  note=${rest#*|}
 
-  [[ "$cell" == "run✓" ]] && reached_run=$((reached_run + 1))
+  [[ "$stage" == "run✓" ]] && reached_run=$((reached_run + 1))
+  [[ "$check_cell" == "chk✗" ]] && chk_fail=$((chk_fail + 1))
 
-  printf '| %-30s | %-12s | %-12s | %s |\n' "$name" "$expect" "$cell" "$note"
+  printf '| %-28s | %-12s | %-8s | %-10s | %s |\n' "$name" "$expect" "$check_cell" "$stage" "$note"
 done
 
 echo
-echo "Total: $total probes, run✓: $reached_run"
+echo "Total: $total probes, run✓: $reached_run, checker failures (non-blocking): $chk_fail"
 echo
 echo "Legend:"
-echo "  parse✗ = parse failed"
-echo "  chk✗   = type check failed"
-echo "  cg✗    = codegen failed"
-echo "  run✗   = runtime error"
-echo "  run≠out = output mismatch"
-echo "  run✓   = passed all stages"
+echo "  check chk✓/chk✗  — selfhost --check (informational; does not gate stage)"
+echo "  parse✗           — selfhost parse failed"
+echo "  cg✗              — selfhost compile failed"
+echo "  run✗             — runtime error"
+echo "  run≠out          — output mismatch vs EXPECT_OUT"
+echo "  run✓             — compile + run matched oracle (chk✗ may still appear in note)"
