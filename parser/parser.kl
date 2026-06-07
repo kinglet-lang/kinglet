@@ -139,7 +139,7 @@ string[] parse_type_params(Parser p) {
       Token n = consume(p, TokenType::Identifier, "Expected type parameter name.");
       type_params.push(n.lexeme);
     }
-    consume(p, TokenType::Greater, "Expected '>' after type parameters.");
+    consume_type_greater(p);
   }
   return type_params;
 }
@@ -204,14 +204,18 @@ bool is_function_declaration_start(Parser p) {
     pos = pos + 1;
     while (pos < p.tokens.len() && depth > 0) {
       TokenType t = p.tokens[pos].type;
-      if (t == TokenType::Less)         { depth = depth + 1; }
-      else if (t == TokenType::Greater) { depth = depth - 1; }
+      if (t == TokenType::Less)              { depth = depth + 1; }
+      else if (t == TokenType::Greater)      { depth = depth - 1; }
+      else if (t == TokenType::GreaterGreater) { depth = depth - 2; }
       pos = pos + 1;
     }
   }
   while (pos + 1 < p.tokens.len() && p.tokens[pos].type == TokenType::LeftBracket
          && p.tokens[pos + 1].type == TokenType::RightBracket) {
     pos = pos + 2;
+  }
+  if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Question) {
+    pos = pos + 1;
   }
   if (pos >= p.tokens.len() || p.tokens[pos].type != TokenType::Identifier) { return false; }
   pos = pos + 1;
@@ -220,8 +224,9 @@ bool is_function_declaration_start(Parser p) {
     pos = pos + 1;
     while (pos < p.tokens.len() && depth > 0) {
       TokenType t = p.tokens[pos].type;
-      if (t == TokenType::Less)         { depth = depth + 1; }
-      else if (t == TokenType::Greater) { depth = depth - 1; }
+      if (t == TokenType::Less)              { depth = depth + 1; }
+      else if (t == TokenType::Greater)      { depth = depth - 1; }
+      else if (t == TokenType::GreaterGreater) { depth = depth - 2; }
       pos = pos + 1;
     }
   }
@@ -242,8 +247,9 @@ bool is_var_decl_start(Parser p) {
       pos = pos + 1;
       while (pos < p.tokens.len() && depth > 0) {
         TokenType t = p.tokens[pos].type;
-        if (t == TokenType::Less)         { depth = depth + 1; }
-        else if (t == TokenType::Greater) { depth = depth - 1; }
+        if (t == TokenType::Less)              { depth = depth + 1; }
+        else if (t == TokenType::Greater)      { depth = depth - 1; }
+        else if (t == TokenType::GreaterGreater) { depth = depth - 2; }
         pos = pos + 1;
       }
     } else {
@@ -259,8 +265,9 @@ bool is_var_decl_start(Parser p) {
       pos = pos + 1;
       while (pos < p.tokens.len() && depth > 0) {
         TokenType t = p.tokens[pos].type;
-        if (t == TokenType::Less)         { depth = depth + 1; }
-        else if (t == TokenType::Greater) { depth = depth - 1; }
+        if (t == TokenType::Less)              { depth = depth + 1; }
+        else if (t == TokenType::Greater)      { depth = depth - 1; }
+        else if (t == TokenType::GreaterGreater) { depth = depth - 2; }
         pos = pos + 1;
       }
     } else {
@@ -276,14 +283,18 @@ bool is_var_decl_start(Parser p) {
     pos = pos + 1;
     while (pos < p.tokens.len() && depth > 0) {
       TokenType t = p.tokens[pos].type;
-      if (t == TokenType::Less)         { depth = depth + 1; }
-      else if (t == TokenType::Greater) { depth = depth - 1; }
+      if (t == TokenType::Less)              { depth = depth + 1; }
+      else if (t == TokenType::Greater)      { depth = depth - 1; }
+      else if (t == TokenType::GreaterGreater) { depth = depth - 2; }
       pos = pos + 1;
     }
   }
   while (pos + 1 < p.tokens.len() && p.tokens[pos].type == TokenType::LeftBracket
          && p.tokens[pos + 1].type == TokenType::RightBracket) {
     pos = pos + 2;
+  }
+  if (pos < p.tokens.len() && p.tokens[pos].type == TokenType::Question) {
+    pos = pos + 1;
   }
   return pos < p.tokens.len() && p.tokens[pos].type == TokenType::Identifier;
 }
@@ -364,6 +375,7 @@ bool starts_map_type_after_brace(Parser p) {
     while (pos < p.tokens.len() && depth > 0) {
       if (p.tokens[pos].type == TokenType::Less) { depth = depth + 1; }
       else if (p.tokens[pos].type == TokenType::Greater) { depth = depth - 1; }
+      else if (p.tokens[pos].type == TokenType::GreaterGreater) { depth = depth - 2; }
       pos = pos + 1;
     }
   }

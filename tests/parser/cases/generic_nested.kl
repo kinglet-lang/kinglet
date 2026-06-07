@@ -1,0 +1,9 @@
+struct Box<T> {
+  T value;
+}
+
+Box<Box<int>> slot;
+
+int main() {
+  return 0;
+}

@@ -24,9 +24,10 @@ pub struct Parser {
   Token[] tokens;
   int current;
   ParseError[] errors;
+  bool pending_greater;
 }
 
-pub Parser make_parser(Token[] tokens) => Parser { tokens, 0, [] };
+pub Parser make_parser(Token[] tokens) => Parser { tokens, 0, [], false };
 
 // token cursor primitives
 
@@ -37,11 +38,13 @@ Token peek_tok(Parser p) => p.tokens[p.current];
 Token previous(Parser p) => p.tokens[p.current - 1];
 
 bool check(Parser p, TokenType t) {
+  if (t == TokenType::Greater && p.pending_greater) { return true; }
   if (is_at_end(p)) { return false; }
   return peek_tok(p).type == t;
 }
 
 bool check_at(Parser p, int offset, TokenType t) {
+  if (offset == 0 && t == TokenType::Greater && p.pending_greater) { return true; }
   int i = p.current + offset;
   if (i >= p.tokens.len()) { return false; }
   return p.tokens[i].type == t;
@@ -53,9 +56,27 @@ Token advance_tok(Parser p) {
 }
 
 bool match_tt(Parser p, TokenType t) {
+  if (t == TokenType::Greater && p.pending_greater) {
+    p.pending_greater = false;
+    return true;
+  }
   if (!check(p, t)) { return false; }
   advance_tok(p);
   return true;
+}
+
+// Consume a closing '>' in a generic type list, splitting '>>' via pending_greater.
+void consume_type_greater(Parser p) {
+  if (p.pending_greater) {
+    p.pending_greater = false;
+    return;
+  }
+  if (check(p, TokenType::GreaterGreater)) {
+    advance_tok(p);
+    p.pending_greater = true;
+    return;
+  }
+  consume(p, TokenType::Greater, "Expected '>' after type arguments.");
 }
 
 void error_at(Parser p, Token t, string msg) {
@@ -78,6 +99,7 @@ bool is_type_start(TokenType t) {
   if (t == TokenType::String) { return true; }
   if (t == TokenType::Void)   { return true; }
   if (t == TokenType::Byte)   { return true; }
+  if (t == TokenType::Char)   { return true; }
   if (t == TokenType::Identifier) { return true; }
   if (t == TokenType::LeftBrace)  { return true; }
   return false;
@@ -169,7 +191,7 @@ TypeExpr parse_type_expr(Parser p) {
   }
   Token name_tok = advance_tok(p);
   string[] type_args = [];
-  if (check(p, TokenType::Less)) {
+  if (check(p, TokenType::Less) && !p.pending_greater) {
     advance_tok(p);
     TypeExpr inner = parse_type_expr(p);
     type_args.push(type_to_string(inner));
@@ -177,7 +199,7 @@ TypeExpr parse_type_expr(Parser p) {
       TypeExpr more = parse_type_expr(p);
       type_args.push(type_to_string(more));
     }
-    consume(p, TokenType::Greater, "Expected '>' after type arguments.");
+    consume_type_greater(p);
   }
   TypeExpr t = TypeExpr { name_tok.lexeme, type_args };
   while (match_tt(p, TokenType::LeftBracket)) {
@@ -186,6 +208,12 @@ TypeExpr parse_type_expr(Parser p) {
     string[] arg = [];
     arg.push(inner_name);
     t = TypeExpr { "Array", arg };
+  }
+  if (match_tt(p, TokenType::Question)) {
+    // Nullable suffix T? — stored as a type arg marker for downstream.
+    string[] null_args = [];
+    null_args.push(type_to_string(t));
+    t = TypeExpr { "Nullable", null_args };
   }
   return t;
 }

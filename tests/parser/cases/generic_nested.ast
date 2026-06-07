@@ -1,0 +1,10 @@
+Program
+  StructDecl Box<T>
+    field T value
+  TopLevelStmt
+    VarDecl Box<Box<int>> slot
+      None
+  FunctionDecl int main
+    Block
+      Return
+        IntLit 0
