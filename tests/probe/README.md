@@ -65,7 +65,7 @@ The checker is still shallow on enum `match` result types, array method calls, a
 | `17_match_literal` | `int` literal `match` | ✓ | ✓ | |
 | `18_guard` | `guard … else` | ✓ | ✓ | |
 | `19_try_catch` | `try` / `catch` | ✓ | ✓ | |
-| `20_null_coalesce` | `null ?: "default"` | ✓ | **run≠out** | prints `null`, not `default` — runtime bug |
+| `20_null_coalesce` | `null ?: "default"` | ✓ | ✓ | Elvis `?:` (selfhost syntax; not bootstrap `??`) |
 | `21_pipe` | `\|>` pipe | ✓ | ✓ | |
 
 ### Generics & concepts
@@ -90,7 +90,6 @@ The checker is still shallow on enum `match` result types, array method calls, a
 
 | Priority | Probe | Layer | Issue |
 |:--------:|-------|-------|-------|
-| — | `20_null_coalesce` | language | Selfhost keeps `?:` only; `null ?: rhs` printing `null` is intentional (not `??` null-fallthrough) |
 ## Self-host vs bootstrap
 
 Both trees share most probes under `tests/probe/cases/`. Divergences:
@@ -98,7 +97,7 @@ Both trees share most probes under `tests/probe/cases/`. Divergences:
 | Probe | Self-host (`compiler.kbc`) | Bootstrap (`kinglet` CLI) |
 |-------|---------------------------|---------------------------|
 | `19_try_catch` | run✓ | chk✗ (catch type) |
-| `20_null_coalesce` | run≠out (expected) | run✓ |
+| `20_null_coalesce` | run✓ | run✓ |
 | `24_generic_fn_infer` | run✓ | chk✗ |
 | `25_generic_struct` | run✓ | chk✗ |
 | `29_*` | `using_namespace` → run✓ | `using_selective` → chk✗ |

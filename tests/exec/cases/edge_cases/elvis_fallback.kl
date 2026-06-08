@@ -1,5 +1,4 @@
 // RUN: selfhost
-// Selfhost ?: prints null for failed parse; bootstrap used ?? semantics (0 / 42).
 // Test null propagation with ?: (Elvis)
 using io;
 
