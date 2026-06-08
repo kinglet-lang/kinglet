@@ -1,0 +1,11 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: has no field
+struct Box<T> {
+  T value;
+}
+
+int main() {
+  Box<int> b = Box { 7 };
+  return b.nope;
+}

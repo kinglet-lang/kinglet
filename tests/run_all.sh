@@ -29,7 +29,7 @@ run_suite() {
 
 run_suite "Lexer tests" "$ROOT/lexer/run_golden.sh"
 run_suite "Parser tests" "$ROOT/parser/run_golden.sh"
-run_suite "Checker tests" "$ROOT/checker/run_golden.sh"
+run_suite "Sema tests (pass + fail)" "$ROOT/sema/run.sh"
 run_suite "Codegen tests" "$ROOT/codegen/run_golden.sh"
 run_suite "Selfhost behavioral tests" "$ROOT/run_selfhost/run_golden.sh"
 run_suite "Selfhost round-trip" "$ROOT/selfhost/run_roundtrip.sh"

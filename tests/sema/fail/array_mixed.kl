@@ -1,0 +1,7 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Array elements must have compatible types
+int main() {
+  int[] xs = [1, "no"];
+  return 0;
+}

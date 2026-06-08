@@ -1,0 +1,7 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: requires an initializer
+int main() {
+  auto x;
+  return x;
+}

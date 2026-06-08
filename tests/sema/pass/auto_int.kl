@@ -1,0 +1,6 @@
+// RUN: check
+int main() {
+  auto x = 42;
+  auto y = x + 1;
+  return y;
+}

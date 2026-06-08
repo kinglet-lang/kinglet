@@ -1,0 +1,13 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: has no field
+struct Point {
+  int x;
+  int y;
+}
+
+int main() {
+  Point p { 1, 2 };
+  int z = p.z;
+  return 0;
+}

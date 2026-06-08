@@ -1,0 +1,15 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Unknown method
+struct P {
+  int v;
+}
+
+int getv(P p) {
+  return p.v;
+}
+
+int main() {
+  P p = P { 7 };
+  return p.getv();
+}

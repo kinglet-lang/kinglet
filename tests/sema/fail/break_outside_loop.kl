@@ -1,0 +1,7 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: outside of loop
+int main() {
+  break;
+  return 0;
+}

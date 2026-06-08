@@ -61,6 +61,9 @@ int main() { io::out.line(3 + 4); return 0; }
 int main() { int x = "hello"; return 0; }
 ```
 
+Sema suites live in `tests/sema/pass/` and `tests/sema/fail/`; run via
+`tests/sema/run.sh`.
+
 ### Bootstrap vs selfhost
 
 ```kl

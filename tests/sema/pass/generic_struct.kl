@@ -1,0 +1,9 @@
+// RUN: check
+struct Box<T> {
+  T value;
+}
+
+int main() {
+  Box<int> b = Box { 7 };
+  return 0;
+}

@@ -1,0 +1,7 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Cannot assign
+int main() {
+  int x = "hello";
+  return x;
+}
