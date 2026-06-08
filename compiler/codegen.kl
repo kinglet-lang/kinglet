@@ -12,10 +12,11 @@ using ast {
   MatchArm, FieldInit, CatchArm, Parameter
 };
 using compiler_state {
-  Compiler, NativeUsingAlias,
+  Compiler, NativeUsingAlias, FuncEntry,
   compile_error, emit_jump, patch_jump, patch_jump_to,
   compiler_push_scope, compiler_pop_scope,
-  declare_local, resolve_local, resolve_global_const,
+  declare_local, declare_local_typed, resolve_local, resolve_global_const,
+  lookup_local_type, is_concept_ns,
   resolve_function, resolve_struct, resolve_variant, resolve_enum,
   callee_ident_line, callee_ident_col,
   castError_type_idx, intResult_type_idx, floatResult_type_idx,
@@ -122,6 +123,44 @@ void emit_ident(Compiler co, string name, int line, int col) {
     return;
   }
   compile_error(co, line, col, "Use of undeclared variable '" + name + "'.");
+}
+
+string infer_arg_type_name(Compiler co, Expr e) {
+  return e match {
+    Expr::IntLit(_, _, _) => "int",
+    Expr::FloatLit(_, _, _) => "float",
+    Expr::BoolLit(_, _, _) => "bool",
+    Expr::StringLit(_, _, _) => "string",
+    Expr::CharLit(_, _, _) => "char",
+    Expr::StructLit(let ty, let _fields, let _l, let _c) => ty.name,
+    Expr::Ident(let n, let _l, let _c) => lookup_local_type(co, n),
+    _ => "",
+  };
+}
+
+string infer_struct_type(Compiler co, Expr e) {
+  string ty = infer_arg_type_name(co, e);
+  if (ty.len() > 0 && resolve_struct(co, ty) >= 0) { return ty; }
+  return "";
+}
+
+int resolve_concept_impl(Compiler co, string method, string arg_type) {
+  for (int i = 0; i < co.funcs.len(); i = i + 1) {
+    FuncEntry fe = co.funcs[i];
+    if (fe.name != method) { continue; }
+    if (fe.first_param_type == arg_type) { return i; }
+  }
+  return -1;
+}
+
+void emit_user_call(Compiler co, int fi, int arg_count, int line, int col) {
+  Constant fc = Constant {
+    ConstKind::Function_,
+    0, 0.0, false, "",
+    co.funcs[fi].func_index, 0,
+  };
+  bytecode::write_constant(co.chunk, fc, line, col);
+  bytecode::write_operand(co.chunk, OpCode::Call, arg_count, line, col);
 }
 
 void emit_binary(Compiler co, Expr lhs, BinaryOp op, Expr rhs, int line, int col) {
@@ -277,7 +316,7 @@ void compile_match(Compiler co, Expr value, MatchArm[] arms, int line, int col) 
   // Compile the match value and store in a temp local.
   compile_expr(co, value);
   int temp_slot = co.locals.len();
-  co.locals.push(Local { "<match_value>", temp_slot, co.scope_depth });
+  co.locals.push(Local { "<match_value>", temp_slot, co.scope_depth, "" });
   bytecode::write_operand(co.chunk, OpCode::StoreLocal, temp_slot, line, col);
 
   int[] end_jumps = [];
@@ -324,7 +363,7 @@ void compile_match(Compiler co, Expr value, MatchArm[] arms, int line, int col) 
         _ => "",
       };
       int bind_slot = co.locals.len();
-      co.locals.push(Local { bind_name, bind_slot, co.scope_depth });
+      co.locals.push(Local { bind_name, bind_slot, co.scope_depth, "" });
       bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
       bytecode::write_operand(co.chunk, OpCode::StoreLocal, bind_slot, line, col);
       bytecode::write_op(co.chunk, OpCode::Pop, line, col);
@@ -428,7 +467,7 @@ void _compile_enum_arm(Compiler co, MatchArm arm, int temp_slot, int line, int c
         _ => "",
       };
       int slot = co.locals.len();
-      co.locals.push(Local { field_name, slot, co.scope_depth });
+      co.locals.push(Local { field_name, slot, co.scope_depth, "" });
       bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
       bytecode::write_operand(co.chunk, OpCode::EnumPayloadGet, i, line, col);
       bytecode::write_operand(co.chunk, OpCode::StoreLocal, slot, line, col);
@@ -484,7 +523,7 @@ void _compile_array_arm(Compiler co, MatchArm arm, int temp_slot, int line, int 
         _ => "",
       };
       int slot = co.locals.len();
-      co.locals.push(Local { elem_name, slot, co.scope_depth });
+      co.locals.push(Local { elem_name, slot, co.scope_depth, "" });
       bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
       bytecode::write_constant(co.chunk, bytecode::const_int(i), line, col);
       bytecode::write_op(co.chunk, OpCode::IndexGet, line, col);
@@ -613,15 +652,26 @@ void emit_ns_call(Compiler co, string ns, string m, Expr[] args, int nl, int nc)
       for (int i = 0; i < args.len(); i = i + 1) {
         compile_expr(co, args[i]);
       }
-      Constant fc = Constant {
-        ConstKind::Function_,
-        0, 0.0, false, "",
-        co.funcs[fi].func_index, 0,
-      };
-      bytecode::write_constant(co.chunk, fc, nl, nc);
-      bytecode::write_operand(co.chunk, OpCode::Call, args.len(), nl, nc);
+      emit_user_call(co, fi, args.len(), nl, nc);
       return;
     }
+  }
+  if (is_concept_ns(co, ns)) {
+    if (args.len() == 0) {
+      compile_error(co, nl, nc, "Concept method '" + ns + "::" + m + "' expects at least one argument.");
+      return;
+    }
+    string arg_ty = infer_arg_type_name(co, args[0]);
+    int fi = resolve_concept_impl(co, m, arg_ty);
+    if (fi < 0) {
+      compile_error(co, nl, nc, "No implementation of '" + ns + "::" + m + "' for type '" + arg_ty + "'.");
+      return;
+    }
+    for (int i = 0; i < args.len(); i = i + 1) {
+      compile_expr(co, args[i]);
+    }
+    emit_user_call(co, fi, args.len(), nl, nc);
+    return;
   }
   handle_ns_call(co, ns, m, args, nl, nc);
 }
@@ -684,6 +734,18 @@ bool emit_native_io_member_method(Compiler co, string member, string method, Exp
 }
 
 void emit_method_call(Compiler co, Expr obj, string method, Expr[] args, int line, int col) {
+  string struct_ty = infer_struct_type(co, obj);
+  if (struct_ty.len() > 0) {
+    int fi = resolve_function(co, struct_ty + "::" + method);
+    if (fi >= 0) {
+      compile_expr(co, obj);
+      for (int i = 0; i < args.len(); i = i + 1) {
+        compile_expr(co, args[i]);
+      }
+      emit_user_call(co, fi, args.len() + 1, line, col);
+      return;
+    }
+  }
   // using io { out }; → out.line(...)
   bool obj_is_ident = obj match { Expr::Ident(_, _, _) => true, _ => false, };
   if (obj_is_ident) {
@@ -811,7 +873,7 @@ pub void compile_stmt(Compiler co, Stmt s) {
   s match {
     Stmt::Block(let stmts, let _l, let _c)         => compile_block(co, stmts),
     Stmt::ReturnStmt(let v, let l, let c)          => compile_return(co, v, l, c),
-    Stmt::VarDecl(let _stor, let _t, let n, let init, let l, let c) => compile_var_decl(co, n, init, l, c),
+    Stmt::VarDecl(let _stor, let ty, let n, let init, let l, let c) => compile_var_decl(co, n, ty, init, l, c),
     Stmt::ExprStmt(let e, let l, let c)            => compile_expr_stmt(co, e, l, c),
     Stmt::If(let cond, let th, let el, let l, let c) => compile_if(co, cond, th, el, l, c),
     Stmt::While(let cond, let body, let l, let c)     => compile_while(co, cond, body, l, c),
@@ -873,8 +935,8 @@ void compile_return(Compiler co, Expr v, int line, int col) {
   bytecode::write_op(co.chunk, OpCode::Return_, line, col);
 }
 
-void compile_var_decl(Compiler co, string name, Expr init, int line, int col) {
-  int slot = declare_local(co, name);
+void compile_var_decl(Compiler co, string name, TypeExpr ty, Expr init, int line, int col) {
+  int slot = declare_local_typed(co, name, ty.name);
   bool has_init = init match { Expr::None => false, _ => true, };
   if (has_init) {
     compile_expr(co, init);
@@ -1015,7 +1077,7 @@ void compile_try_catch(Compiler co, Stmt body, CatchArm[] catches, int line, int
   if (catches.len() > 0) {
     CatchArm arm = catches[0];
     int err_slot = co.locals.len();
-    co.locals.push(Local { arm.binding_name, err_slot, co.scope_depth });
+    co.locals.push(Local { arm.binding_name, err_slot, co.scope_depth, "" });
     bytecode::write_operand(co.chunk, OpCode::StoreLocal, err_slot, line, col);
     compile_stmt(co, arm.body);
     co.locals.pop();

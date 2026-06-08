@@ -25,7 +25,7 @@ using compiler_state {
   FuncEntry, EnumEntry, StructEntry, GlobalConst,
   make_compiler, compile_error,
   compiler_push_scope, compiler_pop_scope,
-  declare_local, resolve_local, resolve_global_const, resolve_function,
+  declare_local, declare_local_typed, resolve_local, resolve_global_const, resolve_function,
   emit_jump, patch_jump, patch_jump_to,
   is_native_namespace, is_native_member, register_native_using_alias,
   open_native_namespace
@@ -148,23 +148,23 @@ bool enum_exists(Compiler co, string name) {
   return false;
 }
 
-void register_func_alias(Compiler co, string alias_name, int func_index, int const_index, int param_count) {
-  co.funcs.push(FuncEntry { alias_name, func_index, const_index, param_count });
+void register_func_alias(Compiler co, string alias_name, int func_index, int const_index, int param_count, string first_param_type) {
+  co.funcs.push(FuncEntry { alias_name, func_index, const_index, param_count, first_param_type });
 }
 
 void _reg_import_func(Compiler co, string ns, string n, Parameter[] params, Stmt body, bool is_pub, int dl, int dc, string[] selected, bool is_sel) {
   if (is_pub && is_sel && !str_arr_contains(selected, n)) { return; }
   string qualified = ns + "::" + n;
   if (!func_exists(co, qualified)) {
-    register_compiler_function(co, n, qualified, params.len());
+    register_compiler_function(co, n, qualified, params.len(), first_param_type_name(params));
     co.imports.pending.push(ImportedFunc { ns, qualified, params, body, dl, dc });
   }
   int fi = resolve_function(co, qualified);
   if (is_pub && is_sel && !func_exists(co, n)) {
-    register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len());
+    register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len(), co.funcs[fi].first_param_type);
   }
   if (!is_pub && !func_exists(co, n)) {
-    register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len());
+    register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len(), co.funcs[fi].first_param_type);
   }
 }
 
@@ -344,7 +344,7 @@ void register_using_aliases(Compiler co, string ns, string[] selected) {
     string qualified = ns + "::" + sym;
     int fi = resolve_function(co, qualified);
     if (fi >= 0 && !func_exists(co, sym)) {
-      register_func_alias(co, sym, co.funcs[fi].func_index, co.funcs[fi].const_index, co.funcs[fi].param_count);
+      register_func_alias(co, sym, co.funcs[fi].func_index, co.funcs[fi].const_index, co.funcs[fi].param_count, co.funcs[fi].first_param_type);
       continue;
     }
     if (is_native_namespace(ns) && is_native_member(ns, sym)) {
@@ -353,7 +353,7 @@ void register_using_aliases(Compiler co, string ns, string[] selected) {
   }
 }
 
-void register_compiler_function(Compiler co, string chunk_name, string lookup_name, int param_count) {
+void register_compiler_function(Compiler co, string chunk_name, string lookup_name, int param_count, string first_param_type) {
   // Allocate function table slot (entry to be patched once body emits).
   // chunk_name is the bare name stored in the chunk (bootstrap uses bare names;
   // qualified names only go in the lookup table so serialized output matches).
@@ -369,8 +369,13 @@ void register_compiler_function(Compiler co, string chunk_name, string lookup_na
   };
   co.chunk.constants.push(fc);
   int const_index = co.chunk.constants.len() - 1;
-  FuncEntry fe = FuncEntry { lookup_name, func_index, const_index, param_count };
+  FuncEntry fe = FuncEntry { lookup_name, func_index, const_index, param_count, first_param_type };
   co.funcs.push(fe);
+}
+
+string first_param_type_name(Parameter[] params) {
+  if (params.len() == 0) { return ""; }
+  return params[0].type.name;
 }
 
 // True if `stmts` ends with a bare expression statement (implicit-return tail).
@@ -406,7 +411,7 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
   compiler_push_scope(co);
   for (int i = 0; i < params.len(); i = i + 1) {
     Parameter p = params[i];
-    declare_local(co, p.name);
+    declare_local_typed(co, p.name, p.type.name);
   }
   // Implicit return: if the body's last statement is a bare expression and the
   // function is non-void, compile it as the return value (mirrors
@@ -468,7 +473,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
     };
   }
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
-    register_top_level_const(co, prog.declarations[i]);
+    register_compile_time_decl(co, prog.declarations[i]);
   }
   // Pass 1: register every top-level function, in source order.
   int main_fi = -1;
@@ -532,8 +537,10 @@ void maybe_register_global_const(Compiler co, string storage, string name, Expr 
   }
 }
 
-void register_top_level_const(Compiler co, Decl d) {
+void register_compile_time_decl(Compiler co, Decl d) {
   d match {
+    Decl::ConceptDecl(let n, let _tps, let _methods, let _is_pub, let _l, let _c) =>
+      co.concepts.push(n),
     Decl::TopLevelStmt(let s, let _l, let _c) =>
       register_top_level_stmt_const(co, s),
     _ => skip_decl(co),
@@ -549,7 +556,13 @@ void register_top_level_stmt_const(Compiler co, Stmt s) {
 }
 
 void register_top_function(Compiler co, string name, Parameter[] params) {
-  register_compiler_function(co, name, name, params.len());
+  string receiver = first_param_type_name(params);
+  register_compiler_function(co, name, name, params.len(), receiver);
+  if (receiver.len() > 0 && resolve_struct(co, receiver) >= 0) {
+    int fi = co.funcs.len() - 1;
+    register_func_alias(co, receiver + "::" + name,
+      co.funcs[fi].func_index, co.funcs[fi].const_index, params.len(), receiver);
+  }
 }
 
 void _register_struct_decl(Compiler co, string name, FieldDef[] fields) {

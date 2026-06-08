@@ -15,6 +15,7 @@ pub struct Local {
   string name;
   int slot;
   int scope_depth;
+  string type_name;
 }
 
 pub struct FuncEntry {
@@ -22,6 +23,7 @@ pub struct FuncEntry {
   int func_index;     // index into chunk.functions[]
   int const_index;    // index into chunk.constants[] (Function_ value)
   int param_count;
+  string first_param_type;
 }
 
 pub struct EnumEntry {
@@ -76,6 +78,7 @@ pub struct Compiler {
   int scope_depth;
   FuncEntry[] funcs;
   GlobalConst[] globals;
+  string[] concepts;
   CompileError[] errors;
   int[] loop_breaks;
   int[] loop_continues;
@@ -92,8 +95,31 @@ pub struct Compiler {
 pub Compiler make_compiler() {
   Chunk c = bytecode::make_chunk();
   bytecode::register_builtin_enums(c);
-  return Compiler { c, [], [], 0, [], [], [], [], [], 0, [], [], [], [],
+  return Compiler { c, [], [], 0, [], [], [], [], [], [], 0, [], [], [], [],
     ImportState { [], [], [], [], "" }, false, false };
+}
+
+pub int declare_local_typed(Compiler co, string name, string type_name) {
+  int slot = co.locals.len();
+  Local l = Local { name, slot, co.scope_depth, type_name };
+  co.locals.push(l);
+  return slot;
+}
+
+pub string lookup_local_type(Compiler co, string name) {
+  int i = co.locals.len() - 1;
+  while (i >= 0) {
+    if (co.locals[i].name == name) { return co.locals[i].type_name; }
+    i = i - 1;
+  }
+  return "";
+}
+
+pub bool is_concept_ns(Compiler co, string ns) {
+  for (int i = 0; i < co.concepts.len(); i = i + 1) {
+    if (co.concepts[i] == ns) { return true; }
+  }
+  return false;
 }
 
 pub int resolve_global_const(Compiler co, string name) {
@@ -155,10 +181,7 @@ pub void compiler_pop_scope(Compiler co) {
 }
 
 pub int declare_local(Compiler co, string name) {
-  int slot = co.locals.len();
-  Local l = Local { name, slot, co.scope_depth };
-  co.locals.push(l);
-  return slot;
+  return declare_local_typed(co, name, "");
 }
 
 pub int resolve_local(Compiler co, string name) {
