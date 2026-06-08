@@ -26,13 +26,6 @@ int usage() {
   return 64;
 }
 
-int exit_code_from_value(const kinglet::Value &value) {
-  if (value.type != kinglet::ValueType::Int) return 0;
-  if (value.as_int < 0) return 255;
-  if (value.as_int > 255) return 255;
-  return static_cast<int>(value.as_int);
-}
-
 } // namespace
 
 int main(int argc, char **argv) {
@@ -75,7 +68,7 @@ int main(int argc, char **argv) {
       std::cerr << "runtime error: " << result.error << "\n";
       return 70;
     }
-    return exit_code_from_value(result.value);
+    return kinglet::exit_code_from_value(result.value);
   }
 
   // ----- .kl -- compile with embedded self-host, then run ----------
@@ -111,7 +104,7 @@ int main(int argc, char **argv) {
       std::remove(tmp_kbc.c_str());
       return 70;
     }
-    int compile_exit = exit_code_from_value(result.value);
+    int compile_exit = kinglet::exit_code_from_value(result.value);
     if (compile_exit != 0) {
       std::remove(tmp_kbc.c_str());
       return compile_exit;
@@ -136,5 +129,5 @@ int main(int argc, char **argv) {
     std::cerr << "runtime error: " << result.error << "\n";
     return 70;
   }
-  return exit_code_from_value(result.value);
+  return kinglet::exit_code_from_value(result.value);
 }

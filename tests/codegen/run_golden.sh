@@ -50,6 +50,11 @@ run_smoke() {
   local stdout="$TMP_DIR/$name.stdout"
   local stderr="$TMP_DIR/$name.stderr"
   local expected="$CASES_DIR/$name.expected"
+  local exit_file="$CASES_DIR/$name.exit"
+  local want_exit=0
+  if [[ -f "$exit_file" ]]; then
+    want_exit=$(cat "$exit_file")
+  fi
 
   compile_selfhost "$CLI_KBC" "$src" "$kbc" 2>"$stderr" || {
     echo "FAIL $name: smoke compile failed" >&2
@@ -62,8 +67,8 @@ run_smoke() {
   run_kbc "$kbc" >"$stdout" 2>>"$stderr" || ec=$?
   strip_cr "$stdout" "$stderr"
 
-  if [[ "$ec" -ne 0 ]]; then
-    echo "FAIL $name: smoke run exited $ec" >&2
+  if [[ "$ec" -ne "$want_exit" ]]; then
+    echo "FAIL $name: smoke run exit want=$want_exit got=$ec" >&2
     cat "$stderr" >&2
     FAILURES=$((FAILURES + 1))
     return
