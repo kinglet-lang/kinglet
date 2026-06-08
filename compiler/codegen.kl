@@ -355,6 +355,7 @@ void compile_match(Compiler co, Expr value, MatchArm[] arms, int line, int col) 
       } else {
         bytecode::write_op(co.chunk, OpCode::Pop, line, col);
         compile_expr(co, arm.body);
+        end_jumps.push(emit_jump(co, OpCode::Jmp, line, col));
       }
     } else if (is_binding) {
       // BindingPat(let x): bind temp value to a new local.
@@ -376,6 +377,7 @@ void compile_match(Compiler co, Expr value, MatchArm[] arms, int line, int col) 
         patch_jump(co, guard_jmp);
       } else {
         compile_expr(co, arm.body);
+        end_jumps.push(emit_jump(co, OpCode::Jmp, line, col));
       }
       // Pop the binding local after the arm.
       co.locals.pop();
