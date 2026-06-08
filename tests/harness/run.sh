@@ -223,10 +223,17 @@ run_bootstrap_pipeline() {
 
 run_check_pipeline() {
   local src="$1"
-  local stderr="$2"
+  local stdout="$2"
+  local stderr="$3"
   local ec=0
-  "$KINGLET_BIN" --run "$CLI_KBC" "$src" --check >/dev/null 2>"$stderr" || ec=$?
+  "$KINGLET_BIN" --run "$CLI_KBC" "$src" --check >"$stdout" 2>"$stderr" || ec=$?
   echo "$ec"
+}
+
+check_combined_output() {
+  local stdout="$1"
+  local stderr="$2"
+  cat "$stdout" "$stderr" 2>/dev/null
 }
 
 run_bytecode_pipeline() {
@@ -296,23 +303,25 @@ run_one_file() {
       ;;
 
     check)
-      ec=$(run_check_pipeline "$src" "$stderr")
-      strip_cr "$stderr"
+      ec=$(run_check_pipeline "$src" "$stdout" "$stderr")
+      strip_cr "$stdout" "$stderr"
+      local check_out
+      check_out=$(check_combined_output "$stdout" "$stderr")
       if [[ "$COMPILE_FAIL" -eq 1 ]]; then
-        if grep -q "OK: no type errors" "$stderr"; then
+        if grep -q "OK: no type errors" <<<"$check_out"; then
           fail_case "$name" "expected type errors, got OK"
           return
         fi
-        assert_check_list "$name" "$stderr" "$CHECK_ERR_LINES" "stderr" || failed=1
+        assert_check_list "$name" "$check_out" "$CHECK_ERR_LINES" "check" || failed=1
         if [[ -n "$CHECK_ERR_AT" ]]; then
-          assert_substr "$name" "$stderr" "${CHECK_ERR_AT}:" "stderr at" || failed=1
+          assert_substr "$name" "$check_out" "${CHECK_ERR_AT}:" "check at" || failed=1
         fi
         [[ "$failed" -eq 0 ]] && pass_case "$name"
         return
       fi
-      if ! grep -q "OK: no type errors" "$stderr"; then
+      if ! grep -q "OK: no type errors" <<<"$check_out"; then
         fail_case "$name" "expected OK: no type errors"
-        cat "$stderr" | sed 's/^/      /' >&2
+        echo "$check_out" | sed 's/^/      /' >&2
         return
       fi
       pass_case "$name"
