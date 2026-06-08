@@ -47,6 +47,7 @@ run_suite "Regression (oracle + drift)" "$ROOT/regression/run_golden.sh"
 bash "$ROOT/differential/run_matrix.sh"
 TOTAL=$((TOTAL + 1))
 PASSED=$((PASSED + 1))
+run_suite "Property (round-trip + fuzz)" "$ROOT/property/run.sh"
 
 echo "Summary: $PASSED/$TOTAL suites passed"
 [[ "$PASSED" -eq "$TOTAL" ]] && exit 0 || exit 1
