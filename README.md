@@ -88,7 +88,7 @@ Detailed write-ups:
 
 | Matrix | run✓ | Notes |
 |--------|-----:|-------|
-| Feature probes (`tests/probe`) | 24/28 | Gaps: top-level `const`, `?:` runtime, concept calls, UFCS |
+| Feature probes (`tests/probe`) | 28/28 | Bootstrap aligned on same corpus (see differential) |
 | Builtin methods | 26/26 runtime | Checker 24/26; see builtin README for fix list |
 
 ## Documentation

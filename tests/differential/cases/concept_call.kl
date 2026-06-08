@@ -1,0 +1,6 @@
+// RUN: diff
+// CHECK_OUT: 1
+using io;
+concept Printable<T> { string to_string(T value); }
+string to_string(int v) { return "x"; }
+int main() { string s = Printable::to_string(42); io::out.line(s.len()); return 0; }

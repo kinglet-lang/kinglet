@@ -24,10 +24,10 @@ The checker is still shallow on enum `match` result types, array method calls, a
 | Metric | Count |
 |--------|------:|
 | Probes | 28 |
-| `run✓` (end-to-end) | **24** |
-| `cg✗` (compile) | 3 |
-| `run≠out` (wrong output) | 1 |
-| `chk✗` (checker only) | 0 |
+| `run✓` (end-to-end) | **28** |
+| `cg✗` (compile) | 0 |
+| `run≠out` (wrong output) | 0 |
+| `chk✗` (checker only) | 3 |
 
 ## Matrix by category
 
@@ -39,7 +39,7 @@ The checker is still shallow on enum `match` result types, array method calls, a
 | `02_comparison` | `> < ==` | ✓ | ✓ | |
 | `03_bool_logic` | `&& \|\| !` | ✓ | ✓ | |
 | `04_var_auto` | `auto` local inference | ✓ | ✓ | |
-| `05_const` | top-level `const` | ✓ | **cg✗** | `MAX` undeclared — const not lowered to global |
+| `05_const` | top-level `const` | ✓ | ✓ | |
 | `06_if_else` | `if` / `else` | ✓ | ✓ | |
 | `07_while` | `while` loop | ✓ | ✓ | |
 | `08_for` | C-style `for` | ✓ | ✓ | |
@@ -74,8 +74,8 @@ The checker is still shallow on enum `match` result types, array method calls, a
 |-------|---------|:-----:|:-----:|-------|
 | `23_generic_fn_explicit` | `id<int>(42)` | ✓ | ✓ | |
 | `24_generic_fn_infer` | `id(42)` type inference | ✓ | ✓ | |
-| `26_concept_qualified` | `Printable::to_string(42)` | ✓ | **cg✗** | concept namespace not in scope at codegen |
-| `27_ufcs` | `p.getv()` UFCS | ✓ | **cg✗** | free-function UFCS not lowered |
+| `26_concept_qualified` | `Printable::to_string(42)` | ✓ | ✓ | |
+| `27_ufcs` | `p.getv()` UFCS | ✓ | ✓ | |
 
 ### Platform & modules
 
@@ -96,11 +96,8 @@ Both trees share most probes under `tests/probe/cases/`. Divergences:
 
 | Probe | Self-host (`compiler.kbc`) | Bootstrap (`kinglet` CLI) |
 |-------|---------------------------|---------------------------|
-| `19_try_catch` | run✓ | chk✗ (catch type) |
-| `20_null_coalesce` | run✓ | run✓ |
-| `24_generic_fn_infer` | run✓ | chk✗ |
-| `25_generic_struct` | run✓ | chk✗ |
-| `29_*` | `using_namespace` → run✓ | `using_selective` → chk✗ |
+| `20_null_coalesce` | `?:` run✓ | `?:` run✓ (bootstrap also supports `??`) |
+| `29_using_namespace` | run✓ | run✓ |
 
 Use **self-host matrix** as the authoritative gap list for compiler development. Bootstrap matrix tracks the C++ reference implementation.
 

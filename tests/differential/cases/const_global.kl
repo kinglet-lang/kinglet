@@ -1,0 +1,5 @@
+// RUN: diff
+// CHECK_OUT: 100
+using io;
+const int MAX = 100;
+int main() { io::out.line(MAX); return 0; }

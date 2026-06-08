@@ -1,0 +1,4 @@
+// RUN: diff
+// CHECK_OUT: default
+using io;
+int main() { string s = null ?: "default"; io::out.line(s); return 0; }
