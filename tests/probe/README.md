@@ -27,7 +27,7 @@ The checker is still shallow on enum `match` result types, array method calls, a
 | `run✓` (end-to-end) | **28** |
 | `cg✗` (compile) | 0 |
 | `run≠out` (wrong output) | 0 |
-| `chk✗` (checker only) | 3 |
+| `chk✗` (checker only) | 0 |
 
 ## Matrix by category
 

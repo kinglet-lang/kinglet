@@ -11,5 +11,5 @@ int getv(P p) {
 
 int main() {
   P p = P { 7 };
-  return p.getv();
+  return p.nope();
 }

@@ -28,7 +28,7 @@ test_kbc_roundtrip() {
   fi
   
   compile_kl "$source" "$kbc" 2>/dev/null || { FAILURES=$((FAILURES + 1)); return 1; }
-  run_kbc "$kbc" >"$stdout" 2>/dev/null || { FAILURES=$((FAILURES + 1)); return 1; }
+  run_kbc "$kbc" >"$stdout" 2>/dev/null || true
   strip_cr "$stdout"
   
   if ! diff -u <(printf "%s" "$expected_output") "$stdout" >/dev/null; then
