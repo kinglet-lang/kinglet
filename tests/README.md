@@ -1,0 +1,105 @@
+# Test suite
+
+Unified layout per [decision 0012](../decisions/0012-test-suite-redesign.md). All
+selfhost-driven suites share `common.sh` (`resolve_kinglet`, `ensure_cli_kbc`) and
+the bootstrap C++ binary is only the **VM host** unless a suite explicitly compares
+pipelines.
+
+## Quick commands
+
+```bash
+bash tests/run_all.sh              # full orchestrator
+bash tests/harness/run.sh <path>   # ad-hoc harness on a file or directory
+bash tests/exec/run.sh             # selfhost end-to-end (gate)
+bash tests/sema/run.sh             # type checker pass + fail (gate)
+bash tests/differential/run.sh     # bootstrap vs selfhost must match (gate)
+bash tests/property/run.sh         # AST/token stability + fuzz-lite (gate)
+```
+
+Regenerate codegen goldens after bytecode changes:
+
+```bash
+bash tests/codegen/refresh_goldens.sh
+```
+
+## Layout
+
+```
+tests/
+  harness/          run.sh, directives.md — shared directive runner
+  lexer/            token goldens
+  parser/           AST goldens
+  sema/
+    pass/           RUN: check (must pass)
+    fail/           RUN: check + COMPILE-FAIL + CHECK-ERR
+  codegen/          --bytecode goldens + smoke compile+run
+  exec/             RUN: selfhost end-to-end
+  differential/
+    cases/          RUN: diff (gating)
+    run_matrix.sh   broad snapshot (non-gating)
+  regression/       selfhost oracle + bootstrap drift report
+  property/         parse/print stability + fuzz-lite
+  probe/            28-feature capability matrix (snapshot)
+  builtin_methods/  builtin method matrix (snapshot)
+  diagnostics/      error message goldens
+  kbc/              bytecode serialize round-trip
+  selfhost/         compiler.kbc fixed-point (S2 == S3)
+  run_selfhost/     additional selfhost behavioral cases
+  common.sh
+  run_all.sh
+```
+
+Deprecated wrappers (forward to new locations):
+
+- `tests/run/run_golden.sh` → `tests/exec/run.sh`
+- `tests/checker/run_golden.sh` → `tests/sema/run.sh`
+- `tests/differential/run_diff.sh` → `tests/differential/run_matrix.sh`
+
+## Harness pipelines
+
+See [harness/directives.md](harness/directives.md).
+
+| `RUN:` | Purpose |
+|--------|---------|
+| `selfhost` | `compiler.kbc` compile + run |
+| `check` | `compiler.kbc --check` |
+| `diff` | bootstrap `kinglet file.kl` vs selfhost |
+| `bytecode` | `--bytecode` golden or `CHECK` |
+| `ast` | `--ast` + `CHECK` substrings |
+
+Environment:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `KINGLET` | `../kinglet/out/Default/kinglet` | VM host binary |
+| `KINGLET_BOOTSTRAP` | same as `KINGLET` | bootstrap side of `diff` |
+| `FUZZ_ROUNDS` | `32` | property fuzz iterations |
+| `PER_CASE_TIMEOUT` | `15`–`30` | parser/property wall-clock cap |
+
+## `run_all.sh` tiers
+
+**Gating** (failure fails the run):
+
+lexer, parser, sema, codegen, run_selfhost, selfhost round-trip, exec,
+differential (gate), diagnostics, kbc, regression, property.
+
+**Non-gating snapshots** (always counted pass; print matrices):
+
+`probe/run_matrix.sh`, `builtin_methods/run_matrix.sh`,
+`differential/run_matrix.sh`.
+
+## Adding cases
+
+| Kind | Where | Directives / files |
+|------|-------|-------------------|
+| Must run on selfhost | `exec/cases/` | `RUN: selfhost`, `.expected`, `.exit` |
+| Must type-check | `sema/pass/` or `sema/fail/` | `RUN: check`, optional `CHECK-ERR` |
+| Must match bootstrap | `differential/cases/` | `RUN: diff` |
+| Bytecode shape | `codegen/cases/` | `.bytecode` golden + optional `.exit` |
+| Fixed bug | `regression/cases/` | `.expected` / `.exit` oracle |
+| Language feature probe | `probe/cases/` | `// EXPECT_OUT:` header |
+
+## Related docs
+
+- [probe/README.md](probe/README.md) — feature capability matrix
+- [builtin_methods/README.md](builtin_methods/README.md) — builtin method coverage

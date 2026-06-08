@@ -46,7 +46,7 @@ kinglet-self/
   compiler/       AST → bytecode (imports, match, builtins, …)
   backend/        C++ VM experiments (embedded self-host; see decisions/0010)
   decisions/      Design RFCs (English)
-  tests/          Golden tests, probe matrix, regression vs bootstrap
+  tests/          Harness-driven suites (see tests/README.md)
   compiler.kbc    Prebuilt self-host compiler bytecode
   kinglet.toml    Project manifest (`//` import paths)
   SYNTAX.md       Syntax notes and self-host / bootstrap boundaries
@@ -59,18 +59,27 @@ Module system: `import { "//parser/ast.kl" }` with file-stem namespaces;
 
 ## Testing
 
+See **[tests/README.md](tests/README.md)** for the full layout (decision 0012).
+
 | Suite | Command | What it checks |
 |-------|---------|----------------|
-| All | `bash tests/run_all.sh` | Lexer, parser, checker, codegen, selfhost, regression, probes |
-| Capability matrix | `bash tests/probe/run_matrix.sh` | 28 language-feature probes (selfhost end-to-end) |
-| Builtin methods | `bash tests/builtin_methods/run_matrix.sh` | 26 `obj.method()` bindings (array / map / string) |
-| Per stage | `bash tests/<stage>/run_golden.sh` | Golden output for lexer, parser, checker, codegen, … |
+| All | `bash tests/run_all.sh` | Gating suites + probe/builtin/differential snapshots |
+| Harness (ad-hoc) | `bash tests/harness/run.sh <cases/>` | Directive-driven pipelines |
+| Selfhost E2E | `bash tests/exec/run.sh` | `compiler.kbc` compile + run |
+| Sema | `bash tests/sema/run.sh` | `--check` pass and fail cases |
+| Differential | `bash tests/differential/run.sh` | bootstrap vs selfhost must match |
+| Property | `bash tests/property/run.sh` | AST/token stability + fuzz-lite |
+| Capability matrix | `bash tests/probe/run_matrix.sh` | 28 language-feature probes (snapshot) |
+| Builtin methods | `bash tests/builtin_methods/run_matrix.sh` | 26 builtin methods (snapshot) |
 
-**Authoritative self-host semantics** — probe and builtin matrices run entirely
-through `compiler.kbc`; bootstrap `kinglet` is only the VM host.
+**Authoritative self-host semantics** — `exec/`, `sema/`, probe, and builtin
+matrices run through `compiler.kbc`. Bootstrap `kinglet` is the VM host; differential
+and regression also exercise the C++ compiler path.
 
 Detailed write-ups:
 
+- [tests/README.md](tests/README.md) — suite index and harness guide
+- [tests/harness/directives.md](tests/harness/directives.md) — directive language
 - [tests/probe/README.md](tests/probe/README.md) — feature capability matrix
 - [tests/builtin_methods/README.md](tests/builtin_methods/README.md) — builtin
   method coverage, opcode reference, checker gaps

@@ -121,24 +121,28 @@ Rules:
 
 ### Testing
 
-Tests are **golden tests** organized by pipeline stage:
+Tests follow [decision 0012](decisions/0012-test-suite-redesign.md). See
+[tests/README.md](tests/README.md) for the full index.
 
 ```
 tests/
-  lexer/cases/*.kl + *.tokens    — scanner output checked against expected tokens
-  parser/cases/*.kl + *.ast      — parser output checked against expected AST
-  checker/cases/*.kl             — pass/fail type checking cases
-  codegen/cases/*.kl             — bytecode compilation cases
+  harness/           — directive runner (RUN: selfhost | check | diff | …)
+  lexer/ parser/     — stage goldens (.tokens, .ast)
+  sema/{pass,fail}/  — type checker (harness RUN: check)
+  codegen/ exec/     — bytecode goldens + selfhost end-to-end
+  differential/      — bootstrap vs selfhost (RUN: diff)
+  property/          — AST/token stability + fuzz-lite
+  probe/             — 28-feature capability snapshot
 ```
 
-Each stage has a `run_golden.sh` driver. All suites use a pre-compiled
-`compiler.kbc` to avoid recompiling the self-host compiler (~85s) on every
-test run.
+All selfhost suites use a cached `compiler.kbc` via `tests/common.sh`
+(`ensure_cli_kbc`, ~70ms per case after the first ~85s rebuild).
 
 When adding a feature:
-1. Add a `.kl` test case in the appropriate `tests/*/cases/`
-2. Add the expected golden output (`.tokens`, `.ast`, or compiler output)
-3. Run the relevant `run_golden.sh` to verify
+1. Pick the suite: `sema/`, `exec/`, `codegen/`, `differential/`, or stage golden
+2. Add a `.kl` case with harness directives where applicable
+3. Add sidecar goldens (`.expected`, `.bytecode`, `.exit`, …) as needed
+4. Run `bash tests/<suite>/run.sh` or `bash tests/run_all.sh`
 
 ### File Organization
 
