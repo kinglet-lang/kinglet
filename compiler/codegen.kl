@@ -61,7 +61,7 @@ void emit_int(Compiler co, int v, int line, int col) {
 }
 
 void emit_char(Compiler co, int v, int line, int col) {
-  bytecode::write_constant(co.chunk, bytecode::const_int(v), line, col);
+  bytecode::write_constant(co.chunk, bytecode::const_char(v), line, col);
 }
 
 void emit_float(Compiler co, float v, int line, int col) {

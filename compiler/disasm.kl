@@ -117,6 +117,7 @@ string format_constant(Constant v) {
   if (v.kind == ConstKind::Int_)    { return string(v.int_value); }
   if (v.kind == ConstKind::Double_) { return string(v.double_value); }
   if (v.kind == ConstKind::Bool_)   { if (v.bool_value) { return "true"; } return "false"; }
+  if (v.kind == ConstKind::Char_)   { return string(byte(v.int_value)); }
   if (v.kind == ConstKind::Null_)   { return "null"; }
   if (v.kind == ConstKind::String_) { return v.string_value; }
   if (v.kind == ConstKind::Function_) { return "<function:" + string(v.aux1) + ">"; }

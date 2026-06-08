@@ -72,6 +72,7 @@ pub enum ConstKind {
   Int_,
   Double_,
   Bool_,
+  Char_,
   Null_,
   String_,
   Function_,
@@ -97,6 +98,7 @@ pub struct Constant {
 pub Constant const_int(int v)    => Constant { ConstKind::Int_,    v, 0.0, false, "",  0, 0 };
 pub Constant const_double(float v) => Constant { ConstKind::Double_, 0,  v,  false, "",  0, 0 };
 pub Constant const_bool(bool v)  => Constant { ConstKind::Bool_,   0, 0.0, v,     "",  0, 0 };
+pub Constant const_char(int v)   => Constant { ConstKind::Char_,   v, 0.0, false, "",  0, 0 };
 pub Constant const_null()         => Constant { ConstKind::Null_,   0, 0.0, false, "",  0, 0 };
 pub Constant const_string(string v) => Constant { ConstKind::String_, 0, 0.0, false, v,   0, 0 };
 
@@ -161,6 +163,8 @@ pub int add_constant(Chunk c, Constant v) {
       if (existing.double_value == v.double_value) { return i; }
     } else if (v.kind == ConstKind::Bool_) {
       if (existing.bool_value == v.bool_value) { return i; }
+    } else if (v.kind == ConstKind::Char_) {
+      if (existing.int_value == v.int_value) { return i; }
     } else if (v.kind == ConstKind::Null_) {
       return i;
     } else if (v.kind == ConstKind::String_) {
@@ -198,6 +202,8 @@ pub void write_constant(Chunk c, Constant v, int line, int col) {
       if (existing.double_value == v.double_value) { idx = i; break; }
     } else if (v.kind == ConstKind::Bool_) {
       if (existing.bool_value == v.bool_value) { idx = i; break; }
+    } else if (v.kind == ConstKind::Char_) {
+      if (existing.int_value == v.int_value) { idx = i; break; }
     } else if (v.kind == ConstKind::Null_) {
       idx = i; break;
     } else if (v.kind == ConstKind::String_) {
@@ -347,6 +353,7 @@ int const_kind_to_tag(ConstKind k) {
   if (k == ConstKind::Int_)      { return 0; }  // ValueType::Int
   if (k == ConstKind::Double_)   { return 1; }  // ValueType::Double
   if (k == ConstKind::Bool_)     { return 2; }  // ValueType::Bool
+  if (k == ConstKind::Char_)     { return 3; }  // ValueType::Char
   if (k == ConstKind::Null_)     { return 4; }  // ValueType::Null
   if (k == ConstKind::String_)   { return 5; }  // ValueType::String
   if (k == ConstKind::Function_) { return 6; }  // ValueType::Function
@@ -363,6 +370,8 @@ string serialize_constant(string buf, Constant c) {
   } else if (c.kind == ConstKind::Bool_) {
     if (c.bool_value) { buf = write_u8(buf, 1); }
     else { buf = write_u8(buf, 0); }
+  } else if (c.kind == ConstKind::Char_) {
+    buf = write_u8(buf, c.int_value & 0xFF);
   } else if (c.kind == ConstKind::Null_) {
     // no data
   } else if (c.kind == ConstKind::String_) {
