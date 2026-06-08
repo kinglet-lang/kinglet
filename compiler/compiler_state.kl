@@ -64,12 +64,18 @@ pub struct NativeUsingAlias {
   string member;
 }
 
+pub struct GlobalConst {
+  string name;
+  Expr init;
+}
+
 pub struct Compiler {
   Chunk chunk;
   Local[] locals;
   int[] scope_starts;
   int scope_depth;
   FuncEntry[] funcs;
+  GlobalConst[] globals;
   CompileError[] errors;
   int[] loop_breaks;
   int[] loop_continues;
@@ -86,8 +92,15 @@ pub struct Compiler {
 pub Compiler make_compiler() {
   Chunk c = bytecode::make_chunk();
   bytecode::register_builtin_enums(c);
-  return Compiler { c, [], [], 0, [], [], [], [], 0, [], [], [], [],
+  return Compiler { c, [], [], 0, [], [], [], [], [], 0, [], [], [], [],
     ImportState { [], [], [], [], "" }, false, false };
+}
+
+pub int resolve_global_const(Compiler co, string name) {
+  for (int i = 0; i < co.globals.len(); i = i + 1) {
+    if (co.globals[i].name == name) { return i; }
+  }
+  return -1;
 }
 
 // Indices of pre-registered built-in enums (mirrors bytecode::register_builtin_enums

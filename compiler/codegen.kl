@@ -15,7 +15,7 @@ using compiler_state {
   Compiler, NativeUsingAlias,
   compile_error, emit_jump, patch_jump, patch_jump_to,
   compiler_push_scope, compiler_pop_scope,
-  declare_local, resolve_local,
+  declare_local, resolve_local, resolve_global_const,
   resolve_function, resolve_struct, resolve_variant, resolve_enum,
   callee_ident_line, callee_ident_col,
   castError_type_idx, intResult_type_idx, floatResult_type_idx,
@@ -112,11 +112,16 @@ void emit_bool(Compiler co, bool v, int line, int col) {
 
 void emit_ident(Compiler co, string name, int line, int col) {
   int slot = resolve_local(co, name);
-  if (slot < 0) {
-    compile_error(co, line, col, "Use of undeclared variable '" + name + "'.");
+  if (slot >= 0) {
+    bytecode::write_operand(co.chunk, OpCode::LoadLocal, slot, line, col);
     return;
   }
-  bytecode::write_operand(co.chunk, OpCode::LoadLocal, slot, line, col);
+  int gi = resolve_global_const(co, name);
+  if (gi >= 0) {
+    compile_expr(co, co.globals[gi].init);
+    return;
+  }
+  compile_error(co, line, col, "Use of undeclared variable '" + name + "'.");
 }
 
 void emit_binary(Compiler co, Expr lhs, BinaryOp op, Expr rhs, int line, int col) {

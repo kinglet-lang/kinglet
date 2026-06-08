@@ -18,14 +18,14 @@ using io;
 using fs;
 using helpers { Parser };
 using ast {
-  Program, Decl, Stmt, Parameter, FieldDef, EnumVariant, TypeExpr
+  Program, Decl, Stmt, Parameter, FieldDef, EnumVariant, TypeExpr, Expr
 };
 using compiler_state {
   Compiler, CompileError, ImportState, ImportedFunc,
-  FuncEntry, EnumEntry, StructEntry,
+  FuncEntry, EnumEntry, StructEntry, GlobalConst,
   make_compiler, compile_error,
   compiler_push_scope, compiler_pop_scope,
-  declare_local, resolve_local, resolve_function,
+  declare_local, resolve_local, resolve_global_const, resolve_function,
   emit_jump, patch_jump, patch_jump_to,
   is_native_namespace, is_native_member, register_native_using_alias,
   open_native_namespace
@@ -467,6 +467,9 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
       _ => skip_decl(co),
     };
   }
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    register_top_level_const(co, prog.declarations[i]);
+  }
   // Pass 1: register every top-level function, in source order.
   int main_fi = -1;
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
@@ -521,6 +524,28 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
     if (co.errors.len() > 0) { return co.errors.len(); }
   }
   return 0;
+}
+
+void maybe_register_global_const(Compiler co, string storage, string name, Expr init) {
+  if (storage == "const") {
+    co.globals.push(GlobalConst { name, init });
+  }
+}
+
+void register_top_level_const(Compiler co, Decl d) {
+  d match {
+    Decl::TopLevelStmt(let s, let _l, let _c) =>
+      register_top_level_stmt_const(co, s),
+    _ => skip_decl(co),
+  };
+}
+
+void register_top_level_stmt_const(Compiler co, Stmt s) {
+  s match {
+    Stmt::VarDecl(let storage, let _ty, let name, let init, let _vl, let _vc) =>
+      maybe_register_global_const(co, storage, name, init),
+    _ => {},
+  };
 }
 
 void register_top_function(Compiler co, string name, Parameter[] params) {
