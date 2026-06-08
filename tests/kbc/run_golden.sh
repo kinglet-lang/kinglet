@@ -5,8 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/common.sh"
 
-KINGLET=$(resolve_kinglet "$ROOT") || exit 2
-export KINGLET_BIN="$KINGLET"
+export_kinglet_bins "$ROOT" || exit 2
 export TEST_CASES_DIR="$ROOT/tests/kbc/cases"
 export TMP_DIR="$(mktemp -d)"
 
@@ -32,8 +31,9 @@ test_kbc_roundtrip() {
   run_kbc "$kbc" >"$stdout" 2>/dev/null || { FAILURES=$((FAILURES + 1)); return 1; }
   strip_cr "$stdout"
   
-  if [[ "$(cat "$stdout")" != "$expected_output" ]]; then
+  if ! diff -u <(printf "%s" "$expected_output") "$stdout" >/dev/null; then
     echo "FAIL $name: output mismatch" >&2
+    diff -u <(printf "%s" "$expected_output") "$stdout" >&2 || true
     FAILURES=$((FAILURES + 1))
     return 1
   fi
@@ -43,9 +43,9 @@ test_kbc_roundtrip() {
 }
 
 echo "=== KBC test suite ==="
-test_kbc_roundtrip "simple_return" "42"
+test_kbc_roundtrip "simple_return" ""
 test_kbc_roundtrip "hello_world" $'hello world\n'
-test_kbc_roundtrip "arithmetic" "15"
+test_kbc_roundtrip "arithmetic" ""
 
 echo
 echo "Passed: $PASSES, Failed: $FAILURES"

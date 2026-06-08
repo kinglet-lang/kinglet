@@ -69,5 +69,8 @@ int main(int argc, char **argv) {
     return 70;
   }
 
-  return kinglet::exit_code_from_value(result.value);
+  // Match bootstrap --run: host exits 0 on success; program return is not
+  // propagated as the process exit code.
+  (void)result.value;
+  return 0;
 }
