@@ -137,6 +137,7 @@ pub struct Checker {
   StructInfo[] structs;
   EnumInfo[] enums;
   FuncSig[] funcs;
+  string[] concepts;
   NativeUsingAlias[] native_usings;
   int loop_depth;
   bool has_expected_return;
@@ -144,7 +145,7 @@ pub struct Checker {
 }
 
 pub Checker make_checker(string file) {
-  return Checker { [], [], [], file, [], [], [], [], 0, false, type_void() };
+  return Checker { [], [], [], file, [], [], [], [], [], 0, false, type_void() };
 }
 
 void push_scope(Checker c) { c.scope_starts.push(c.bindings.len()); }
@@ -516,6 +517,17 @@ Type check_call(Checker c, Expr callee, TypeExpr[] type_args, Expr[] args, int l
       _ => type_unknown(),
     };
   }
+  bool is_ns = callee match {
+    Expr::NsAccess(let _ns, let _m, let _l, let _c) => true,
+    _ => false,
+  };
+  if (is_ns) {
+    return callee match {
+      Expr::NsAccess(let ns, let member, let nl, let nc) =>
+        check_qualified_call(c, ns, member, args, nl, nc),
+      _ => type_unknown(),
+    };
+  }
   string fname = callee_name(callee);
   if (fname.len() == 0) {
     check_expr(c, callee);
@@ -533,6 +545,57 @@ Type check_call(Checker c, Expr callee, TypeExpr[] type_args, Expr[] args, int l
     return type_unknown();
   }
   FuncSig sig = lookup_func(c, fname);
+  if (args.len() != sig.param_types.len()) {
+    add_error(c, line, col, "Wrong number of arguments.");
+    return sig.ret_type;
+  }
+  for (int i = 0; i < args.len(); i = i + 1) {
+    Type at = check_expr(c, args[i]);
+    if (!types_compatible(at, sig.param_types[i])) {
+      add_error(c, line, col, "Argument type mismatch.");
+    }
+  }
+  return sig.ret_type;
+}
+
+bool concept_exists(Checker c, string name) {
+  for (int i = 0; i < c.concepts.len(); i = i + 1) {
+    if (c.concepts[i] == name) { return true; }
+  }
+  return false;
+}
+
+string type_match_key(Type t) {
+  if (t.kind == TypeKind::Struct) { return t.tag; }
+  return type_kind_name(t);
+}
+
+FuncSig lookup_concept_impl(Checker c, string method, Type arg_ty) {
+  string key = type_match_key(arg_ty);
+  for (int i = 0; i < c.funcs.len(); i = i + 1) {
+    FuncSig sig = c.funcs[i];
+    if (sig.name != method) { continue; }
+    if (sig.param_types.len() == 0) { continue; }
+    if (type_match_key(sig.param_types[0]) == key) { return sig; }
+  }
+  return FuncSig { "", [], type_void() };
+}
+
+Type check_qualified_call(Checker c, string ns, string member, Expr[] args, int line, int col) {
+  if (!concept_exists(c, ns)) {
+    add_error(c, line, col, "Unknown namespace '" + ns + "'.");
+    return type_unknown();
+  }
+  if (args.len() == 0) {
+    add_error(c, line, col, "Concept method '" + ns + "::" + member + "' expects at least one argument.");
+    return type_unknown();
+  }
+  Type arg_ty = check_expr(c, args[0]);
+  FuncSig sig = lookup_concept_impl(c, member, arg_ty);
+  if (sig.name.len() == 0) {
+    add_error(c, line, col, "No implementation of '" + ns + "::" + member + "' for type '" + type_match_key(arg_ty) + "'.");
+    return type_unknown();
+  }
   if (args.len() != sig.param_types.len()) {
     add_error(c, line, col, "Wrong number of arguments.");
     return sig.ret_type;
@@ -663,6 +726,23 @@ Type check_method_call(Checker c, Expr obj, string method, Expr[] args, int line
       Type _at = check_expr(c, args[i]);
     }
     return type_unknown();
+  }
+  if (ot.kind == TypeKind::Struct) {
+    FuncSig sig = lookup_func(c, ot.tag + "::" + method);
+    if (sig.name.len() > 0) {
+      int expected = sig.param_types.len() - 1;
+      if (args.len() != expected) {
+        add_error(c, line, col, "Wrong number of arguments.");
+        return sig.ret_type;
+      }
+      for (int i = 0; i < args.len(); i = i + 1) {
+        Type at = check_expr(c, args[i]);
+        if (!types_compatible(at, sig.param_types[i + 1])) {
+          add_error(c, line, col, "Argument type mismatch.");
+        }
+      }
+      return sig.ret_type;
+    }
   }
   add_error(c, line, col, "Unknown method '" + method + "' on '" + type_kind_name(ot) + "'.");
   return type_unknown();
@@ -1102,6 +1182,8 @@ void register_decl(Checker c, Decl d) {
   d match {
     Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let _b, let _is_pub, let l, let col) =>
       register_function_sig(c, n, rt, params, l, col),
+    Decl::ConceptDecl(let n, let _tps, let _methods, let _is_pub, let _l, let _c) =>
+      c.concepts.push(n),
     _ => check_void(),
   };
 }
@@ -1111,7 +1193,15 @@ void register_function_sig(Checker c, string n, TypeExpr rt, Parameter[] params,
   for (int i = 0; i < params.len(); i = i + 1) {
     pts.push(resolve_type_expr(c, params[i].type));
   }
-  register_func(c, FuncSig { n, pts, resolve_type_expr(c, rt) });
+  Type ret = resolve_type_expr(c, rt);
+  register_func(c, FuncSig { n, pts, ret });
+  if (params.len() > 0) {
+    string receiver = params[0].type.name;
+    StructInfo info = lookup_struct_info(c, receiver);
+    if (info.name.len() > 0) {
+      register_func(c, FuncSig { receiver + "::" + n, pts, ret });
+    }
+  }
 }
 
 void check_decl(Checker c, Decl d) {
