@@ -37,7 +37,7 @@ tests/
   differential/
     cases/          RUN: diff (gating)
     run_matrix.sh   broad snapshot (non-gating)
-  regression/       selfhost oracle + bootstrap drift report
+  regression/       selfhost oracle + bootstrap drift report (see regression/README.md)
   property/         parse/print stability + fuzz-lite
   probe/            28-feature capability matrix (snapshot)
   builtin_methods/  builtin method matrix (snapshot)
@@ -96,10 +96,11 @@ differential (gate), diagnostics, kbc, regression, property.
 | Must type-check | `sema/pass/` or `sema/fail/` | `RUN: check`, optional `CHECK-ERR` |
 | Must match bootstrap | `differential/cases/` | `RUN: diff` |
 | Bytecode shape | `codegen/cases/` | `.bytecode` golden + optional `.exit` |
-| Fixed bug | `regression/cases/` | `.expected` / `.exit` oracle |
+| Fixed bug | `regression/cases/` | `.expected` / `.exit` oracle; optional `.args` (one `sys::args` value per line) |
 | Language feature probe | `probe/cases/` | `// EXPECT_OUT:` header |
 
 ## Related docs
 
+- [regression/README.md](regression/README.md) — oracle sidecars (`.expected`, `.exit`, `.args`)
 - [probe/README.md](probe/README.md) — feature capability matrix
 - [builtin_methods/README.md](builtin_methods/README.md) — builtin method coverage

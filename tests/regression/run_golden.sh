@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Oracle-anchored regression: selfhost must match hand-verified outputs.
 # Also reports bootstrap vs selfhost drift on MUST_PASS cases (non-gating).
+# Optional cases/<name>.args forwards program argv — see regression/README.md.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -12,6 +13,7 @@ CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
 
 CASES="$ROOT/tests/regression/cases"
 TMP="$(mktemp -d)"
+CASE_ARGS=()
 trap 'rm -rf "$TMP"' EXIT
 
 MUST_PASS=(
@@ -20,22 +22,41 @@ MUST_PASS=(
   enum_destructure_test match_enum_destruct enum_guard_test
   match_basic match_binding
   map_basic map_symbol_table
-  arrays_type_error arrays_bytecode
+  arrays_type_error arrays_bytecode cat
 )
 KNOWN_FAIL=(
-  cat
 )
+
+# Optional sidecar: cases/<name>.args — one program argument per non-empty line.
+# Relative paths resolve against cases/. Lines starting with # are comments.
+load_case_args() {
+  local name="$1"
+  local args_file="$CASES/$name.args"
+  CASE_ARGS=()
+  [[ -f "$args_file" ]] || return 0
+  local line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    if [[ "$line" != /* ]]; then
+      line="$CASES/$line"
+    fi
+    CASE_ARGS+=("$line")
+  done < "$args_file"
+}
 
 run_selfhost() {
   local src="$1" stdout="$2" stderr="$3" kbc="$4"
+  shift 4
   compile_selfhost "$CLI_KBC" "$src" "$kbc" 2>"$stderr" || return $?
-  run_kbc "$kbc" >"$stdout" 2>>"$stderr"
+  run_kbc "$kbc" "$@" >"$stdout" 2>>"$stderr"
   return $?
 }
 
 run_bootstrap() {
   local src="$1" stdout="$2" stderr="$3"
-  "$BOOTSTRAP_BIN" "$src" >"$stdout" 2>"$stderr"
+  shift 3
+  "$BOOTSTRAP_BIN" "$src" "$@" >"$stdout" 2>"$stderr"
   return $?
 }
 
@@ -45,6 +66,8 @@ run_one() {
   local exp="$CASES/$name.expected"
   local exit_file="$CASES/$name.exit"
   local kbc="$TMP/$name.kbc"
+
+  load_case_args "$name"
 
   WANT_EXIT=0
   [[ -f "$exit_file" ]] && WANT_EXIT=$(cat "$exit_file")
@@ -56,7 +79,7 @@ run_one() {
     set -e
   else
     set +e
-    run_selfhost "$src" "$TMP/sh.out" "$TMP/sh.err" "$kbc"
+    run_selfhost "$src" "$TMP/sh.out" "$TMP/sh.err" "$kbc" ${CASE_ARGS+"${CASE_ARGS[@]}"}
     GOT_EXIT=$?
     set -e
   fi
@@ -73,7 +96,7 @@ run_one() {
 
   DRIFT=0
   if [[ "$OUT_OK" -eq 1 && "$EXIT_OK" -eq 1 && -f "$exp" ]]; then
-    run_bootstrap "$src" "$TMP/bs.out" "$TMP/bs.err" || true
+    run_bootstrap "$src" "$TMP/bs.out" "$TMP/bs.err" ${CASE_ARGS+"${CASE_ARGS[@]}"} || true
     bs_ec=$?
     strip_cr "$TMP/bs.out" "$TMP/bs.err"
     if [[ "$bs_ec" -ne "$GOT_EXIT" ]] || ! diff -q "$TMP/sh.out" "$TMP/bs.out" >/dev/null 2>&1; then
@@ -107,17 +130,19 @@ for name in "${MUST_PASS[@]}"; do
   fi
 done
 
-echo
-echo "-- KNOWN FAIL (tracked gaps) --"
-for name in "${KNOWN_FAIL[@]}"; do
-  run_one "$name"
-  if [[ "$OUT_OK" -eq 1 && "$EXIT_OK" -eq 1 ]]; then
-    echo "XPASS $name  <-- promote to MUST_PASS"
-    xpass=$((xpass + 1))
-  else
-    echo "xfail $name (exit want=$WANT_EXIT got=$GOT_EXIT)"
-  fi
-done
+if [[ ${#KNOWN_FAIL[@]} -gt 0 ]]; then
+  echo
+  echo "-- KNOWN FAIL (tracked gaps) --"
+  for name in "${KNOWN_FAIL[@]}"; do
+    run_one "$name"
+    if [[ "$OUT_OK" -eq 1 && "$EXIT_OK" -eq 1 ]]; then
+      echo "XPASS $name  <-- promote to MUST_PASS"
+      xpass=$((xpass + 1))
+    else
+      echo "xfail $name (exit want=$WANT_EXIT got=$GOT_EXIT)"
+    fi
+  done
+fi
 
 echo
 echo "=== Summary ==="
