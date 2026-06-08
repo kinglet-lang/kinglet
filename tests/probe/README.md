@@ -90,19 +90,15 @@ The checker is still shallow on enum `match` result types, array method calls, a
 
 | Priority | Probe | Layer | Issue |
 |:--------:|-------|-------|-------|
-| P1 | `05_const` | codegen | Top-level `const` not emitted as global |
-| P1 | `20_null_coalesce` | VM / codegen | Elvis on `null` does not fall through to RHS |
-| P2 | `26_concept_qualified` | codegen | Qualified concept call lowering |
-| P2 | `27_ufcs` | codegen | UFCS for user-defined free functions |
+| — | `20_null_coalesce` | language | Selfhost keeps `?:` only; `null ?: rhs` printing `null` is intentional (not `??` null-fallthrough) |
 ## Self-host vs bootstrap
 
 Both trees share most probes under `tests/probe/cases/`. Divergences:
 
 | Probe | Self-host (`compiler.kbc`) | Bootstrap (`kinglet` CLI) |
 |-------|---------------------------|---------------------------|
-| `05_const` | cg✗ | run✓ |
 | `19_try_catch` | run✓ | chk✗ (catch type) |
-| `20_null_coalesce` | run≠out | run✓ |
+| `20_null_coalesce` | run≠out (expected) | run✓ |
 | `24_generic_fn_infer` | run✓ | chk✗ |
 | `25_generic_struct` | run✓ | chk✗ |
 | `29_*` | `using_namespace` → run✓ | `using_selective` → chk✗ |
