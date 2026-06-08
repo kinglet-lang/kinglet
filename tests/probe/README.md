@@ -17,7 +17,7 @@ bash tests/run_all.sh
 | Compile | `kinglet --run compiler.kbc --save-bytecode <tmp> <probe>` | yes (`cg✗`) |
 | Run | `kinglet --run <tmp>` vs `// EXPECT_OUT:` on line 1 | yes (`run✗`, `run≠out`, `run✓`) |
 
-The checker is still shallow on enum `match` result types, array method calls, and some builtins. A probe can be `chk✗` while `stage` is `run✓`.
+Builtin method calls are typed via receiver dispatch in `checker/checker.kl`; a probe can still be `chk✗` while `stage` is `run✓` for other checker gaps.
 
 ## Summary (2026-06-08)
 

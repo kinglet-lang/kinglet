@@ -459,6 +459,28 @@ Type check_native_member_access(Checker c, string ns, string member, string fiel
   return type_unknown();
 }
 
+Type check_native_member_call(Checker c, string ns, string member, string field, Expr[] args, int line, int col) {
+  if (ns == "io" && member == "out" && field == "line") {
+    for (int i = 0; i < args.len(); i = i + 1) {
+      Type _at = check_expr(c, args[i]);
+    }
+    return type_void();
+  }
+  if (ns == "io" && member == "err" && field == "line") {
+    for (int i = 0; i < args.len(); i = i + 1) {
+      Type _at = check_expr(c, args[i]);
+    }
+    return type_void();
+  }
+  if (ns == "io" && member == "in" && field == "secret") {
+    for (int i = 0; i < args.len(); i = i + 1) {
+      Type _at = check_expr(c, args[i]);
+    }
+    return type_string();
+  }
+  return check_native_member_access(c, ns, member, field, line, col);
+}
+
 Type check_ident(Checker c, string name, int line, int col) {
   if (name == "null") { return type_null(); }
   if (var_exists(c, name)) { return lookup_var(c, name); }
@@ -814,48 +836,319 @@ Type lookup_field_type(Checker c, StructInfo info, string field) {
   return type_unknown();
 }
 
-Type check_method_call(Checker c, Expr obj, string method, Expr[] args, int line, int col) {
-  Type ot = check_expr(c, obj);
-  if (method == "len") {
-    if (ot.kind == TypeKind::String || ot.kind == TypeKind::Array ||
-        ot.kind == TypeKind::Map || ot.kind == TypeKind::Unknown) {
-      return type_int();
+string map_key_enc(Type m) {
+  int i = 0;
+  while (i < m.tag.len()) {
+    if (m.tag.slice(i, i + 1) == ":") {
+      return m.tag.slice(0, i);
     }
-    add_error(c, line, col, "Method 'len' is not available on '" + type_kind_name(ot) + "'.");
+    i = i + 1;
+  }
+  return "string";
+}
+
+void check_string_operand(Checker c, Type at, int line, int col, string ctx) {
+  if (at.kind != TypeKind::String && at.kind != TypeKind::Unknown) {
+    add_error(c, line, col, ctx + " must be string.");
+  }
+}
+
+void check_int_operand(Checker c, Type at, int line, int col, string ctx) {
+  if (at.kind != TypeKind::Int && at.kind != TypeKind::Unknown) {
+    add_error(c, line, col, ctx + " must be int.");
+  }
+}
+
+Type check_array_builtin_method(Checker c, Type ot, string method, Expr[] args, int line, int col) {
+  if (method == "len") {
+    if (args.len() > 0) { add_error(c, line, col, "len() takes no arguments."); }
     return type_int();
   }
   if (method == "push") {
     if (args.len() != 1) {
-      add_error(c, line, col, "Method 'push' expects 1 argument.");
-      return type_void();
-    }
-    Type at = check_expr(c, args[0]);
-    if (ot.kind == TypeKind::Array) {
+      add_error(c, line, col, "push() takes exactly 1 argument.");
+    } else if (ot.kind == TypeKind::Array) {
+      Type at = check_expr(c, args[0]);
       Type elem = resolve_type_name(c, ot.tag);
       if (!types_compatible(at, elem)) {
         add_error(c, line, col, "Array element type mismatch.");
       }
+    } else {
+      Type _at = check_expr(c, args[0]);
     }
     return type_void();
   }
-  if (method == "pop" || method == "clear" || method == "reverse") {
-    if (ot.kind == TypeKind::Array || ot.kind == TypeKind::Unknown) {
-      if (method == "pop" && ot.kind == TypeKind::Array) {
-        return resolve_type_name(c, ot.tag);
+  if (method == "pop") {
+    if (args.len() > 0) { add_error(c, line, col, "pop() takes no arguments."); }
+    if (ot.kind == TypeKind::Array) { return resolve_type_name(c, ot.tag); }
+    return type_unknown();
+  }
+  if (method == "remove") {
+    if (args.len() != 1) {
+      add_error(c, line, col, "remove() takes exactly 1 argument.");
+    } else {
+      Type at = check_expr(c, args[0]);
+      check_int_operand(c, at, line, col, "remove() index");
+    }
+    if (ot.kind == TypeKind::Array) { return resolve_type_name(c, ot.tag); }
+    return type_unknown();
+  }
+  if (method == "contains") {
+    if (args.len() != 1) {
+      add_error(c, line, col, "contains() takes exactly 1 argument.");
+    } else {
+      Type _at = check_expr(c, args[0]);
+    }
+    return type_bool();
+  }
+  if (method == "clear" || method == "reverse") {
+    if (args.len() > 0) {
+      add_error(c, line, col, method + "() takes no arguments.");
+    }
+    return type_void();
+  }
+  if (method == "insert") {
+    if (args.len() != 2) {
+      add_error(c, line, col, "insert() takes exactly 2 arguments.");
+    } else {
+      Type idx = check_expr(c, args[0]);
+      check_int_operand(c, idx, line, col, "insert() index");
+      Type _v = check_expr(c, args[1]);
+    }
+    return type_void();
+  }
+  if (method == "index_of") {
+    if (args.len() != 1) {
+      add_error(c, line, col, "index_of() takes exactly 1 argument.");
+    } else {
+      Type _at = check_expr(c, args[0]);
+    }
+    return type_int();
+  }
+  if (method == "slice") {
+    if (args.len() != 2) {
+      add_error(c, line, col, "slice() takes exactly 2 arguments.");
+    } else {
+      Type s = check_expr(c, args[0]);
+      Type e = check_expr(c, args[1]);
+      check_int_operand(c, s, line, col, "slice() start");
+      check_int_operand(c, e, line, col, "slice() end");
+    }
+    if (ot.kind == TypeKind::Array) { return type_array(ot.tag); }
+    return type_unknown();
+  }
+  if (method == "resize") {
+    if (args.len() != 2) {
+      add_error(c, line, col, "resize() takes exactly 2 arguments.");
+    } else {
+      Type count = check_expr(c, args[0]);
+      check_int_operand(c, count, line, col, "resize() count");
+      if (ot.kind == TypeKind::Array) {
+        Type elem = resolve_type_name(c, ot.tag);
+        Type fill = check_expr(c, args[1]);
+        if (!types_compatible(fill, elem)) {
+          add_error(c, line, col, "Array element type mismatch.");
+        }
+      } else {
+        Type _fill = check_expr(c, args[1]);
+      }
+    }
+    return type_void();
+  }
+  add_error(c, line, col, "Array has no method '" + method + "'.");
+  return type_unknown();
+}
+
+Type check_map_builtin_method(Checker c, Type ot, string method, Expr[] args, int line, int col) {
+  if (method == "len") {
+    if (args.len() > 0) { add_error(c, line, col, "len() takes no arguments."); }
+    return type_int();
+  }
+  if (method == "has") {
+    if (args.len() != 1) {
+      add_error(c, line, col, "has() takes exactly 1 argument.");
+    } else {
+      Type _k = check_expr(c, args[0]);
+    }
+    return type_bool();
+  }
+  if (method == "keys") {
+    if (args.len() > 0) { add_error(c, line, col, "keys() takes no arguments."); }
+    if (ot.kind == TypeKind::Map) {
+      return type_array(map_key_enc(ot));
+    }
+    return type_array("string");
+  }
+  if (method == "remove") {
+    if (args.len() != 1) {
+      add_error(c, line, col, "remove() takes exactly 1 argument.");
+    } else {
+      Type _k = check_expr(c, args[0]);
+    }
+    return type_void();
+  }
+  add_error(c, line, col, "Map has no method '" + method + "'.");
+  return type_unknown();
+}
+
+Type check_string_builtin_method(Checker c, Type ot, string method, Expr[] args, int line, int col) {
+  if (method == "len") {
+    if (args.len() > 0) { add_error(c, line, col, "len() takes no arguments."); }
+    return type_int();
+  }
+  if (method == "contains" || method == "starts_with" || method == "ends_with") {
+    if (args.len() != 1) {
+      add_error(c, line, col, method + "() takes exactly 1 argument.");
+    } else {
+      Type at = check_expr(c, args[0]);
+      check_string_operand(c, at, line, col, method + "() argument");
+    }
+    return type_bool();
+  }
+  if (method == "index_of") {
+    if (args.len() != 1) {
+      add_error(c, line, col, "index_of() takes exactly 1 argument.");
+    } else {
+      Type at = check_expr(c, args[0]);
+      check_string_operand(c, at, line, col, "index_of() argument");
+    }
+    return type_int();
+  }
+  if (method == "slice") {
+    if (args.len() != 2) {
+      add_error(c, line, col, "slice() takes exactly 2 arguments.");
+    } else {
+      Type s = check_expr(c, args[0]);
+      Type e = check_expr(c, args[1]);
+      check_int_operand(c, s, line, col, "slice() start");
+      check_int_operand(c, e, line, col, "slice() end");
+    }
+    return type_string();
+  }
+  if (method == "replace") {
+    if (args.len() != 2) {
+      add_error(c, line, col, "replace() takes exactly 2 arguments.");
+    } else {
+      Type a = check_expr(c, args[0]);
+      Type b = check_expr(c, args[1]);
+      check_string_operand(c, a, line, col, "replace() argument");
+      check_string_operand(c, b, line, col, "replace() argument");
+    }
+    return type_string();
+  }
+  if (method == "split") {
+    if (args.len() != 1) {
+      add_error(c, line, col, "split() takes exactly 1 argument.");
+    } else {
+      Type at = check_expr(c, args[0]);
+      check_string_operand(c, at, line, col, "split() argument");
+    }
+    return type_array("string");
+  }
+  if (method == "trim" || method == "to_upper" || method == "to_lower") {
+    if (args.len() > 0) {
+      add_error(c, line, col, method + "() takes no arguments.");
+    }
+    return type_string();
+  }
+  add_error(c, line, col, "String has no method '" + method + "'.");
+  return type_unknown();
+}
+
+bool is_string_only_builtin(string method) {
+  if (method == "starts_with") { return true; }
+  if (method == "ends_with") { return true; }
+  if (method == "replace") { return true; }
+  if (method == "split") { return true; }
+  if (method == "trim") { return true; }
+  if (method == "to_upper") { return true; }
+  if (method == "to_lower") { return true; }
+  return false;
+}
+
+bool is_map_only_builtin(string method) {
+  if (method == "has") { return true; }
+  if (method == "keys") { return true; }
+  return false;
+}
+
+bool is_array_only_builtin(string method) {
+  if (method == "push") { return true; }
+  if (method == "pop") { return true; }
+  if (method == "clear") { return true; }
+  if (method == "insert") { return true; }
+  if (method == "reverse") { return true; }
+  if (method == "resize") { return true; }
+  return false;
+}
+
+Type check_method_call(Checker c, Expr obj, string method, Expr[] args, int line, int col) {
+  bool obj_is_ns = obj match { Expr::NsAccess(_, _, _, _) => true, _ => false, };
+  if (obj_is_ns) {
+    return obj match {
+      Expr::NsAccess(let ns, let member, let nl, let nc) =>
+        check_native_member_call(c, ns, member, method, args, nl, nc),
+      _ => type_unknown(),
+    };
+  }
+  Type ot = check_expr(c, obj);
+  if (ot.kind == TypeKind::Array) {
+    return check_array_builtin_method(c, ot, method, args, line, col);
+  }
+  if (ot.kind == TypeKind::Map) {
+    return check_map_builtin_method(c, ot, method, args, line, col);
+  }
+  if (ot.kind == TypeKind::String) {
+    return check_string_builtin_method(c, ot, method, args, line, col);
+  }
+  if (ot.kind == TypeKind::Unknown) {
+    if (is_string_only_builtin(method)) {
+      return check_string_builtin_method(c, ot, method, args, line, col);
+    }
+    if (is_map_only_builtin(method)) {
+      return check_map_builtin_method(c, ot, method, args, line, col);
+    }
+    if (is_array_only_builtin(method)) {
+      return check_array_builtin_method(c, ot, method, args, line, col);
+    }
+    if (method == "len") {
+      if (args.len() > 0) { add_error(c, line, col, "len() takes no arguments."); }
+      return type_int();
+    }
+    if (method == "contains") {
+      if (args.len() != 1) {
+        add_error(c, line, col, "contains() takes exactly 1 argument.");
+      } else {
+        Type _at = check_expr(c, args[0]);
+      }
+      return type_bool();
+    }
+    if (method == "index_of") {
+      if (args.len() != 1) {
+        add_error(c, line, col, "index_of() takes exactly 1 argument.");
+      } else {
+        Type _at = check_expr(c, args[0]);
+      }
+      return type_int();
+    }
+    if (method == "slice") {
+      if (args.len() != 2) {
+        add_error(c, line, col, "slice() takes exactly 2 arguments.");
+      } else {
+        Type s = check_expr(c, args[0]);
+        Type e = check_expr(c, args[1]);
+        check_int_operand(c, s, line, col, "slice() start");
+        check_int_operand(c, e, line, col, "slice() end");
       }
       return type_unknown();
     }
-  }
-  if (method == "starts_with" || method == "ends_with" || method == "replace" ||
-      method == "split" || method == "trim" || method == "to_upper" || method == "to_lower") {
-    if (ot.kind == TypeKind::String || ot.kind == TypeKind::Unknown) {
-      return type_bool();
-    }
-  }
-  if (ot.kind == TypeKind::Array || ot.kind == TypeKind::String ||
-      ot.kind == TypeKind::Map || ot.kind == TypeKind::Unknown) {
-    for (int i = 0; i < args.len(); i = i + 1) {
-      Type _at = check_expr(c, args[i]);
+    if (method == "remove") {
+      if (args.len() != 1) {
+        add_error(c, line, col, "remove() takes exactly 1 argument.");
+      } else {
+        Type _at = check_expr(c, args[0]);
+      }
+      return type_unknown();
     }
     return type_unknown();
   }

@@ -18,17 +18,15 @@ informational and does not gate `stage`.
 |--------|------:|
 | Cases | 26 |
 | `run✓` (parse → compile → run) | **26** |
-| `chk✗` (checker only) | **2** |
+| `chk✗` (checker only) | **0** |
 
 | Receiver | run✓ | chk✗ |
 |----------|-----:|-----:|
 | `int[]` / array | 11/11 | 0 |
-| `{K: V}` map | 4/4 | 1 (`map_len`) |
-| `string` | 11/11 | 1 (`string_split` chain) |
+| `{K: V}` map | 4/4 | 0 |
+| `string` | 11/11 | 0 |
 
-**Runtime: all builtin methods work end-to-end in selfhost today.**
-
-**Checker: incomplete** — see [Checker gaps](#checker-gaps) (fix planned).
+**Runtime and checker: all 26 builtin methods pass end-to-end in selfhost.**
 
 ## Matrix
 
@@ -47,19 +45,19 @@ informational and does not gate `stage`.
 | array_slice | array | slice | ✓ | run✓ | |
 | map_has | map | has | ✓ | run✓ | |
 | map_keys | map | keys | ✓ | run✓ | |
-| map_len | map | len | **✗** | run✓ | `len` not typed on map |
+| map_len | map | len | ✓ | run✓ | |
 | map_remove | map | remove | ✓ | run✓ | |
 | string_contains | string | contains | ✓ | run✓ | |
 | string_ends_with | string | ends_with | ✓ | run✓ | |
 | string_index_of | string | index_of | ✓ | run✓ | |
 | string_len | string | len | ✓ | run✓ | |
-| string_replace | string | replace | ✓ | run✓ | see assignment gap below |
+| string_replace | string | replace | ✓ | run✓ | |
 | string_slice | string | slice | ✓ | run✓ | |
-| string_split | string | split | **✗** | run✓ | split inferred as `bool` → `.len()` fails |
+| string_split | string | split | ✓ | run✓ | |
 | string_starts_with | string | starts_with | ✓ | run✓ | |
-| string_to_lower | string | to_lower | ✓ | run✓ | see assignment gap below |
-| string_to_upper | string | to_upper | ✓ | run✓ | see assignment gap below |
-| string_trim | string | trim | ✓ | run✓ | see assignment gap below |
+| string_to_lower | string | to_lower | ✓ | run✓ | |
+| string_to_upper | string | to_upper | ✓ | run✓ | |
+| string_trim | string | trim | ✓ | run✓ | |
 
 Regenerate this table: `bash tests/builtin_methods/run_matrix.sh`
 
@@ -109,25 +107,12 @@ Opcodes and semantics follow bootstrap VM (`kinglet-bootstrap/src/vm/vm.cc`).
 | `to_upper()` | — | `string` | `StringToUpper` |
 | `to_lower()` | — | `string` | `StringToLower` |
 
-## Checker gaps
+## Checker dispatch
 
-`checker/checker.kl` `check_method_call` is a partial table. Known issues
-(**runtime OK**, checker wrong or missing):
-
-| Issue | Affected methods | Symptom |
-|-------|------------------|---------|
-| `len` only on array/string | `map.len()` | chk✗ in `map_len` case |
-| String mutators return `bool` in checker | `replace`, `trim`, `to_upper`, `to_lower` | `string t = s.trim()` → assign bool to string (not caught when result goes straight to `io::out.line`) |
-| `split` return type | `split` | inferred `bool`; `s.split(d).len()` → chk✗ in `string_split` case |
-| Array helpers return `unknown` | `contains`, `index_of`, `insert`, `remove`, `slice`, `resize`, … | no arity/return typing; usually no error unless assigned to a narrow type |
-| No receiver kind check | e.g. `string.push(1)` | chk✓ incorrectly |
-| Map helpers return `unknown` | `has`, `keys` | passes when fed to `io::out.line`; assignment would be unchecked |
-
-### Suggested fix (next session)
-
-Replace the ad-hoc `check_method_call` branches with a single dispatch table
-matching the [Method reference](#method-reference) above (receiver kind × method
-→ arg types + return type). Re-run this matrix; target **26/26 chk✓**.
+Builtin method typing lives in `checker/checker.kl`:
+`check_array_builtin_method`, `check_map_builtin_method`,
+`check_string_builtin_method`, plus `check_native_member_call` for
+`io::out.line` / `io::err.line` / `io::in.secret`.
 
 ## Adding a case
 
