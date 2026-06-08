@@ -33,7 +33,7 @@ run_suite "Checker tests" "$ROOT/checker/run_golden.sh"
 run_suite "Codegen tests" "$ROOT/codegen/run_golden.sh"
 run_suite "Selfhost behavioral tests" "$ROOT/run_selfhost/run_golden.sh"
 run_suite "Selfhost round-trip" "$ROOT/selfhost/run_roundtrip.sh"
-run_suite "Behavioral tests" "$ROOT/run/run_golden.sh"
+run_suite "Exec tests (selfhost)" "$ROOT/exec/run.sh"
 bash "$ROOT/probe/run_matrix.sh"
 TOTAL=$((TOTAL + 1))
 PASSED=$((PASSED + 1))

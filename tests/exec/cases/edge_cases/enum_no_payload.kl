@@ -1,0 +1,21 @@
+// RUN: selfhost
+// Test enum with zero payload
+using io;
+
+enum Status {
+  Pending,
+  Active,
+  Inactive
+}
+
+int main() {
+  Status s = Status::Active;
+
+  s match {
+    Status::Pending => io::out.line("pending"),
+    Status::Active => io::out.line("active"),
+    Status::Inactive => io::out.line("inactive"),
+  };
+
+  return 0;
+}

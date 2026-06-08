@@ -1,0 +1,39 @@
+// RUN: selfhost
+// Test nested enum with multiple payload types
+using io;
+
+enum Result {
+  Ok(int),
+  Err(string)
+}
+
+enum Container {
+  Empty,
+  Single(Result),
+  Multiple(Result, Result)
+}
+
+void print_result(Result r) {
+  r match {
+    Result::Ok(let v) => io::out.line(v),
+    Result::Err(let e) => io::out.line(e),
+  };
+}
+
+int main() {
+  Container c = Container::Multiple(Result::Ok(42), Result::Err("failed"));
+
+  c match {
+    Container::Empty => io::out.line("empty"),
+    Container::Single(let r) => print_result(r),
+    Container::Multiple(let r1, let r2) => print_result(r1),
+  };
+
+  // Second match to handle r2 — Multiple arm must run again to bind r2.
+  c match {
+    Container::Multiple(let r1, let r2) => print_result(r2),
+    _ => {},
+  };
+
+  return 0;
+}

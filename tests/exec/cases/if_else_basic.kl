@@ -1,0 +1,12 @@
+// RUN: selfhost
+using io;
+
+int main() {
+  int x = 5;
+  if x > 0 {
+    io::out("positive\n");
+  } else {
+    io::out("non-positive\n");
+  }
+  return 0;
+}

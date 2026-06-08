@@ -1,0 +1,21 @@
+// RUN: selfhost
+// Selfhost ?: prints null for failed parse; bootstrap used ?? semantics (0 / 42).
+// Test null propagation with ?: (Elvis)
+using io;
+
+int parse_int(string s) {
+  if s == "42" {
+    return 42;
+  }
+  return null;
+}
+
+int main() {
+  int result = parse_int("invalid") ?: 0;
+  io::out.line(result);
+
+  int result2 = parse_int("42") ?: 0;
+  io::out.line(result2);
+
+  return 0;
+}
