@@ -1,0 +1,13 @@
+int compute(int a, int b) {
+  return (a + b) * 2 - a / b;
+}
+
+bool check(int n) {
+  return n > 0 && n < 100 || n == -1;
+}
+
+int main() {
+  int z = compute(3, 4);
+  bool ok = check(z);
+  return z;
+}

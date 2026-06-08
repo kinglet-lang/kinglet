@@ -274,3 +274,20 @@ run_contains_case() {
 
   return $failed
 }
+
+# Run a command with a wall-clock cap. Uses GNU timeout or gtimeout when present.
+# Exit code 124 means the child was killed by timeout.
+run_with_timeout() {
+  local secs="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+    return $?
+  fi
+  if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+    return $?
+  fi
+  "$@"
+  return $?
+}
