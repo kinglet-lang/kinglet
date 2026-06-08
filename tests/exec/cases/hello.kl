@@ -1,0 +1,4 @@
+// RUN: selfhost
+// EXPECT-STDOUT: hello
+using io;
+int main() { io::out.line("hello"); return 0; }

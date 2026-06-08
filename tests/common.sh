@@ -14,16 +14,33 @@
 # Resolve KINGLET to an executable. Prints absolute path on stdout, exits 2
 # on failure.
 resolve_kinglet() {
-  local k="${KINGLET:-$1/../../kinglet/out/Default/kinglet.exe}"
-  if [[ -x "$k" || -f "$k" ]]; then
-    printf '%s' "$k"
-    return 0
+  local root="$1"
+  local k="${KINGLET:-}"
+  local candidate
+
+  if [[ -n "$k" ]]; then
+    if [[ -x "$k" || -f "$k" ]]; then
+      printf '%s' "$k"
+      return 0
+    fi
+    if [[ -x "$k.exe" || -f "$k.exe" ]]; then
+      printf '%s' "$k.exe"
+      return 0
+    fi
   fi
-  if [[ -x "$k.exe" || -f "$k.exe" ]]; then
-    printf '%s' "$k.exe"
-    return 0
-  fi
-  echo "kinglet binary not found at $k" >&2
+
+  for candidate in \
+    "$root/../../kinglet/out/Default/kinglet" \
+    "$root/../../../kinglet/out/Default/kinglet" \
+    "$root/../../kinglet/out/Default/kinglet.exe" \
+    "$root/../../../kinglet/out/Default/kinglet.exe"; do
+    if [[ -x "$candidate" || -f "$candidate" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+
+  echo "kinglet binary not found (tried KINGLET and sibling kinglet/out/Default/)" >&2
   echo "Set KINGLET=/path/to/kinglet to override." >&2
   return 2
 }
