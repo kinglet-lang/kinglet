@@ -59,45 +59,4 @@ Value value_deep_clone(const Value &value) {
   }
 }
 
-void cow_ensure_unique(Value &value) {
-  if (!value.heap || value.heap.ptr->refcount <= 1)
-    return;
-
-  switch (value.type) {
-  case ValueType::String: {
-    auto *old = static_cast<HeapString *>(value.heap.ptr);
-    value.heap = RcPtr<HeapObj>{new HeapString(old->value)};
-    break;
-  }
-  case ValueType::Struct: {
-    auto *old = static_cast<HeapStruct *>(value.heap.ptr);
-    value.heap =
-        RcPtr<HeapObj>{new HeapStruct(old->type_index, old->fields)};
-    break;
-  }
-  case ValueType::Array: {
-    auto *old = static_cast<HeapArray *>(value.heap.ptr);
-    value.heap = RcPtr<HeapObj>{new HeapArray(old->elements)};
-    break;
-  }
-  case ValueType::Map: {
-    auto *old = static_cast<HeapMap *>(value.heap.ptr);
-    auto *copy = new HeapMap();
-    copy->order = old->order;
-    copy->entries = old->entries;
-    value.heap = RcPtr<HeapObj>{copy};
-    break;
-  }
-  case ValueType::Enum: {
-    auto *old = static_cast<HeapEnum *>(value.heap.ptr);
-    value.heap = RcPtr<HeapObj>{new HeapEnum(old->type_index,
-                                              old->variant_index,
-                                              old->payload)};
-    break;
-  }
-  default:
-    break;
-  }
-}
-
 } // namespace kinglet

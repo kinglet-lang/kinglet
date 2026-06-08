@@ -4,10 +4,7 @@ namespace kinglet {
 
 struct Value;
 
-// Deep copy for cross-variable assignment when the heap object is shared.
+// Deep copy when storing into a local that would alias another local.
 Value value_deep_clone(const Value &value);
-
-// Clone before in-place mutation when refcount > 1.
-void cow_ensure_unique(Value &value);
 
 } // namespace kinglet

@@ -11,12 +11,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
 source "$ROOT/tests/common.sh"
 
-KINGLET=$(resolve_kinglet "$ROOT") || exit 2
-CLI_KBC=$(ensure_cli_kbc "$ROOT" "$KINGLET") || exit 2
+export_kinglet_bins "$ROOT" || exit 2
+CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
 
 ENTRY="$ROOT/core/main.kl"
+COMPILE_TIMEOUT="${KINGLET_COMPILE_TIMEOUT:-600}"
 TMP_DIR="$(mktemp -d)"
 S2_KBC="$TMP_DIR/S2.kbc"
 S3_KBC="$TMP_DIR/S3.kbc"
@@ -30,8 +32,14 @@ echo
 # S2 generation: selfhost (compiler.kbc) compiles itself
 echo "Step 1: S2 = selfhost compiles itself"
 echo "  Running: run_kbc compiler.kbc --save-bytecode S2.kbc core/main.kl"
-if ! run_kbc "$CLI_KBC" --save-bytecode "$S2_KBC" "$ENTRY" 2>"$TMP_DIR/s2.err"; then
-  echo "FAIL: S2 generation failed" >&2
+if ! run_with_timeout "$COMPILE_TIMEOUT" run_kbc "$CLI_KBC" --save-bytecode \
+    "$S2_KBC" "$ENTRY" 2>"$TMP_DIR/s2.err"; then
+  echo "FAIL: S2 generation failed (timeout ${COMPILE_TIMEOUT}s or VM error)" >&2
+  cat "$TMP_DIR/s2.err" >&2
+  exit 1
+fi
+if [[ ! -s "$S2_KBC" ]]; then
+  echo "FAIL: S2.kbc not produced" >&2
   cat "$TMP_DIR/s2.err" >&2
   exit 1
 fi
@@ -41,8 +49,14 @@ echo "  S2.kbc: $(stat -c%s "$S2_KBC" 2>/dev/null || stat -f%z "$S2_KBC") bytes"
 echo
 echo "Step 2: S3 = S2 compiles itself"
 echo "  Running: run_kbc S2.kbc --save-bytecode S3.kbc core/main.kl"
-if ! run_kbc "$S2_KBC" --save-bytecode "$S3_KBC" "$ENTRY" 2>"$TMP_DIR/s3.err"; then
-  echo "FAIL: S3 generation failed" >&2
+if ! run_with_timeout "$COMPILE_TIMEOUT" run_kbc "$S2_KBC" --save-bytecode \
+    "$S3_KBC" "$ENTRY" 2>"$TMP_DIR/s3.err"; then
+  echo "FAIL: S3 generation failed (timeout ${COMPILE_TIMEOUT}s or VM error)" >&2
+  cat "$TMP_DIR/s3.err" >&2
+  exit 1
+fi
+if [[ ! -s "$S3_KBC" ]]; then
+  echo "FAIL: S3.kbc not produced" >&2
   cat "$TMP_DIR/s3.err" >&2
   exit 1
 fi
