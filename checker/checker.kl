@@ -33,6 +33,7 @@ pub struct StructField {
 pub struct StructInfo {
   string name;
   StructField[] fields;
+  string[] type_params;
 }
 
 pub struct FuncSig {
@@ -120,6 +121,7 @@ string type_expr_encode(TypeExpr t) {
 pub struct Binding {
   string name;
   Type type;
+  TypeExpr declared_type;
   int scope_depth;
 }
 
@@ -167,6 +169,10 @@ pub void add_error(Checker c, int line, int col, string msg) {
 }
 
 void declare_var(Checker c, string name, Type t, int line, int col) {
+  declare_var_typed(c, name, t, empty_type_expr(), line, col);
+}
+
+void declare_var_typed(Checker c, string name, Type t, TypeExpr declared, int line, int col) {
   int start = current_scope_start(c);
   for (int i = start; i < c.bindings.len(); i = i + 1) {
     if (c.bindings[i].name == name) {
@@ -174,7 +180,7 @@ void declare_var(Checker c, string name, Type t, int line, int col) {
       return;
     }
   }
-  c.bindings.push(Binding { name, t, c.scope_starts.len() });
+  c.bindings.push(Binding { name, t, declared, c.scope_starts.len() });
 }
 
 bool var_exists(Checker c, string name) {
@@ -199,7 +205,48 @@ StructInfo lookup_struct_info(Checker c, string name) {
   for (int i = 0; i < c.structs.len(); i = i + 1) {
     if (c.structs[i].name == name) { return c.structs[i]; }
   }
-  return StructInfo { "", [] };
+  return StructInfo { "", [], [] };
+}
+
+bool enum_exists(Checker c, string name) {
+  for (int i = 0; i < c.enums.len(); i = i + 1) {
+    if (c.enums[i].name == name) { return true; }
+  }
+  return false;
+}
+
+bool native_namespace_open(Checker c, string ns) {
+  for (int i = 0; i < c.native_usings.len(); i = i + 1) {
+    if (c.native_usings[i].ns == ns) { return true; }
+  }
+  return false;
+}
+
+TypeExpr empty_type_expr() {
+  return TypeExpr { "", [] };
+}
+
+TypeExpr lookup_var_type_expr(Checker c, string name) {
+  for (int i = c.bindings.len() - 1; i >= 0; i = i - 1) {
+    if (c.bindings[i].name == name) {
+      return c.bindings[i].declared_type;
+    }
+  }
+  return empty_type_expr();
+}
+
+Type resolve_generic_field_type(Checker c, StructInfo info, string field_name, TypeExpr inst) {
+  for (int i = 0; i < info.fields.len(); i = i + 1) {
+    if (info.fields[i].name != field_name) { continue; }
+    string enc = info.fields[i].type_enc;
+    for (int j = 0; j < info.type_params.len(); j = j + 1) {
+      if (info.type_params[j] == enc && j < inst.type_args.len()) {
+        return resolve_type_name(c, inst.type_args[j]);
+      }
+    }
+    return resolve_type_name(c, enc);
+  }
+  return type_unknown();
 }
 
 bool struct_exists(Checker c, string name) {
@@ -265,6 +312,7 @@ Type resolve_scalar_name(string name) {
 Type resolve_type_name(Checker c, string encoded) {
   Type scalar = resolve_scalar_name(encoded);
   if (scalar.kind != TypeKind::Unknown) { return scalar; }
+  if (enum_exists(c, encoded)) { return type_enum(encoded); }
   if (struct_exists(c, encoded)) { return type_struct(encoded); }
   return type_unknown();
 }
@@ -282,6 +330,7 @@ Type resolve_type_expr(Checker c, TypeExpr t) {
   }
   Type scalar = resolve_scalar_name(t.name);
   if (scalar.kind != TypeKind::Unknown) { return scalar; }
+  if (enum_exists(c, t.name)) { return type_enum(t.name); }
   if (t.type_args.len() > 0) {
     if (struct_exists(c, t.name)) { return type_struct(t.name); }
     return type_unknown();
@@ -524,7 +573,7 @@ Type check_call(Checker c, Expr callee, TypeExpr[] type_args, Expr[] args, int l
   if (is_ns) {
     return callee match {
       Expr::NsAccess(let ns, let member, let nl, let nc) =>
-        check_qualified_call(c, ns, member, args, nl, nc),
+        check_ns_qualified_call(c, ns, member, args, nl, nc),
       _ => type_unknown(),
     };
   }
@@ -579,6 +628,89 @@ FuncSig lookup_concept_impl(Checker c, string method, Type arg_ty) {
     if (type_match_key(sig.param_types[0]) == key) { return sig; }
   }
   return FuncSig { "", [], type_void() };
+}
+
+Type check_native_qualified_call(Checker c, string ns, string member, Expr[] args, int line, int col) {
+  if (ns == "fs" && member == "__read") {
+    if (args.len() != 1) {
+      add_error(c, line, col, "fs::__read expects exactly one argument.");
+    } else {
+      Type at = check_expr(c, args[0]);
+      if (at.kind != TypeKind::String && at.kind != TypeKind::Unknown) {
+        add_error(c, line, col, "fs::__read expects a string path.");
+      }
+    }
+    return type_string();
+  }
+  if (ns == "fs" && member == "__write") {
+    if (args.len() != 2) {
+      add_error(c, line, col, "fs::__write expects exactly two arguments.");
+    } else {
+      Type p = check_expr(c, args[0]);
+      Type ctt = check_expr(c, args[1]);
+      if (p.kind != TypeKind::String && p.kind != TypeKind::Unknown) {
+        add_error(c, line, col, "fs::__write expects a string path.");
+      }
+      if (ctt.kind != TypeKind::String && ctt.kind != TypeKind::Unknown) {
+        add_error(c, line, col, "fs::__write expects string content.");
+      }
+    }
+    return type_void();
+  }
+  if (ns == "io" && (member == "out" || member == "err" || member == "outln" || member == "errln")) {
+    for (int i = 0; i < args.len(); i = i + 1) {
+      Type _at = check_expr(c, args[i]);
+    }
+    return type_void();
+  }
+  if (ns == "io" && member == "in") {
+    for (int i = 0; i < args.len(); i = i + 1) {
+      Type _at = check_expr(c, args[i]);
+    }
+    return type_string();
+  }
+  if (ns == "sys" && member == "args") {
+    if (args.len() != 0) {
+      add_error(c, line, col, "sys::args expects no arguments.");
+    }
+    return type_array("string");
+  }
+  add_error(c, line, col, "Unknown native member '" + ns + "::" + member + "'.");
+  return type_unknown();
+}
+
+Type check_enum_variant_call(Checker c, string ns, string member, Expr[] args, int line, int col) {
+  EnumVariantInfo variant = lookup_enum_variant(c, ns, member);
+  if (variant.name.len() == 0) {
+    add_error(c, line, col, "Enum '" + ns + "' has no variant '" + member + "'.");
+    return type_enum(ns);
+  }
+  if (args.len() != variant.payload_encs.len()) {
+    add_error(c, line, col, "Wrong number of arguments for enum variant '" + member + "'.");
+    return type_enum(ns);
+  }
+  for (int i = 0; i < args.len(); i = i + 1) {
+    Type at = check_expr(c, args[i]);
+    Type expected = resolve_type_name(c, variant.payload_encs[i]);
+    if (!types_compatible(at, expected)) {
+      add_error(c, line, col, "Enum variant argument type mismatch.");
+    }
+  }
+  return type_enum(ns);
+}
+
+Type check_ns_qualified_call(Checker c, string ns, string member, Expr[] args, int line, int col) {
+  if (concept_exists(c, ns)) {
+    return check_qualified_call(c, ns, member, args, line, col);
+  }
+  if (enum_exists(c, ns)) {
+    return check_enum_variant_call(c, ns, member, args, line, col);
+  }
+  if (is_native_namespace(ns) && native_namespace_open(c, ns) && is_native_member(ns, member)) {
+    return check_native_qualified_call(c, ns, member, args, line, col);
+  }
+  add_error(c, line, col, "Unknown namespace '" + ns + "'.");
+  return type_unknown();
 }
 
 Type check_qualified_call(Checker c, string ns, string member, Expr[] args, int line, int col) {
@@ -686,7 +818,7 @@ Type check_method_call(Checker c, Expr obj, string method, Expr[] args, int line
   Type ot = check_expr(c, obj);
   if (method == "len") {
     if (ot.kind == TypeKind::String || ot.kind == TypeKind::Array ||
-        ot.kind == TypeKind::Unknown) {
+        ot.kind == TypeKind::Map || ot.kind == TypeKind::Unknown) {
       return type_int();
     }
     add_error(c, line, col, "Method 'len' is not available on '" + type_kind_name(ot) + "'.");
@@ -764,6 +896,14 @@ Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
   if (ot.kind == TypeKind::Struct) {
     StructInfo info = lookup_struct_info(c, ot.tag);
     Type ft = lookup_field_type(c, info, field);
+    if (ft.kind == TypeKind::Unknown && info.type_params.len() > 0) {
+      if (oname.len() > 0) {
+        TypeExpr decl_ty = lookup_var_type_expr(c, oname);
+        if (decl_ty.type_args.len() > 0) {
+          ft = resolve_generic_field_type(c, info, field, decl_ty);
+        }
+      }
+    }
     if (ft.kind == TypeKind::Unknown) {
       add_error(c, line, col, "Struct '" + ot.tag + "' has no field '" + field + "'.");
     }
@@ -788,7 +928,7 @@ Type check_field_assign(Checker c, Expr obj, string field, Expr val, int line, i
 }
 
 Type check_ns_access(Checker c, string ns, string member, int line, int col) {
-  if (struct_exists(c, ns)) { return type_enum(ns); }
+  if (enum_exists(c, ns)) { return type_enum(ns); }
   return type_unknown();
 }
 
@@ -1000,7 +1140,7 @@ void check_var_decl(Checker c, TypeExpr t, string n, Expr init, int line, int co
         "Cannot assign '" + type_kind_name(init_type) + "' to variable '" + n + "' of type '" + type_kind_name(declared) + "'.");
     }
   }
-  declare_var(c, n, final_type, line, col);
+  declare_var_typed(c, n, final_type, t, line, col);
 }
 
 void check_stmt(Checker c, Stmt s) {
@@ -1099,7 +1239,6 @@ void check_for(Checker c, Stmt init, Expr cond, Stmt step, Stmt body) {
 // declarations
 
 void forward_enum(Checker c, string name, EnumVariant[] variants) {
-  register_struct_info(c, StructInfo { name, [] });
   EnumVariantInfo[] vis = [];
   for (int i = 0; i < variants.len(); i = i + 1) {
     string[] encs = [];
@@ -1142,7 +1281,7 @@ void register_using_aliases(Checker c, string ns, string[] selected) {
 }
 
 void apply_using_decl(Checker c, string n, bool is_ns, string[] selected) {
-  if (is_ns && is_native_namespace(n)) {
+  if (is_native_namespace(n) && (is_ns || selected.len() == 0)) {
     open_native_namespace(c, n);
     return;
   }
@@ -1161,21 +1300,21 @@ void register_using_decl(Checker c, Decl d) {
 
 void forward_decl(Checker c, Decl d) {
   d match {
-    Decl::StructDecl(let n, let _tps, let fields, let _is_pub, let _l, let _c) =>
-      forward_struct(c, n, fields),
+    Decl::StructDecl(let n, let tps, let fields, let _is_pub, let _l, let _c) =>
+      forward_struct(c, n, tps, fields),
     Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _c) =>
       forward_enum(c, n, variants),
     _ => check_void(),
   };
 }
 
-void forward_struct(Checker c, string name, FieldDef[] fields) {
+void forward_struct(Checker c, string name, string[] type_params, FieldDef[] fields) {
   StructField[] sfields = [];
   for (int i = 0; i < fields.len(); i = i + 1) {
     string enc = type_expr_encode(fields[i].type);
     sfields.push(StructField { fields[i].name, enc });
   }
-  register_struct_info(c, StructInfo { name, sfields });
+  register_struct_info(c, StructInfo { name, sfields, type_params });
 }
 
 void register_decl(Checker c, Decl d) {
