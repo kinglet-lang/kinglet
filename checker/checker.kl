@@ -461,13 +461,11 @@ Type check_native_member_access(Checker c, string ns, string member, string fiel
 
 Type check_ident(Checker c, string name, int line, int col) {
   if (name == "null") { return type_null(); }
+  if (var_exists(c, name)) { return lookup_var(c, name); }
   NativeUsingAlias alias = resolve_native_using_alias(c, name);
   if (alias.short_name.len() > 0) { return type_unknown(); }
-  if (!var_exists(c, name)) {
-    add_error(c, line, col, "Undeclared variable '" + name + "'.");
-    return type_unknown();
-  }
-  return lookup_var(c, name);
+  add_error(c, line, col, "Undeclared variable '" + name + "'.");
+  return type_unknown();
 }
 
 Type check_unary(Checker c, UnaryOp op, Expr r, int line, int col) {
@@ -582,12 +580,14 @@ Type check_call(Checker c, Expr callee, TypeExpr[] type_args, Expr[] args, int l
     check_expr(c, callee);
     return type_unknown();
   }
-  NativeUsingAlias alias = resolve_native_using_alias(c, fname);
-  if (alias.short_name.len() > 0) {
-    for (int i = 0; i < args.len(); i = i + 1) {
-      Type _at = check_expr(c, args[i]);
+  if (!func_exists(c, fname) && !var_exists(c, fname)) {
+    NativeUsingAlias alias = resolve_native_using_alias(c, fname);
+    if (alias.short_name.len() > 0) {
+      for (int i = 0; i < args.len(); i = i + 1) {
+        Type _at = check_expr(c, args[i]);
+      }
+      return type_void();
     }
-    return type_void();
   }
   if (!func_exists(c, fname)) {
     add_error(c, line, col, "Undeclared variable '" + fname + "'.");
@@ -882,7 +882,7 @@ Type check_method_call(Checker c, Expr obj, string method, Expr[] args, int line
 
 Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
   string oname = expr_ident_name(obj);
-  if (oname.len() > 0) {
+  if (oname.len() > 0 && !var_exists(c, oname)) {
     NativeUsingAlias alias = resolve_native_using_alias(c, oname);
     if (alias.short_name.len() > 0) {
       return check_native_member_access(c, alias.ns, alias.member, field, line, col);

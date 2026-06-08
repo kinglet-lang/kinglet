@@ -750,6 +750,8 @@ void emit_method_call(Compiler co, Expr obj, string method, Expr[] args, int lin
   bool obj_is_ident = obj match { Expr::Ident(_, _, _) => true, _ => false, };
   if (obj_is_ident) {
     string name = obj match { Expr::Ident(let n, _, _) => n, _ => "", };
+    // Locals shadow native using aliases (e.g. Expr[] args vs sys::args).
+    if (resolve_local(co, name) < 0) {
     NativeUsingAlias alias = resolve_native_using_alias(co, name);
     if (alias.short_name.len() > 0) {
       if (alias.ns == "io" && emit_native_io_member_method(co, alias.member, method, args, line, col)) {
@@ -757,6 +759,7 @@ void emit_method_call(Compiler co, Expr obj, string method, Expr[] args, int lin
       }
       compile_error(co, line, col, "Unknown method '" + method + "' on native '" + alias.ns + "::" + alias.member + "'.");
       return;
+    }
     }
   }
   // io::out.line(...), io::err.line(...), io::in.secret(...)
@@ -827,7 +830,7 @@ void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
     };
     return;
   }
-  if (callee_name.len() > 0) {
+  if (callee_name.len() > 0 && resolve_local(co, callee_name) < 0) {
     NativeUsingAlias alias = resolve_native_using_alias(co, callee_name);
     if (alias.short_name.len() > 0) {
       if (emit_native_call(co, alias.ns, alias.member, args, cl, cc)) { return; }

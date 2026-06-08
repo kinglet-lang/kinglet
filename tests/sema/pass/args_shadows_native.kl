@@ -1,0 +1,11 @@
+// RUN: check
+// Local parameter named 'args' must shadow sys::args native using alias.
+using sys;
+
+void test(int[] args) {
+  for (int i = 0; i < args.len(); i = i + 1) {}
+}
+
+int main() {
+  return 0;
+}

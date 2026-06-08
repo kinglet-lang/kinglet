@@ -32,7 +32,7 @@ echo
 # S2 generation: selfhost (compiler.kbc) compiles itself
 echo "Step 1: S2 = selfhost compiles itself"
 echo "  Running: run_kbc compiler.kbc --save-bytecode S2.kbc core/main.kl"
-if ! run_with_timeout "$COMPILE_TIMEOUT" run_kbc "$CLI_KBC" --save-bytecode \
+if ! run_with_timeout "$COMPILE_TIMEOUT" "$KINGLET_BIN" --run "$CLI_KBC" --save-bytecode \
     "$S2_KBC" "$ENTRY" 2>"$TMP_DIR/s2.err"; then
   echo "FAIL: S2 generation failed (timeout ${COMPILE_TIMEOUT}s or VM error)" >&2
   cat "$TMP_DIR/s2.err" >&2
@@ -49,7 +49,7 @@ echo "  S2.kbc: $(stat -c%s "$S2_KBC" 2>/dev/null || stat -f%z "$S2_KBC") bytes"
 echo
 echo "Step 2: S3 = S2 compiles itself"
 echo "  Running: run_kbc S2.kbc --save-bytecode S3.kbc core/main.kl"
-if ! run_with_timeout "$COMPILE_TIMEOUT" run_kbc "$S2_KBC" --save-bytecode \
+if ! run_with_timeout "$COMPILE_TIMEOUT" "$KINGLET_BIN" --run "$S2_KBC" --save-bytecode \
     "$S3_KBC" "$ENTRY" 2>"$TMP_DIR/s3.err"; then
   echo "FAIL: S3 generation failed (timeout ${COMPILE_TIMEOUT}s or VM error)" >&2
   cat "$TMP_DIR/s3.err" >&2
