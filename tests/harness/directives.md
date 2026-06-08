@@ -69,6 +69,13 @@ using io;
 int main() { io::out.line(42); return 0; }
 ```
 
+Compares bootstrap (`kinglet file.kl`) with selfhost (`compiler.kbc` compile +
+run). Exit code and stdout must match. Override bootstrap binary with
+`KINGLET_BOOTSTRAP`.
+
+Gating cases live in `tests/differential/cases/`; the broad snapshot matrix is
+`tests/differential/run_matrix.sh` (non-gating).
+
 When bootstrap and selfhost legitimately differ, use `RUN: selfhost` with an
 oracle `EXPECT-STDOUT` instead of `diff`.
 

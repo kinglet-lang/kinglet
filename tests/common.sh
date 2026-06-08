@@ -45,6 +45,27 @@ resolve_kinglet() {
   return 2
 }
 
+# Bootstrap compiler host (C++ kinglet). Defaults to the same binary as
+# resolve_kinglet; override with KINGLET_BOOTSTRAP when measuring two builds.
+resolve_bootstrap() {
+  local root="$1"
+  local k="${KINGLET_BOOTSTRAP:-}"
+  local candidate
+
+  if [[ -n "$k" ]]; then
+    if [[ -x "$k" || -f "$k" ]]; then
+      printf '%s' "$k"
+      return 0
+    fi
+    if [[ -x "$k.exe" || -f "$k.exe" ]]; then
+      printf '%s' "$k.exe"
+      return 0
+    fi
+  fi
+
+  resolve_kinglet "$root"
+}
+
 # Ensure $ROOT/compiler.kbc exists and is newer than every .kl under core/,
 # parser/, compiler/, checker/, lexer/. Rebuild it via
 # `kinglet --save-bytecode compiler.kbc core/main.kl` only when stale. ROOT and

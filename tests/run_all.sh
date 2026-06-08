@@ -34,6 +34,7 @@ run_suite "Codegen tests" "$ROOT/codegen/run_golden.sh"
 run_suite "Selfhost behavioral tests" "$ROOT/run_selfhost/run_golden.sh"
 run_suite "Selfhost round-trip" "$ROOT/selfhost/run_roundtrip.sh"
 run_suite "Exec tests (selfhost)" "$ROOT/exec/run.sh"
+run_suite "Differential (bootstrap vs selfhost)" "$ROOT/differential/run.sh"
 bash "$ROOT/probe/run_matrix.sh"
 TOTAL=$((TOTAL + 1))
 PASSED=$((PASSED + 1))
@@ -42,7 +43,10 @@ TOTAL=$((TOTAL + 1))
 PASSED=$((PASSED + 1))
 run_suite "Diagnostic tests" "$ROOT/diagnostics/run_golden.sh"
 run_suite "KBC tests" "$ROOT/kbc/run_golden.sh"
-run_suite "Regression (sh-vs-bs)" "$ROOT/regression/run_golden.sh"
+run_suite "Regression (oracle + drift)" "$ROOT/regression/run_golden.sh"
+bash "$ROOT/differential/run_matrix.sh"
+TOTAL=$((TOTAL + 1))
+PASSED=$((PASSED + 1))
 
 echo "Summary: $PASSED/$TOTAL suites passed"
 [[ "$PASSED" -eq "$TOTAL" ]] && exit 0 || exit 1

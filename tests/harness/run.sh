@@ -6,6 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/common.sh"
 
 KINGLET_BIN=""
+BOOTSTRAP_BIN=""
 CLI_KBC=""
 TMP=""
 FAILURES=0
@@ -216,7 +217,7 @@ run_bootstrap_pipeline() {
   local stdout="$2"
   local stderr="$3"
   local ec=0
-  "$KINGLET_BIN" "$src" >"$stdout" 2>"$stderr" || ec=$?
+  "$BOOTSTRAP_BIN" "$src" >"$stdout" 2>"$stderr" || ec=$?
   echo "$ec"
 }
 
@@ -398,11 +399,12 @@ main() {
   fi
 
   KINGLET_BIN=$(resolve_kinglet "$ROOT") || exit 2
+  BOOTSTRAP_BIN=$(resolve_bootstrap "$ROOT") || exit 2
   export KINGLET_BIN
   CLI_KBC=$(ensure_cli_kbc "$ROOT" "$KINGLET_BIN") || exit 2
   TMP="$(mktemp -d)"
 
-  echo "Harness (compiler.kbc + $KINGLET_BIN)"
+  echo "Harness (selfhost via compiler.kbc; VM $KINGLET_BIN; bootstrap $BOOTSTRAP_BIN)"
   echo "================================="
 
   local path f

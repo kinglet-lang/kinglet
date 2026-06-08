@@ -1,0 +1,28 @@
+// RUN: diff
+// Test deeply nested match expressions
+using io;
+
+enum Option {
+  Some(int),
+  None
+}
+
+int main() {
+  Option o1 = Option::Some(1);
+  Option o2 = Option::Some(2);
+  Option o3 = Option::None;
+
+  int result = o1 match {
+    Option::Some(let v1) => o2 match {
+      Option::Some(let v2) => o3 match {
+        Option::Some(let v3) => v1 + v2 + v3,
+        Option::None => v1 + v2,
+      },
+      Option::None => v1,
+    },
+    Option::None => 0,
+  };
+
+  io::out.line(result);
+  return 0;
+}
