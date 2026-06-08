@@ -1,0 +1,11 @@
+0  1:0  Constant #0 (<function:0>)
+1  1:0  Call args=0
+2  1:0  Return
+3  4:27  Constant #1 (3.14)
+4  4:13  EnumVariantPayload
+5  4:3  StoreLocal slot 0
+6  4:3  Pop
+7  5:10  Constant #2 (0)
+8  5:3  Return
+9  3:1  Null
+10  3:1  Return

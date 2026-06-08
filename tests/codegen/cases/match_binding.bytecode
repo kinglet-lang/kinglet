@@ -1,0 +1,36 @@
+0  1:0  Constant #0 (<function:0>)
+1  1:0  Call args=0
+2  1:0  Return
+3  4:27  Constant #1 (42)
+4  4:14  EnumVariantPayload
+5  4:3  StoreLocal slot 0
+6  4:3  Pop
+7  5:16  LoadLocal slot 0
+8  5:18  StoreLocal slot 2
+9  5:18  LoadLocal slot 2
+10  5:18  EnumVariant
+11  5:18  Eq
+12  5:18  JmpFalse +7
+13  5:18  LoadLocal slot 2
+14  5:18  EnumPayloadGet
+15  5:18  StoreLocal slot 3
+16  5:18  Pop
+17  5:18  Pop
+18  6:28  LoadLocal slot 3
+19  5:18  Jmp +10
+20  5:18  LoadLocal slot 2
+21  5:18  EnumVariant
+22  5:18  Eq
+23  5:18  JmpFalse +3
+24  5:18  Pop
+25  7:21  Constant #2 (0)
+26  5:18  Jmp +3
+27  5:18  Pop
+28  8:10  Constant #2 (0)
+29  5:18  Null
+30  5:3  StoreLocal slot 1
+31  5:3  Pop
+32  10:10  LoadLocal slot 1
+33  10:3  Return
+34  3:1  Null
+35  3:1  Return

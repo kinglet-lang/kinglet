@@ -1,0 +1,11 @@
+0  1:0  Constant #0 (<function:0>)
+1  1:0  Call args=0
+2  1:0  Return
+3  2:7  True
+4  2:3  JmpFalse +2
+5  3:12  Constant #1 (1)
+6  3:5  Return
+7  5:10  Constant #2 (0)
+8  5:3  Return
+9  1:1  Null
+10  1:1  Return

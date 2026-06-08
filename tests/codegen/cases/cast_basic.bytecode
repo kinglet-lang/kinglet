@@ -1,0 +1,14 @@
+0  1:0  Constant #0 (<function:0>)
+1  1:0  Call args=0
+2  1:0  Return
+3  2:14  Constant #1 (42)
+4  2:3  StoreLocal slot 0
+5  2:3  Pop
+6  3:15  LoadLocal slot 0
+7  3:11  CastTo -> int
+8  3:3  StoreLocal slot 1
+9  3:3  Pop
+10  4:10  LoadLocal slot 1
+11  4:3  Return
+12  1:1  Null
+13  1:1  Return

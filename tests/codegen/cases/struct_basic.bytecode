@@ -1,0 +1,16 @@
+0  1:0  Constant #0 (<function:0>)
+1  1:0  Call args=0
+2  1:0  Return
+3  4:21  Constant #1 (10)
+4  4:25  Constant #2 (20)
+5  4:13  StructNew
+6  4:3  StoreLocal slot 0
+7  4:3  Pop
+8  5:10  LoadLocal slot 0
+9  5:10  FieldGet
+10  5:16  LoadLocal slot 0
+11  5:16  FieldGet
+12  5:14  Add
+13  5:3  Return
+14  3:1  Null
+15  3:1  Return

@@ -1,0 +1,31 @@
+0  1:0  Constant #0 (<function:0>)
+1  1:0  Call args=0
+2  1:0  Return
+3  2:13  Constant #1 (0)
+4  2:3  StoreLocal slot 0
+5  2:3  Pop
+6  3:3  Null
+7  3:3  StoreLocal slot 1
+8  3:3  Pop
+9  4:12  Constant #1 (0)
+10  4:8  StoreLocal slot 1
+11  4:8  Pop
+12  4:15  LoadLocal slot 1
+13  4:19  Constant #2 (10)
+14  4:17  Lt
+15  4:3  JmpFalse +11
+16  5:11  LoadLocal slot 0
+17  5:17  Constant #3 (1)
+18  5:15  Add
+19  5:5  StoreLocal slot 0
+20  5:5  Pop
+21  4:27  LoadLocal slot 1
+22  4:31  Constant #3 (1)
+23  4:29  Add
+24  4:23  StoreLocal slot 1
+25  4:23  Pop
+26  4:3  Jmp +-15
+27  7:10  LoadLocal slot 0
+28  7:3  Return
+29  1:1  Null
+30  1:1  Return

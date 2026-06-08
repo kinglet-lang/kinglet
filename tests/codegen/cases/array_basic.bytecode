@@ -1,0 +1,15 @@
+0  1:0  Constant #0 (<function:0>)
+1  1:0  Call args=0
+2  1:0  Return
+3  2:16  Constant #1 (1)
+4  2:19  Constant #2 (2)
+5  2:22  Constant #3 (3)
+6  2:15  ArrayNew count=3
+7  2:3  StoreLocal slot 0
+8  2:3  Pop
+9  3:10  LoadLocal slot 0
+10  3:14  Constant #1 (1)
+11  3:10  IndexGet
+12  3:3  Return
+13  1:1  Null
+14  1:1  Return

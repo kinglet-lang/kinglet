@@ -1,0 +1,15 @@
+0  1:0  Constant #0 (<function:0>)
+1  1:0  Call args=0
+2  1:0  Return
+3  2:14  Constant #1 (hello world)
+4  2:3  StoreLocal slot 0
+5  2:3  Pop
+6  3:12  LoadLocal slot 0
+7  3:26  Constant #2 (hello)
+8  3:12  StringStartsWith
+9  3:3  StoreLocal slot 1
+10  3:3  Pop
+11  4:10  Constant #3 (0)
+12  4:3  Return
+13  1:1  Null
+14  1:1  Return
