@@ -8,8 +8,8 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/common.sh"
 
-KINGLET=$(resolve_kinglet "$ROOT") || exit 2
-CLI_KBC=$(ensure_cli_kbc "$ROOT" "$KINGLET") || exit 2
+export_kinglet_bins "$ROOT" || exit 2
+CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
 
 CASES_DIR="$ROOT/tests/parser/cases"
 TMP_DIR="$(mktemp -d)"

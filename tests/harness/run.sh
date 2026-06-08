@@ -407,10 +407,9 @@ main() {
     exit 2
   fi
 
-  KINGLET_BIN=$(resolve_kinglet "$ROOT") || exit 2
-  BOOTSTRAP_BIN=$(resolve_bootstrap "$ROOT") || exit 2
-  export KINGLET_BIN
-  CLI_KBC=$(ensure_cli_kbc "$ROOT" "$KINGLET_BIN") || exit 2
+  export_kinglet_bins "$ROOT" || exit 2
+  BOOTSTRAP_BIN="$KINGLET_BOOTSTRAP"
+  CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
   TMP="$(mktemp -d)"
 
   echo "Harness (selfhost via compiler.kbc; VM $KINGLET_BIN; bootstrap $BOOTSTRAP_BIN)"

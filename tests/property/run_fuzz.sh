@@ -5,9 +5,8 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/common.sh"
 
-KINGLET_BIN=$(resolve_kinglet "$ROOT") || exit 2
-export KINGLET_BIN
-CLI_KBC=$(ensure_cli_kbc "$ROOT" "$KINGLET_BIN") || exit 2
+export_kinglet_bins "$ROOT" || exit 2
+CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
 
 FUZZ_ROUNDS="${FUZZ_ROUNDS:-32}"
 FUZZ_TIMEOUT="${FUZZ_TIMEOUT:-5}"

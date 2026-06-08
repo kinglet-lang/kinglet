@@ -6,16 +6,71 @@
 # from a cached .kbc costs ~70ms. Each suite sources this file and calls
 # `ensure_cli_kbc` to get a path it can pass to `kinglet --run`.
 #
-# Source-of-truth for which kinglet binary to use is the KINGLET env var,
-# defaulting to F:/code/kinglet/out/Default/kinglet.exe. (The original
-# scripts referenced a stale `kinglet-bootstrap/out/Debug/kinglet` path
-# that no longer exists.)
+# Selfhost suites run bytecode on backend/vm (`backend/vm/out/kinglet`).
+# Bootstrap C++ kinglet compiles compiler.kbc and powers differential tests.
+# Override with KINGLET (VM host) or KINGLET_BOOTSTRAP (C++ compiler).
 
-# Resolve KINGLET to an executable. Prints absolute path on stdout, exits 2
-# on failure.
+# Build backend/vm/out/kinglet when missing or stale vs vm sources.
+build_backend_vm() {
+  local root="$1"
+  local build_sh="$root/backend/vm/build.sh"
+  if [[ ! -f "$build_sh" ]]; then
+    echo "backend/vm/build.sh not found under $root" >&2
+    return 2
+  fi
+  bash "$build_sh"
+}
+
+# Resolve the selfhost VM host (backend/vm). Prints absolute path, exits 2 on
+# failure.
 resolve_kinglet() {
   local root="$1"
   local k="${KINGLET:-}"
+  local vm="$root/backend/vm/out/kinglet"
+  local f
+  local needs_build=0
+
+  if [[ -n "$k" ]]; then
+    if [[ -x "$k" || -f "$k" ]]; then
+      printf '%s' "$k"
+      return 0
+    fi
+    if [[ -x "$k.exe" || -f "$k.exe" ]]; then
+      printf '%s' "$k.exe"
+      return 0
+    fi
+  fi
+
+  if [[ ! -x "$vm" ]]; then
+    needs_build=1
+  else
+    for f in "$root"/backend/vm/*.cc "$root"/backend/vm/*.h; do
+      [[ -f "$f" ]] || continue
+      if [[ "$f" -nt "$vm" ]]; then
+        needs_build=1
+        break
+      fi
+    done
+  fi
+
+  if [[ "$needs_build" -eq 1 ]]; then
+    build_backend_vm "$root" || return 2
+  fi
+
+  if [[ -x "$vm" ]]; then
+    printf '%s' "$(cd "$(dirname "$vm")" && pwd)/$(basename "$vm")"
+    return 0
+  fi
+
+  echo "backend/vm kinglet not found (expected $vm)" >&2
+  echo "Set KINGLET=/path/to/kinglet to override." >&2
+  return 2
+}
+
+# Bootstrap C++ compiler + full CLI (--ast, --check, --save-bytecode on .kl).
+resolve_bootstrap() {
+  local root="$1"
+  local k="${KINGLET_BOOTSTRAP:-}"
   local candidate
 
   if [[ -n "$k" ]]; then
@@ -35,44 +90,34 @@ resolve_kinglet() {
     "$root/../../kinglet/out/Default/kinglet.exe" \
     "$root/../../../kinglet/out/Default/kinglet.exe"; do
     if [[ -x "$candidate" || -f "$candidate" ]]; then
-      printf '%s' "$candidate"
+      printf '%s' "$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"
       return 0
     fi
   done
 
-  echo "kinglet binary not found (tried KINGLET and sibling kinglet/out/Default/)" >&2
-  echo "Set KINGLET=/path/to/kinglet to override." >&2
+  echo "bootstrap kinglet not found (tried KINGLET_BOOTSTRAP and sibling kinglet/out/Default/)" >&2
+  echo "Set KINGLET_BOOTSTRAP=/path/to/bootstrap/kinglet to override." >&2
   return 2
 }
 
-# Bootstrap compiler host (C++ kinglet). Defaults to the same binary as
-# resolve_kinglet; override with KINGLET_BOOTSTRAP when measuring two builds.
-resolve_bootstrap() {
+# Export VM host + bootstrap paths for suites that source common.sh.
+export_kinglet_bins() {
   local root="$1"
-  local k="${KINGLET_BOOTSTRAP:-}"
-  local candidate
-
-  if [[ -n "$k" ]]; then
-    if [[ -x "$k" || -f "$k" ]]; then
-      printf '%s' "$k"
-      return 0
-    fi
-    if [[ -x "$k.exe" || -f "$k.exe" ]]; then
-      printf '%s' "$k.exe"
-      return 0
-    fi
-  fi
-
-  resolve_kinglet "$root"
+  export KINGLET_BIN="$(resolve_kinglet "$root")" || return 2
+  export KINGLET_BOOTSTRAP="$(resolve_bootstrap "$root")" || return 2
+  export KINGLET="$KINGLET_BIN"
 }
 
 # Ensure $ROOT/compiler.kbc exists and is newer than every .kl under core/,
-# parser/, compiler/, checker/, lexer/. Rebuild it via
-# `kinglet --save-bytecode compiler.kbc core/main.kl` only when stale. ROOT and
-# KINGLET_BIN must be set by the caller. Prints the .kbc path on stdout.
+# parser/, compiler/, checker/, lexer/. Rebuilds via bootstrap
+# `kinglet --save-bytecode compiler.kbc core/main.kl` only when stale.
+# Prints the .kbc path on stdout.
 ensure_cli_kbc() {
   local root="$1"
-  local kinglet="$2"
+  local kinglet="${2:-}"
+  if [[ -z "$kinglet" ]]; then
+    kinglet="$(resolve_bootstrap "$root")" || return 2
+  fi
   local entry="$root/core/main.kl"
   local cli_kbc="$root/compiler.kbc"
 
@@ -126,7 +171,11 @@ compile_kl() {
   if [[ "${1:-}" == "--strip-debug" ]]; then
     strip_flag="--strip-debug"
   fi
-  local kinglet="${KINGLET_BIN:-$KINGLET}"
+  local kinglet="${KINGLET_BOOTSTRAP:-}"
+  if [[ -z "$kinglet" ]]; then
+    echo "compile_kl: KINGLET_BOOTSTRAP not set" >&2
+    return 2
+  fi
   "$kinglet" --save-bytecode "$out" $strip_flag "$src" 2>"$out.stderr"
   return $?
 }

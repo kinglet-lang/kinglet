@@ -2,11 +2,10 @@
 # Master test orchestrator for selfhost compiler test suite.
 set -u
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$ROOT/common.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/tests/common.sh"
 
-KINGLET=$(resolve_kinglet "$ROOT") || exit 2
-export KINGLET
+export_kinglet_bins "$ROOT" || exit 2
 
 echo "========================================"
 echo "Kinglet Selfhost Test Suite"
@@ -27,27 +26,27 @@ run_suite() {
   echo
 }
 
-run_suite "Lexer tests" "$ROOT/lexer/run_golden.sh"
-run_suite "Parser tests" "$ROOT/parser/run_golden.sh"
-run_suite "Sema tests (pass + fail)" "$ROOT/sema/run.sh"
-run_suite "Codegen tests" "$ROOT/codegen/run_golden.sh"
-run_suite "Selfhost behavioral tests" "$ROOT/run_selfhost/run_golden.sh"
-run_suite "Selfhost round-trip" "$ROOT/selfhost/run_roundtrip.sh"
-run_suite "Exec tests (selfhost)" "$ROOT/exec/run.sh"
-run_suite "Differential (bootstrap vs selfhost)" "$ROOT/differential/run.sh"
-bash "$ROOT/probe/run_matrix.sh"
+run_suite "Lexer tests" "$ROOT/tests/lexer/run_golden.sh"
+run_suite "Parser tests" "$ROOT/tests/parser/run_golden.sh"
+run_suite "Sema tests (pass + fail)" "$ROOT/tests/sema/run.sh"
+run_suite "Codegen tests" "$ROOT/tests/codegen/run_golden.sh"
+run_suite "Selfhost behavioral tests" "$ROOT/tests/run_selfhost/run_golden.sh"
+run_suite "Selfhost round-trip" "$ROOT/tests/selfhost/run_roundtrip.sh"
+run_suite "Exec tests (selfhost)" "$ROOT/tests/exec/run.sh"
+run_suite "Differential (bootstrap vs selfhost)" "$ROOT/tests/differential/run.sh"
+bash "$ROOT/tests/probe/run_matrix.sh"
 TOTAL=$((TOTAL + 1))
 PASSED=$((PASSED + 1))
-bash "$ROOT/builtin_methods/run_matrix.sh"
+bash "$ROOT/tests/builtin_methods/run_matrix.sh"
 TOTAL=$((TOTAL + 1))
 PASSED=$((PASSED + 1))
-run_suite "Diagnostic tests" "$ROOT/diagnostics/run_golden.sh"
-run_suite "KBC tests" "$ROOT/kbc/run_golden.sh"
-run_suite "Regression (oracle + drift)" "$ROOT/regression/run_golden.sh"
-bash "$ROOT/differential/run_matrix.sh"
+run_suite "Diagnostic tests" "$ROOT/tests/diagnostics/run_golden.sh"
+run_suite "KBC tests" "$ROOT/tests/kbc/run_golden.sh"
+run_suite "Regression (oracle + drift)" "$ROOT/tests/regression/run_golden.sh"
+bash "$ROOT/tests/differential/run_matrix.sh"
 TOTAL=$((TOTAL + 1))
 PASSED=$((PASSED + 1))
-run_suite "Property (round-trip + fuzz)" "$ROOT/property/run.sh"
+run_suite "Property (round-trip + fuzz)" "$ROOT/tests/property/run.sh"
 
 echo "Summary: $PASSED/$TOTAL suites passed"
 [[ "$PASSED" -eq "$TOTAL" ]] && exit 0 || exit 1

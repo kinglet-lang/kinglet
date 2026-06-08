@@ -6,10 +6,10 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/common.sh"
 
-VM=$(resolve_kinglet "$ROOT") || exit 2
-BS=$(resolve_bootstrap "$ROOT") || exit 2
-export KINGLET_BIN="$VM"
-CLI_KBC=$(ensure_cli_kbc "$ROOT" "$VM") || exit 2
+export_kinglet_bins "$ROOT" || exit 2
+VM="$KINGLET_BIN"
+BS="$KINGLET_BOOTSTRAP"
+CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
 
 echo "# Differential matrix (bootstrap vs selfhost)"
 echo "# VM:        $VM"

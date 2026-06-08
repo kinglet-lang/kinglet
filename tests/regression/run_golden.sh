@@ -6,10 +6,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/common.sh"
 
-KINGLET_BIN=$(resolve_kinglet "$ROOT") || exit 2
-BOOTSTRAP_BIN=$(resolve_bootstrap "$ROOT") || exit 2
-export KINGLET_BIN
-CLI_KBC=$(ensure_cli_kbc "$ROOT" "$KINGLET_BIN") || exit 2
+export_kinglet_bins "$ROOT" || exit 2
+BOOTSTRAP_BIN="$KINGLET_BOOTSTRAP"
+CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
 
 CASES="$ROOT/tests/regression/cases"
 TMP="$(mktemp -d)"

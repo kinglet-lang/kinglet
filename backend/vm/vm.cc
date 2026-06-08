@@ -1,5 +1,7 @@
 #include "vm/vm.h"
 
+#include "vm/cow.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
@@ -1161,9 +1163,10 @@ VmResult Vm::run(const Chunk &chunk, const std::vector<std::string> &args) {
       if (index.type != ValueType::Int)
         return runtime_error("insert() index must be an integer.");
       auto idx = index.as_int;
-      auto &elems = as_array(array)->elements;
-      if (idx < 0 || static_cast<std::size_t>(idx) > elems.size())
+      if (idx < 0 || static_cast<std::size_t>(idx) >
+                         as_array(array)->elements.size())
         return runtime_error("insert() index out of bounds.");
+      auto &elems = as_array(array)->elements;
       if (value.type == ValueType::Array && value.heap) {
         elems.insert(elems.begin() + idx,
                      as_array(value)->elements.begin(),

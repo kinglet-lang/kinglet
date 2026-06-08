@@ -14,9 +14,8 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/common.sh"
 
-KINGLET_BIN=$(resolve_kinglet "$ROOT") || exit 2
-export KINGLET_BIN
-CLI_KBC=$(ensure_cli_kbc "$ROOT" "$KINGLET_BIN") || exit 2
+export_kinglet_bins "$ROOT" || exit 2
+CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
 
 CASES_DIR="$ROOT/tests/codegen/cases"
 TMP_DIR="$(mktemp -d)"

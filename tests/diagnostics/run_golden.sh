@@ -14,9 +14,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/common.sh"
 
-KINGLET=$(resolve_kinglet "$ROOT") || exit 2
-CLI_KBC=$(ensure_cli_kbc "$ROOT" "$KINGLET") || exit 2
-export KINGLET_BIN="$KINGLET"
+export_kinglet_bins "$ROOT" || exit 2
+CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
 export TEST_CASES_DIR="$ROOT/tests/diagnostics/cases"
 export TMP_DIR="$(mktemp -d)"
 
@@ -49,9 +48,9 @@ run_diagnostic() {
   if [[ "$mode" == "shcheck" ]]; then
     "$KINGLET_BIN" --run "$CLI_KBC" "$source" --check >/dev/null 2>"$stderr" || exit_code=$?
   elif [[ "$mode" == "check" ]]; then
-    "$KINGLET_BIN" --check "$source" >/dev/null 2>"$stderr" || exit_code=$?
+    "$KINGLET_BOOTSTRAP" --check "$source" >/dev/null 2>"$stderr" || exit_code=$?
   else
-    "$KINGLET_BIN" "$source" >/dev/null 2>"$stderr" || exit_code=$?
+    "$KINGLET_BOOTSTRAP" "$source" >/dev/null 2>"$stderr" || exit_code=$?
   fi
 
   strip_cr "$stderr"

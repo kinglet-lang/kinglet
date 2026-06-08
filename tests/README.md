@@ -71,8 +71,8 @@ Environment:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `KINGLET` | `../kinglet/out/Default/kinglet` | VM host binary |
-| `KINGLET_BOOTSTRAP` | same as `KINGLET` | bootstrap side of `diff` |
+| `KINGLET` | `backend/vm/out/kinglet` (auto-built) | selfhost VM host |
+| `KINGLET_BOOTSTRAP` | `../kinglet/out/Default/kinglet` | C++ compiler + differential bootstrap |
 | `FUZZ_ROUNDS` | `32` | property fuzz iterations |
 | `PER_CASE_TIMEOUT` | `15`–`30` | parser/property wall-clock cap |
 
