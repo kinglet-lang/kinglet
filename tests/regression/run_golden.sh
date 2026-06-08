@@ -20,10 +20,10 @@ MUST_PASS=(
   enum_destructure_test match_enum_destruct enum_guard_test
   match_basic match_binding
   map_basic map_symbol_table
-  arrays_type_error
+  arrays_type_error arrays_bytecode
 )
 KNOWN_FAIL=(
-  arrays_bytecode cat
+  cat
 )
 
 run_selfhost() {
