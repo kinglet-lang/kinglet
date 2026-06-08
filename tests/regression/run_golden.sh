@@ -60,6 +60,21 @@ run_bootstrap() {
   return $?
 }
 
+run_bootstrap_check() {
+  local src="$1" stdout="$2" stderr="$3"
+  "$BOOTSTRAP_BIN" --check "$src" >"$stdout" 2>"$stderr"
+  return $?
+}
+
+# Drift stdout compare: ignore an optional single trailing newline on either side.
+stdout_same() {
+  local a="$1" b="$2"
+  diff -q \
+    <(python3 -c "import pathlib,sys; sys.stdout.buffer.write(pathlib.Path(sys.argv[1]).read_bytes().rstrip(b'\n'))" "$a") \
+    <(python3 -c "import pathlib,sys; sys.stdout.buffer.write(pathlib.Path(sys.argv[1]).read_bytes().rstrip(b'\n'))" "$b") \
+    >/dev/null 2>&1
+}
+
 run_one() {
   local name="$1"
   local src="$CASES/$name.kl"
@@ -76,12 +91,10 @@ run_one() {
     set +e
     "$KINGLET_BIN" --run "$CLI_KBC" "$src" --check >"$TMP/sh.out" 2>"$TMP/sh.err"
     GOT_EXIT=$?
-    set -e
   else
     set +e
     run_selfhost "$src" "$TMP/sh.out" "$TMP/sh.err" "$kbc" ${CASE_ARGS+"${CASE_ARGS[@]}"}
     GOT_EXIT=$?
-    set -e
   fi
   strip_cr "$TMP/sh.out" "$TMP/sh.err"
 
@@ -96,10 +109,16 @@ run_one() {
 
   DRIFT=0
   if [[ "$OUT_OK" -eq 1 && "$EXIT_OK" -eq 1 && -f "$exp" ]]; then
-    run_bootstrap "$src" "$TMP/bs.out" "$TMP/bs.err" ${CASE_ARGS+"${CASE_ARGS[@]}"} || true
+    set +e
+    if [[ "$WANT_EXIT" -eq 65 ]]; then
+      run_bootstrap_check "$src" "$TMP/bs.out" "$TMP/bs.err"
+    else
+      run_bootstrap "$src" "$TMP/bs.out" "$TMP/bs.err" ${CASE_ARGS+"${CASE_ARGS[@]}"}
+    fi
     bs_ec=$?
+    set +e
     strip_cr "$TMP/bs.out" "$TMP/bs.err"
-    if [[ "$bs_ec" -ne "$GOT_EXIT" ]] || ! diff -q "$TMP/sh.out" "$TMP/bs.out" >/dev/null 2>&1; then
+    if [[ "$bs_ec" -ne "$GOT_EXIT" ]] || ! stdout_same "$TMP/sh.out" "$TMP/bs.out"; then
       DRIFT=1
     fi
   fi

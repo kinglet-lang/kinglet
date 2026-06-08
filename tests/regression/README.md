@@ -41,6 +41,8 @@ kinglet --run cat.kbc "$(pwd)/cases/cat_fixture.txt"
 - **KNOWN_FAIL** — tracked gaps; empty when there are no open regressions.
 
 Type-check-only failures use `<name>.exit` with value `65` and skip compile/run.
+Bootstrap drift for those cases also uses `--check` (not compile-and-run). Stdout
+drift ignores an optional single trailing newline on either side.
 
 ## Related
 
