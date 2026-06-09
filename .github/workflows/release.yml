@@ -48,12 +48,13 @@ jobs:
         run: |
           source tests/common.sh
           export_kinglet_bins "$(pwd)"
-          ensure_cli_kbc "$(pwd)"
-          ls -la compiler.kbc
+          chmod +x kinglet scripts/build/kinglet-build.sh
+          ensure_build_stamp "$(pwd)"
+          ls -la .kinglet/out/compiler.kbc
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            compiler.kbc
+            .kinglet/out/compiler.kbc
           generate_release_notes: true

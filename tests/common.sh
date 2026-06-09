@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Shared helpers for self-hosted golden suites.
 #
-# All suites that drive the self-hosted entry (`core/main.kl`) share the same
-# pain: compiling core/main.kl from source costs ~85s, but running the result
-# from a cached .kbc costs ~70ms. Each suite sources this file and calls
-# `ensure_cli_kbc` to get a path it can pass to `kinglet --run`.
+# All suites that drive the self-hosted entry (`core/main.kl`) call
+# `ensure_build_stamp` (Klos + stamp via bootstrap Ref compile on cache miss).
+# A warm cache hit is ~instant; bootstrap compile is ~0.1s locally.
 #
 # Selfhost suites run bytecode on backend/vm (`backend/vm/out/kinglet`).
 # Bootstrap C++ kinglet compiles compiler.kbc and powers differential tests.
@@ -110,42 +109,24 @@ export_kinglet_bins() {
   export KINGLET="$KINGLET_BIN"
 }
 
-# Ensure $ROOT/compiler.kbc exists and is newer than every .kl under core/,
-# parser/, compiler/, checker/, lexer/. Rebuilds via bootstrap
-# `kinglet --save-bytecode compiler.kbc core/main.kl` only when stale.
-# Prints the .kbc path on stdout.
-ensure_cli_kbc() {
+# Ensure toolchain compiler.kbc is built and stamp-fresh (ADR 0014 M0).
+# Prints absolute path to .kinglet/out/compiler.kbc on stdout.
+ensure_build_stamp() {
   local root="$1"
-  local kinglet="${2:-}"
-  if [[ -z "$kinglet" ]]; then
-    kinglet="$(resolve_bootstrap "$root")" || return 2
+  local build_sh="$root/scripts/build/kinglet-build.sh"
+  if [[ ! -f "$build_sh" ]]; then
+    echo "ensure_build_stamp: $build_sh not found" >&2
+    return 2
   fi
-  local entry="$root/core/main.kl"
-  local cli_kbc="$root/compiler.kbc"
+  if [[ -n "${2:-}" ]]; then
+    export KINGLET_BOOTSTRAP="$2"
+  fi
+  bash "$build_sh" --quiet "$root"
+}
 
-  local needs_rebuild=0
-  if [[ ! -f "$cli_kbc" ]]; then
-    needs_rebuild=1
-  else
-    for kl in "$root"/core/*.kl "$root"/parser/*.kl "$root"/compiler/*.kl "$root"/checker/*.kl "$root"/lexer/*.kl; do
-      [[ -f "$kl" ]] || continue
-      if [[ "$kl" -nt "$cli_kbc" ]]; then
-        needs_rebuild=1
-        break
-      fi
-    done
-  fi
-  if [[ "$needs_rebuild" -eq 1 ]]; then
-    echo "Rebuilding $cli_kbc (this is slow, ~85s) ..." >&2
-    if ! "$kinglet" --save-bytecode "$cli_kbc" "$entry" 2>"$root/.cli_kbc_compile.err"; then
-      echo "failed to rebuild compiler.kbc:" >&2
-      cat "$root/.cli_kbc_compile.err" >&2
-      rm -f "$root/.cli_kbc_compile.err"
-      return 2
-    fi
-    rm -f "$root/.cli_kbc_compile.err"
-  fi
-  printf '%s' "$cli_kbc"
+# Deprecated alias — use ensure_build_stamp.
+ensure_cli_kbc() {
+  ensure_build_stamp "$@"
 }
 
 # Normalize CRLF to LF byte-for-byte in the given files. `tr -d` deletes raw
