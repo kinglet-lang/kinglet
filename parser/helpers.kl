@@ -218,6 +218,18 @@ TypeExpr parse_type_expr(Parser p) {
   return t;
 }
 
+// Raw string literal text between quotes (bootstrap parser.cc:1082-1086).
+string strip_string_quotes(string lexeme) {
+  if (lexeme.len() >= 2) {
+    string open = lexeme.slice(0, 1);
+    string close = lexeme.slice(lexeme.len() - 1, lexeme.len());
+    if (open == "\"" && close == "\"") {
+      return lexeme.slice(1, lexeme.len() - 1);
+    }
+  }
+  return lexeme;
+}
+
 // position helpers: extract line/col from any Expr variant
 
 int expr_line(Expr e) => e match {

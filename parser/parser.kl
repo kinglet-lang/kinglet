@@ -87,7 +87,7 @@ Decl parse_import(Parser p) {
     string[] aliases = [];
     while (!check(p, TokenType::RightBrace) && peek_tok(p).type != TokenType::Eof) {
       Token path_tok = consume(p, TokenType::StringLit, "Expected file path string in import block.");
-      paths.push(path_tok.string_value);
+      paths.push(strip_string_quotes(path_tok.lexeme));
       string alias = "";
       if (check(p, TokenType::Identifier) && peek_tok(p).lexeme == "as") {
         advance_tok(p);

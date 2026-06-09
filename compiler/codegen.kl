@@ -68,7 +68,7 @@ void emit_float(Compiler co, float v, int line, int col) {
 }
 
 void emit_string(Compiler co, string raw, int line, int col) {
-  // Mirror compiler.cc:656-693 escape semantics exactly.
+  // Mirror compiler.cc:656-693 — unescape raw parser text (quotes already stripped).
   string unescaped = "";
   int i = 0;
   while (i < raw.len()) {

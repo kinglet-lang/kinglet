@@ -454,7 +454,7 @@ Expr primary(Parser p) {
   }
   if (match_tt(p, TokenType::StringLit)) {
     Token t = previous(p);
-    return Expr::StringLit(t.string_value, t.line, t.col);
+    return Expr::StringLit(strip_string_quotes(t.lexeme), t.line, t.col);
   }
   if (match_tt(p, TokenType::True))  { Token t = previous(p); return Expr::BoolLit(true,  t.line, t.col); }
   if (match_tt(p, TokenType::False)) { Token t = previous(p); return Expr::BoolLit(false, t.line, t.col); }
