@@ -1,7 +1,7 @@
 # Test suite
 
 Unified layout per [decision 0012](../decisions/0012-test-suite-redesign.md). All
-selfhost-driven suites share `common.sh` (`resolve_kinglet`, `ensure_cli_kbc`) and
+selfhost-driven suites share `common.sh` (`resolve_kinglet`, `ensure_build_stamp`) and
 the bootstrap C++ binary is only the **VM host** unless a suite explicitly compares
 pipelines.
 

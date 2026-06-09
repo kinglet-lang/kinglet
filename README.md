@@ -21,21 +21,23 @@ the language spec alone.
 ## Quick start
 
 ```bash
-# Build the self-host compiler artifact (~85s first time; cached as compiler.kbc)
-export KINGLET=../kinglet/out/Default/kinglet   # adjust if needed
-$KINGLET --save-bytecode compiler.kbc core/main.kl
+# Bootstrap compiler (C++ reference implementation)
+export KINGLET_BOOTSTRAP=../kinglet/out/Default/kinglet   # adjust if needed
 
-# Run the self-host CLI on a source file
-$KINGLET --run compiler.kbc --ast path/to/file.kl    # parse → AST
-$KINGLET --run compiler.kbc path/to/file.kl --check  # type check
-$KINGLET --run compiler.kbc --save-bytecode out.kbc path/to/file.kl
+# Build toolchain artefact (Ref compile → .kinglet/out/compiler.kbc; cached by stamp)
+./kinglet build
 
-# Run the full test suite (rebuilds compiler.kbc when sources are stale)
+# Run the self-host CLI on a source file (VM host = backend/vm/out/kinglet)
+export KINGLET=backend/vm/out/kinglet
+$KINGLET --run .kinglet/out/compiler.kbc --ast path/to/file.kl
+$KINGLET --run .kinglet/out/compiler.kbc --save-bytecode out.kbc path/to/file.kl
+
+# Run the full test suite (rebuilds only on stamp miss)
 bash tests/run_all.sh
 ```
 
-`compiler.kbc` is checked in or regenerated automatically by test helpers via
-`tests/common.sh` (`ensure_cli_kbc`).
+Build output lives under `.kinglet/` (see [decisions/0014](decisions/0014-compilation-toolchain-architecture.md)).
+Test helpers call `ensure_build_stamp` in `tests/common.sh`.
 
 ## Repository layout
 
@@ -49,8 +51,9 @@ kinglet-self/
   backend/        C++ VM experiments (embedded self-host; see decisions/0010)
   decisions/      Design RFCs (English)
   tests/          Harness-driven suites (see tests/README.md)
-  compiler.kbc    Prebuilt self-host compiler bytecode
-  kinglet.toml    Project manifest (`//` import paths)
+  kinglet         Project build driver (`./kinglet build`)
+  .kinglet/       Klos cache and build output (gitignored)
+  kinglet.toml    Project manifest (`//` import paths, `[build]` section)
   SYNTAX.md       Syntax notes and self-host / bootstrap boundaries
   AGENT.md        Context for AI-assisted development
 ```
