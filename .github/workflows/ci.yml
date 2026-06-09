@@ -6,25 +6,23 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  BOOTSTRAP_REPO: kinglet-lang/bootstrap
+  BOOTSTRAP_REF: main
+
 jobs:
-  test:
-    name: test (${{ matrix.os }})
+  test-fast:
+    name: test fast (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 45
     concurrency:
-      group: ci-${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}
+      group: ci-fast-${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}
       cancel-in-progress: true
 
     strategy:
       fail-fast: false
       matrix:
-        # macOS: reference platform for pass2b_ns_rank / bootstrap byte parity.
-        # ubuntu is exercised in release.yml; full suite on Linux is tracked in docs/ci.md.
         os: [macos-latest]
-
-    env:
-      BOOTSTRAP_REPO: kinglet-lang/bootstrap
-      BOOTSTRAP_REF: main
 
     steps:
       - name: Checkout self-host
@@ -48,6 +46,45 @@ jobs:
         shell: bash
         run: bash scripts/ci/build-bootstrap.sh
 
-      - name: Run test suite
+      - name: Run fast test suite
         shell: bash
-        run: bash scripts/ci/run-tests.sh
+        run: bash scripts/ci/run-tests-fast.sh
+
+  test-prove:
+    name: test prove (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    concurrency:
+      group: ci-prove-${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+
+    steps:
+      - name: Checkout self-host
+        uses: actions/checkout@v4
+
+      - name: Checkout bootstrap compiler
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.BOOTSTRAP_REPO }}
+          ref: ${{ env.BOOTSTRAP_REF }}
+          path: bootstrap
+
+      - name: Install GN
+        shell: bash
+        run: bash scripts/ci/install-gn-ninja.sh
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Build bootstrap kinglet
+        shell: bash
+        run: bash scripts/ci/build-bootstrap.sh
+
+      - name: Run prove suite
+        shell: bash
+        run: bash scripts/ci/run-tests-prove.sh
