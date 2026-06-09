@@ -6,7 +6,8 @@ GitHub Actions workflows live under [`.github/workflows/`](../.github/workflows/
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| **CI** | push / PR to `main` | macOS: builds bootstrap + VM, runs `tests/run_all.sh` (bootstrap parity gate) |
+| **CI — test-fast** | push / PR to `main` | macOS: bootstrap + VM, runs `tests/run_all.sh` (Ref path, no Shadow parity) |
+| **CI — test-prove** | push / PR to `main` | macOS: bootstrap + VM, runs `./kinglet prove` (round-trip + differential) |
 | **Release** | tag `v*` | Builds `compiler.kbc` and attaches it to the GitHub Release |
 
 ## Local reproduction

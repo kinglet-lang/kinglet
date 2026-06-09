@@ -7,17 +7,18 @@ pipelines.
 
 ## CI
 
-Push/PR to `main` runs [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
-(ubuntu + macos). See [docs/ci.md](../docs/ci.md).
+Push/PR to `main` runs [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
+**test-fast** (Ref + selfhost suites) and **test-prove** (Shadow parity). See
+[docs/ci.md](../docs/ci.md).
 
 ## Quick commands
 
 ```bash
-bash tests/run_all.sh              # full orchestrator
+bash tests/run_all.sh              # fast orchestrator (no Shadow parity)
+./kinglet prove                    # round-trip + differential (Shadow vs Ref)
 bash tests/harness/run.sh <path>   # ad-hoc harness on a file or directory
 bash tests/exec/run.sh             # selfhost end-to-end (gate)
 bash tests/sema/run.sh             # type checker pass + fail (gate)
-bash tests/differential/run.sh     # bootstrap vs selfhost must match (gate)
 bash tests/property/run.sh         # AST/token stability + fuzz-lite (gate)
 bash tests/ir/run_golden.sh        # bootstrap --ir vs .kir goldens (M1)
 bash tests/native/run_smoke.sh     # bootstrap --native smoke (L0; needs LLVM build)

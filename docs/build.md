@@ -17,10 +17,14 @@ See [decisions/0014](../decisions/0014-compilation-toolchain-architecture.md).
 ```bash
 ./kinglet build              # compile [build].root via bootstrap (Ref)
 ./kinglet build --quiet      # cache hit/miss only on stderr
+./kinglet prove              # Shadow vs Ref parity (round-trip + differential)
+./kinglet debug emit-kbc out.kbc src.kl
+./kinglet debug emit-kbc --shadow out.kbc src.kl
 KINGLET_BOOTSTRAP=... ./kinglet build
 ```
 
-Non-`build` arguments are forwarded to the bootstrap `kinglet` binary.
+`build` uses the Ref compiler only. `prove` runs Shadow parity suites. Non-build
+subcommands other than `prove` / `debug` / `native` forward to bootstrap `kinglet`.
 
 ## Configuration (`kinglet.toml`)
 
