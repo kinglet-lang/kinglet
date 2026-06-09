@@ -1,0 +1,94 @@
+// KIR text dump — mirrors bootstrap dump_kir_module (ADR 0005 M1).
+
+import {
+  "ir.kl"
+}
+
+using ir { KirOpcode, KirInstr, KirBasicBlock, KirFunction, KirModule };
+
+string kir_opcode_name(KirOpcode op) {
+  if (op == KirOpcode::ConstInt) { return "const_int"; }
+  if (op == KirOpcode::ConstFloat) { return "const_float"; }
+  if (op == KirOpcode::ConstBool) { return "const_bool"; }
+  if (op == KirOpcode::ConstNull) { return "const_null"; }
+  if (op == KirOpcode::ConstString) { return "const_string"; }
+  if (op == KirOpcode::LoadLocal) { return "load_local"; }
+  if (op == KirOpcode::StoreLocal) { return "store_local"; }
+  if (op == KirOpcode::Pop) { return "pop"; }
+  if (op == KirOpcode::IAdd) { return "iadd"; }
+  if (op == KirOpcode::ISub) { return "isub"; }
+  if (op == KirOpcode::IMul) { return "imul"; }
+  if (op == KirOpcode::IDiv) { return "idiv"; }
+  if (op == KirOpcode::IMod) { return "imod"; }
+  if (op == KirOpcode::Call) { return "call"; }
+  if (op == KirOpcode::Ret) { return "ret"; }
+  if (op == KirOpcode::Br) { return "br"; }
+  if (op == KirOpcode::CondBr) { return "cond_br"; }
+  if (op == KirOpcode::Switch) { return "switch"; }
+  if (op == KirOpcode::Unreachable) { return "unreachable"; }
+  return "nop";
+}
+
+bool kir_instr_has_result(KirOpcode op) {
+  if (op == KirOpcode::ConstInt) { return true; }
+  if (op == KirOpcode::ConstFloat) { return true; }
+  if (op == KirOpcode::ConstBool) { return true; }
+  if (op == KirOpcode::ConstNull) { return true; }
+  if (op == KirOpcode::ConstString) { return true; }
+  if (op == KirOpcode::LoadLocal) { return true; }
+  if (op == KirOpcode::IAdd) { return true; }
+  if (op == KirOpcode::ISub) { return true; }
+  if (op == KirOpcode::IMul) { return true; }
+  if (op == KirOpcode::IDiv) { return true; }
+  if (op == KirOpcode::IMod) { return true; }
+  if (op == KirOpcode::Call) { return true; }
+  return false;
+}
+
+string dump_operands(KirInstr instr) {
+  string out = "";
+  for (int i = 0; i < instr.operands.len(); i += 1) {
+    if (i > 0) { out = out + " "; }
+    out = out + string(instr.operands[i]);
+  }
+  return out;
+}
+
+pub string dump_function(KirFunction function) {
+  string out = "fn " + function.name + "(";
+  for (int i = 0; i < function.param_names.len(); i += 1) {
+    if (i > 0) { out = out + ", "; }
+    out = out + function.param_names[i];
+  }
+  out = out + ") {\n";
+
+  int temp = 0;
+  for (int b = 0; b < function.blocks.len(); b += 1) {
+    KirBasicBlock bb = function.blocks[b];
+    out = out + "  " + bb.label + ":\n";
+    for (int i = 0; i < bb.instrs.len(); i += 1) {
+      KirInstr insn = bb.instrs[i];
+      if (kir_instr_has_result(insn.op)) {
+        out = out + "    %" + string(temp) + " = ";
+        temp = temp + 1;
+      } else {
+        out = out + "    ";
+      }
+      out = out + kir_opcode_name(insn.op);
+      if (insn.operands.len() > 0) {
+        out = out + " " + dump_operands(insn);
+      }
+      out = out + "\n";
+    }
+  }
+  out = out + "}\n";
+  return out;
+}
+
+pub string dump_module(KirModule module) {
+  string out = "";
+  for (int f = 0; f < module.functions.len(); f += 1) {
+    out = out + dump_function(module.functions[f]);
+  }
+  return out;
+}

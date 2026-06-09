@@ -1,0 +1,13 @@
+// KIR emit stubs — self-host AST→KIR builder lands in a later milestone.
+// Data shapes and dump format match bootstrap IrBuilder (ADR 0005 M1).
+
+import {
+  "ir.kl"
+}
+
+using ir { KirOpcode, KirInstr, KirBasicBlock, KirFunction, KirModule };
+
+pub KirModule empty_module() {
+  KirFunction[] fs = [];
+  return KirModule { fs };
+}

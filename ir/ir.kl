@@ -1,0 +1,47 @@
+// KIR data definitions — mirrors bootstrap src/ir/kir.h (ADR 0005 M1).
+
+pub enum KirOpcode {
+  ConstInt,
+  ConstFloat,
+  ConstBool,
+  ConstNull,
+  ConstString,
+  LoadLocal,
+  StoreLocal,
+  Pop,
+  IAdd,
+  ISub,
+  IMul,
+  IDiv,
+  IMod,
+  Call,
+  Ret,
+  Br,
+  CondBr,
+  Switch,
+  Unreachable,
+  Nop,
+}
+
+pub struct KirInstr {
+  KirOpcode op;
+  int[] operands;
+  int line;
+  int col;
+}
+
+pub struct KirBasicBlock {
+  string label;
+  KirInstr[] instrs;
+}
+
+pub struct KirFunction {
+  string name;
+  int param_count;
+  string[] param_names;
+  KirBasicBlock[] blocks;
+}
+
+pub struct KirModule {
+  KirFunction[] functions;
+}
