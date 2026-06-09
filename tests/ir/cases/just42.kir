@@ -1,0 +1,5 @@
+fn main() {
+  bb0:
+    %0 = const_int 42
+    ret 0
+}

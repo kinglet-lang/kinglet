@@ -1,0 +1,22 @@
+fn add() {
+  bb0:
+    %0 = load_local 0
+    %1 = load_local 1
+    %2 = iadd
+    ret
+    ret
+}
+fn main() {
+  bb0:
+    %0 = const_int 1
+    store_local 0
+    pop
+    %1 = const_int 2
+    store_local 1
+    pop
+    %2 = load_local 0
+    %3 = load_local 1
+    %4 = call 2
+    ret
+    ret
+}
