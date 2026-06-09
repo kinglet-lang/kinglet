@@ -38,10 +38,12 @@ bash scripts/ci/run-tests.sh
 
 ## Platform notes
 
-- **macOS** is the reference platform for `pass2b_ns_rank` / bootstrap byte parity.
-- **Linux** CI may fail bootstrap parity until namespace compile order is
+- **macOS** is the CI gate and reference platform for `pass2b_ns_rank` /
+  bootstrap byte parity.
+- **Linux** (`ubuntu-latest`) is used in **Release** to build `compiler.kbc`.
+  Full `run_all.sh` on Linux may hit runner limits during the ~3× self-host
+  compile in round-trip, or fail bootstrap parity until `pass2b_ns_rank` is
   platform-neutral (see [decisions/0013](../decisions/0013-bootstrap-bytecode-delta.md)).
-  Behavior suites (exec, regression, differential gating) should still pass.
 
 ## Fixtures
 
