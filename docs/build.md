@@ -26,6 +26,9 @@ KINGLET_BOOTSTRAP=... ./kinglet build
 `build` uses the Ref compiler only. `prove` runs Shadow parity suites. Non-build
 subcommands other than `prove` / `debug` / `native` forward to bootstrap `kinglet`.
 
+The driver may also install as **`klet`** (short alias, same subcommands); see
+[0014](../decisions/0014-compilation-toolchain-architecture.md) § D5.
+
 ## Configuration (`kinglet.toml`)
 
 | Key | Default | Meaning |
@@ -33,8 +36,9 @@ subcommands other than `prove` / `debug` / `native` forward to bootstrap `kingle
 | `[build].root` | `core/main.kl` | Toolchain entry source |
 | `[build].cache_dir` | `.kinglet/cache` | Cache directory |
 | `[build].out_dir` | `.kinglet/out` | Output directory |
-| `[build.compiler].engine` | `ref` | `ref` only in M0 |
-| `[build.compiler].default_backend` | `vm` | Reserved for native (M3) |
+| `[build.compiler].engine` | `ref` | `ref` only in M0–M2 |
+| `[build.compiler].default_backend` | `vm` | `vm` or `native` (L1+) |
+| `[build.prove].shadow_root` | `core/main.kl` | Entry for `kinglet prove` |
 
 ## Stamp
 

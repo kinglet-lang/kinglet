@@ -18,9 +18,13 @@ git clone https://github.com/kinglet-lang/bootstrap.git bootstrap
 
 # 2. Install gn + ninja (macOS/Linux: see scripts/ci/install-gn-ninja.sh)
 
-# 3. Full CI-equivalent run
+# 3. Fast CI tier (same as test-fast job)
 bash scripts/ci/build-bootstrap.sh
-bash scripts/ci/run-tests.sh
+bash scripts/ci/run-tests-fast.sh
+
+# 4. Prove tier (Shadow parity)
+bash scripts/ci/run-tests-prove.sh
+# or: ./kinglet prove
 ```
 
 `tests/common.sh` resolves bootstrap at `bootstrap/out/Default/kinglet` when
