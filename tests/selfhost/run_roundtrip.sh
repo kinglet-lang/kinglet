@@ -7,8 +7,7 @@
 # 3. S4 = S3 compiles itself
 # 4. Assert S3 == S4 (fixed-point: selfhosted compiler bytecode is stable)
 #
-# Bootstrap compiler.kbc (C++ output) and S2 (first VM self-compile) may
-# differ in size; byte-identical bootstrap parity is tracked separately.
+# Bootstrap compiler.kbc (C++ output) must be byte-identical to S3 (gated).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -66,16 +65,15 @@ else
 fi
 
 echo
-echo "Step 5: Bootstrap parity (informational)"
-bs_size=$(stat -c%s "$CLI_KBC" 2>/dev/null || stat -f%z "$CLI_KBC")
-s2_size=$(stat -c%s "$S2_KBC" 2>/dev/null || stat -f%z "$S2_KBC")
-s3_size=$(stat -c%s "$S3_KBC" 2>/dev/null || stat -f%z "$S3_KBC")
+echo "Step 5: Bootstrap parity (compiler.kbc == S3)"
 if cmp -s "$CLI_KBC" "$S3_KBC"; then
   echo "  ✓ compiler.kbc == S3 (bootstrap byte-identical)"
-elif cmp -s "$CLI_KBC" "$S2_KBC"; then
-  echo "  ✓ compiler.kbc == S2 (bootstrap byte-identical)"
 else
-  echo "  ~ compiler.kbc=${bs_size}B  S2=${s2_size}B  S3=${s3_size}B (bootstrap delta tracked separately)"
+  bs_size=$(stat -c%s "$CLI_KBC" 2>/dev/null || stat -f%z "$CLI_KBC")
+  s3_size=$(stat -c%s "$S3_KBC" 2>/dev/null || stat -f%z "$S3_KBC")
+  echo "  ✗ FAIL: compiler.kbc (${bs_size}B) != S3 (${s3_size}B)" >&2
+  echo "  Run: bash tests/differential/kbc_bootstrap_diff.sh" >&2
+  exit 1
 fi
 
 echo
@@ -83,3 +81,4 @@ echo "=== Round-trip test PASSED ==="
 echo "Self-hosting integrity verified:"
 echo "  - S2 and S3 generation succeed"
 echo "  - Fixed-point: S3 == S4"
+echo "  - Bootstrap parity: compiler.kbc == S3"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Compare bootstrap compiler.kbc vs selfhost fixed-point S3 for core/main.kl.
 #
-# Informational: bootstrap byte-identical parity is not required for round-trip
-# fixed-point (S3 == S4). This script quantifies remaining delta.
+# Gated: bootstrap compiler.kbc must be byte-identical to selfhost S3.
+# Also used standalone to print kbc_diff.py output on failure.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -59,7 +59,7 @@ if cmp -s "$CLI_KBC" "$S3_KBC"; then
   exit 0
 fi
 
-echo "Bootstrap parity: NOT byte-identical (structured diff below)"
+echo "FAIL: bootstrap parity — NOT byte-identical (structured diff below)" >&2
 echo
 python3 "$ROOT/tests/tools/kbc_diff.py" "$CLI_KBC" "$S3_KBC"
-exit 0
+exit 1

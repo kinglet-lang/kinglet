@@ -594,9 +594,8 @@ void compile_try(Compiler co, Expr value, int line, int col) {
   patch_jump(co, skip_ret);
 }
 
-// Plain `x = expr` only — compound +=/-= etc. not yet supported. Value of
-// the assignment expression is the new value (StoreLocal copies, doesn't pop),
-// so callers in expression context get a value on stack.
+// Plain and compound assign (+=, -=, …). Value of the assignment expression is
+// the new value (StoreLocal copies, doesn't pop).
 // Helper: map compound AssignOp to the corresponding binary OpCode.
 // Only called for non-plain compound ops; the wildcard is unreachable.
 OpCode compound_op(AssignOp op) {

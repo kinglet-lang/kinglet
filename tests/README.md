@@ -43,7 +43,7 @@ tests/
   builtin_methods/  builtin method matrix (snapshot)
   diagnostics/      error message goldens
   kbc/              bytecode serialize round-trip
-  selfhost/         compiler.kbc fixed-point (S2 == S3)
+  selfhost/         fixed-point (S3==S4) + bootstrap parity gate (compiler.kbc==S3)
   run_selfhost/     additional selfhost behavioral cases
   common.sh
   run_all.sh

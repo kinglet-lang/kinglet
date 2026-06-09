@@ -8,29 +8,28 @@
 7  5:16  LoadLocal slot 0
 8  5:18  StoreLocal slot 2
 9  5:18  LoadLocal slot 2
-10  5:18  EnumVariant
-11  5:18  Eq
-12  5:18  JmpFalse +7
-13  5:18  LoadLocal slot 2
-14  5:18  EnumPayloadGet
-15  5:18  StoreLocal slot 3
-16  5:18  Pop
+10  6:5  EnumVariant
+11  6:5  Eq
+12  6:5  JmpFalse +7
+13  6:5  LoadLocal slot 2
+14  6:5  EnumPayloadGet
+15  6:5  StoreLocal slot 3
+16  6:5  Pop
 17  5:18  Pop
 18  6:28  LoadLocal slot 3
-19  5:18  Jmp +10
+19  5:18  Jmp +9
 20  5:18  LoadLocal slot 2
-21  5:18  EnumVariant
-22  5:18  Eq
-23  5:18  JmpFalse +3
+21  7:5  EnumVariant
+22  7:5  Eq
+23  7:5  JmpFalse +3
 24  5:18  Pop
 25  7:21  Constant #2 (0)
-26  5:18  Jmp +3
+26  5:18  Jmp +2
 27  5:18  Pop
 28  8:10  Constant #2 (0)
-29  5:18  Null
-30  5:3  StoreLocal slot 1
-31  5:3  Pop
-32  10:10  LoadLocal slot 1
-33  10:3  Return
-34  3:1  Null
-35  3:1  Return
+29  5:3  StoreLocal slot 1
+30  5:3  Pop
+31  10:10  LoadLocal slot 1
+32  10:3  Return
+33  3:1  Null
+34  3:1  Return
