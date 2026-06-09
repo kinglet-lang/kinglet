@@ -85,8 +85,10 @@ resolve_bootstrap() {
   fi
 
   for candidate in \
+    "$root/bootstrap/out/Default/kinglet" \
     "$root/../../kinglet/out/Default/kinglet" \
     "$root/../../../kinglet/out/Default/kinglet" \
+    "$root/bootstrap/out/Default/kinglet.exe" \
     "$root/../../kinglet/out/Default/kinglet.exe" \
     "$root/../../../kinglet/out/Default/kinglet.exe"; do
     if [[ -x "$candidate" || -f "$candidate" ]]; then

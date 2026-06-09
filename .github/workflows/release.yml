@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  compiler-kbc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      BOOTSTRAP_REPO: sentomk/kinglet
+      BOOTSTRAP_REF: main
+
+    steps:
+      - name: Checkout self-host
+        uses: actions/checkout@v4
+
+      - name: Checkout bootstrap compiler
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.BOOTSTRAP_REPO }}
+          ref: ${{ env.BOOTSTRAP_REF }}
+          path: bootstrap
+
+      - name: Install GN
+        shell: bash
+        run: bash scripts/ci/install-gn-ninja.sh
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Build bootstrap kinglet
+        shell: bash
+        run: bash scripts/ci/build-bootstrap.sh
+
+      - name: Build VM host
+        shell: bash
+        run: bash backend/vm/build.sh
+
+      - name: Build compiler.kbc
+        shell: bash
+        run: |
+          source tests/common.sh
+          export_kinglet_bins "$(pwd)"
+          ensure_cli_kbc "$(pwd)"
+          ls -la compiler.kbc
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            compiler.kbc
+          generate_release_notes: true

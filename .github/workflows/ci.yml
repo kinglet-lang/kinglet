@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Bootstrap parity (pass2b_ns_rank) is validated against macOS libc++ order;
+# Linux bootstrap map order may differ until ranks are platform-neutral.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    env:
+      BOOTSTRAP_REPO: sentomk/kinglet
+      BOOTSTRAP_REF: main
+
+    steps:
+      - name: Checkout self-host
+        uses: actions/checkout@v4
+
+      - name: Checkout bootstrap compiler
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.BOOTSTRAP_REPO }}
+          ref: ${{ env.BOOTSTRAP_REF }}
+          path: bootstrap
+
+      - name: Install GN
+        shell: bash
+        run: bash scripts/ci/install-gn-ninja.sh
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Build bootstrap kinglet
+        shell: bash
+        run: bash scripts/ci/build-bootstrap.sh
+
+      - name: Run test suite
+        shell: bash
+        run: bash scripts/ci/run-tests.sh

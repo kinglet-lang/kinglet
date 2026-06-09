@@ -1,5 +1,7 @@
 # Kinglet (self-host)
 
+[![CI](https://github.com/kinglet-lang/kinglet/actions/workflows/ci.yml/badge.svg)](https://github.com/kinglet-lang/kinglet/actions/workflows/ci.yml)
+
 Self-hosted Kinglet compiler: the `.kl` sources in this repo compile to bytecode
 (`.kbc`) that runs on the C++ VM from the
 [bootstrap compiler](https://github.com/sentomk/kinglet). Round-trip against the
@@ -99,6 +101,7 @@ Detailed write-ups:
 | [decisions/README.md](decisions/README.md) | Architecture RFC index |
 | [decisions/0003-stdlib-roadmap.md](decisions/0003-stdlib-roadmap.md) | Planned `stdlib/` layout |
 | [AGENT.md](AGENT.md) | Conventions, commit style, bootstrap quirks |
+| [docs/ci.md](docs/ci.md) | GitHub Actions CI/CD and local reproduction |
 
 ## Related repositories
 

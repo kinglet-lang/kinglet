@@ -5,6 +5,11 @@ selfhost-driven suites share `common.sh` (`resolve_kinglet`, `ensure_cli_kbc`) a
 the bootstrap C++ binary is only the **VM host** unless a suite explicitly compares
 pipelines.
 
+## CI
+
+Push/PR to `main` runs [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+(ubuntu + macos). See [docs/ci.md](../docs/ci.md).
+
 ## Quick commands
 
 ```bash

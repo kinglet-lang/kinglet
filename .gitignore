@@ -14,3 +14,7 @@ codegen/_*.kl
 
 # backend/vm build output
 backend/vm/out/
+
+# CI bootstrap checkout (scripts/ci)
+bootstrap/
+.cli_kbc_compile.err
