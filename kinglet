@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Kinglet project driver (ADR 0014 M0).
 #
-#   ./kinglet build [--quiet]   Build toolchain artefact (Ref → Klos)
+#   ./kinglet build [--quiet] [--backend native]   Build toolchain artefact
 #   ./kinglet ...               Pass through to bootstrap kinglet (VM host)
 
 set -euo pipefail
@@ -22,12 +22,18 @@ case "${1:-}" in
     shift
     exec bash "$BUILD_SH" "$@"
     ;;
+  native)
+    shift
+    pass_through --backend native "$@"
+    ;;
   help|--help|-h)
     cat <<EOF
-Usage: kinglet build [--quiet]
+Usage: kinglet build [--quiet] [--backend native]
+       kinglet native -o <out> <file.kl>
        kinglet <bootstrap-args...>
 
   build   Compile [build].root via Ref compiler; cache in .kinglet/
+  native  Shorthand for bootstrap --backend native -o ...
   other   Forwarded to bootstrap kinglet (set KINGLET_BOOTSTRAP to override)
 
 See decisions/0014-compilation-toolchain-architecture.md

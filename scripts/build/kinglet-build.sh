@@ -12,10 +12,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 QUIET=0
-if [[ "${1:-}" == "--quiet" ]]; then
-  QUIET=1
-  shift
-fi
+BACKEND=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --quiet)
+      QUIET=1
+      shift
+      ;;
+    --backend)
+      BACKEND="${2:-}"
+      shift 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 ROOT="${1:-}"
 if [[ -z "$ROOT" ]]; then
@@ -37,6 +49,10 @@ if [[ "$ENGINE" != "ref" ]]; then
   exit 2
 fi
 
+if [[ -z "$BACKEND" ]]; then
+  BACKEND=$(get_build_config "$ROOT" default_backend "vm")
+fi
+
 ensure_kinglet_dirs "$ROOT"
 
 BUILD_ROOT=$(get_build_config "$ROOT" root "core/main.kl")
@@ -49,6 +65,24 @@ fi
 STAMP=$(compute_compiler_stamp "$ROOT" "$BOOTSTRAP")
 CACHED_STAMP=$(stamp_read "$ROOT" compiler)
 OBJECT_ID=$(stamp_object_id "$ROOT" compiler)
+if [[ "$BACKEND" == "native" ]]; then
+  OUT_NAME="compiler"
+  kinglet_layout_dirs "$ROOT"
+  OUT_PATH="$KINGLET_OUT_DIR/$OUT_NAME"
+  if [[ "$QUIET" -eq 0 ]]; then
+    echo "kinglet build: native backend for $BUILD_ROOT ..." >&2
+  fi
+  if ! "$BOOTSTRAP" --backend native -o "$OUT_PATH" "$ENTRY" 2>"$ROOT/.kinglet_build.err"; then
+    echo "kinglet build: native compile failed:" >&2
+    cat "$ROOT/.kinglet_build.err" >&2
+    rm -f "$ROOT/.kinglet_build.err"
+    exit 2
+  fi
+  rm -f "$ROOT/.kinglet_build.err"
+  printf '%s\n' "$OUT_PATH"
+  exit 0
+fi
+
 OUT_NAME="compiler.kbc"
 kinglet_layout_dirs "$ROOT"
 OUT_PATH="$KINGLET_OUT_DIR/$OUT_NAME"

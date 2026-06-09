@@ -49,3 +49,5 @@ On cache hit, `kinglet build` skips compilation.
 KIR goldens: `bash tests/ir/run_golden.sh` (requires bootstrap with `--ir`).
 
 Native smoke: `bash tests/native/run_smoke.sh` (requires bootstrap with `enable_llvm=true`; see [native.md](native.md)).
+
+Native build (L1): `./kinglet build --backend native` emits `.kinglet/out/compiler` when `[build].default_backend = "native"` or flag is passed.
