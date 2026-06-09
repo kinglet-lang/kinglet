@@ -42,6 +42,9 @@ get_build_config() {
     default_backend)
       line=$(grep -E '^[[:space:]]*default_backend[[:space:]]*=' "$file" 2>/dev/null | head -1 || true)
       ;;
+    shadow_root)
+      line=$(grep -E '^[[:space:]]*shadow_root[[:space:]]*=' "$file" 2>/dev/null | head -1 || true)
+      ;;
     *)
       printf '%s' "$default"
       return 0
