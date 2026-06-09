@@ -20,6 +20,7 @@ bash tests/sema/run.sh             # type checker pass + fail (gate)
 bash tests/differential/run.sh     # bootstrap vs selfhost must match (gate)
 bash tests/property/run.sh         # AST/token stability + fuzz-lite (gate)
 bash tests/ir/run_golden.sh        # bootstrap --ir vs .kir goldens (M1)
+bash tests/native/run_smoke.sh     # bootstrap --native smoke (L0; needs LLVM build)
 ```
 
 Regenerate codegen goldens after bytecode changes:
