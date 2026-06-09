@@ -9,7 +9,7 @@ on:
 # Bootstrap parity (pass2b_ns_rank) is validated against macOS libc++ order;
 # Linux bootstrap map order may differ until ranks are platform-neutral.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}
   cancel-in-progress: true
 
 jobs:

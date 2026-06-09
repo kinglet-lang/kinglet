@@ -52,7 +52,7 @@ for src in "$CASES_DIR"/*.kl; do
   out="$TMP_DIR/$name.out"
   err="$TMP_DIR/$name.err"
 
-  timeout "$PER_CASE_TIMEOUT" "$KINGLET" --run "$CLI_KBC" --ast "$src" >"$out" 2>"$err"
+  run_with_timeout "$PER_CASE_TIMEOUT" "$KINGLET" --run "$CLI_KBC" --ast "$src" >"$out" 2>"$err"
   actual_exit=$?
   strip_cr "$out" "$err"
 
