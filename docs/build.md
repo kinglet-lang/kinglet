@@ -45,3 +45,5 @@ On cache hit, `kinglet build` skips compilation.
 ## Tests
 
 `ensure_build_stamp` in `tests/common.sh` wraps `scripts/build/kinglet-build.sh --quiet`.
+
+KIR goldens: `bash tests/ir/run_golden.sh` (requires bootstrap with `--ir`).
