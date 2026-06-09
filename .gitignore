@@ -18,3 +18,7 @@ backend/vm/out/
 # CI bootstrap checkout (scripts/ci)
 bootstrap/
 .cli_kbc_compile.err
+.kinglet_build.err
+
+# Build cache and artefacts (ADR 0014 Klos)
+.kinglet/
