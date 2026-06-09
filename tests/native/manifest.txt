@@ -1,1 +1,5 @@
+# L1 native smoke (integer ops, control flow, calls; no io)
 just42
+addmain
+while_count
+if_pos

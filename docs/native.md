@@ -37,8 +37,18 @@ bash tests/native/run_smoke.sh
 
 Cases are listed in `tests/native/manifest.txt`. Expected exit codes live beside sources as `<name>.exit` when not zero.
 
-## Limitations (L0)
+## L1 coverage
 
-- Only `const_int` + `ret` in a single-block `main`.
-- No `io`, calls, or control flow yet (L1+).
+`tests/native/manifest.txt` lists programs that must match VM exit codes:
+
+- Literals (`just42`)
+- Locals + integer ops + calls (`addmain`)
+- `while` loops (`while_count`)
+- `if` + comparisons (`if_pos`)
+
+Still **no** `io`, strings, arrays, or structs on native (L2+).
+
+## Limitations
+
+- `kinglet build --backend native` compiles `[build].root` to a native executable in `.kinglet/out/` (toolchain-sized programs may fail until later phases).
 - Runtime is a thin exit-code wrapper only (`runtime/kinglet_rt_main.cc` in bootstrap).
