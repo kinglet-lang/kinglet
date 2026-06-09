@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Kinglet project driver (ADR 0014 M0).
+#
+#   ./kinglet build [--quiet]   Build toolchain artefact (Ref → Klos)
+#   ./kinglet ...               Pass through to bootstrap kinglet (VM host)
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_SH="$ROOT/scripts/build/kinglet-build.sh"
+
+pass_through() {
+  # shellcheck source=tests/common.sh
+  source "$ROOT/tests/common.sh"
+  local bootstrap
+  bootstrap=$(resolve_bootstrap "$ROOT") || exit 2
+  exec "$bootstrap" "$@"
+}
+
+case "${1:-}" in
+  build)
+    shift
+    exec bash "$BUILD_SH" "$@"
+    ;;
+  help|--help|-h)
+    cat <<EOF
+Usage: kinglet build [--quiet]
+       kinglet <bootstrap-args...>
+
+  build   Compile [build].root via Ref compiler; cache in .kinglet/
+  other   Forwarded to bootstrap kinglet (set KINGLET_BOOTSTRAP to override)
+
+See decisions/0014-compilation-toolchain-architecture.md
+EOF
+    ;;
+  "")
+    pass_through
+    ;;
+  *)
+    pass_through "$@"
+    ;;
+esac

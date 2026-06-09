@@ -22,3 +22,6 @@ bootstrap/
 
 # Build cache and artefacts (ADR 0014 Klos)
 .kinglet/
+
+# Root symlink to .kinglet/out/compiler.kbc (created by kinglet build)
+compiler.kbc
