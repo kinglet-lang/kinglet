@@ -16,8 +16,9 @@ jobs:
       cancel-in-progress: true
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [macos-latest, ubuntu-latest]
 
     env:
       BOOTSTRAP_REPO: sentomk/kinglet
