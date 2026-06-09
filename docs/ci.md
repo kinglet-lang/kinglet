@@ -13,7 +13,7 @@ GitHub Actions workflows live under [`.github/workflows/`](../.github/workflows/
 
 ```bash
 # 1. Clone bootstrap next to this repo (or into ./bootstrap)
-git clone https://github.com/sentomk/kinglet.git bootstrap
+git clone https://github.com/kinglet-lang/bootstrap.git bootstrap
 
 # 2. Install gn + ninja (macOS/Linux: see scripts/ci/install-gn-ninja.sh)
 
@@ -29,7 +29,7 @@ bash scripts/ci/run-tests.sh
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `BOOTSTRAP_REPO` | `sentomk/kinglet` | Bootstrap checkout (CI only) |
+| `BOOTSTRAP_REPO` | `kinglet-lang/bootstrap` | Bootstrap checkout (CI only) |
 | `BOOTSTRAP_REF` | `main` | Git ref for bootstrap |
 | `BOOTSTRAP_ROOT` | `$REPO/bootstrap` | Bootstrap source tree |
 | `KINGLET_BOOTSTRAP` | auto | C++ compiler binary |

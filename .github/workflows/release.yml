@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 45
 
     env:
-      BOOTSTRAP_REPO: sentomk/kinglet
+      BOOTSTRAP_REPO: kinglet-lang/bootstrap
       BOOTSTRAP_REF: main
 
     steps:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install GN and Ninja for bootstrap kinglet builds (same sources as sentomk/kinglet CI).
+# Install GN and Ninja for bootstrap kinglet builds (same sources as kinglet-lang/bootstrap CI).
 set -euo pipefail
 
 mkdir -p "$HOME/bin"

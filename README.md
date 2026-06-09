@@ -4,7 +4,7 @@
 
 Self-hosted Kinglet compiler: the `.kl` sources in this repo compile to bytecode
 (`.kbc`) that runs on the C++ VM from the
-[bootstrap compiler](https://github.com/sentomk/kinglet). Round-trip against the
+[bootstrap compiler](https://github.com/kinglet-lang/bootstrap). Round-trip against the
 bootstrap compiler is verified.
 
 Kinglet is a statically typed, value-semantics language (see
@@ -110,7 +110,7 @@ Detailed write-ups:
 
 | Repository | Role |
 |------------|------|
-| [github.com/sentomk/kinglet](https://github.com/sentomk/kinglet) | C++ bootstrap compiler + VM (reference implementation) |
+| [github.com/kinglet-lang/bootstrap](https://github.com/kinglet-lang/bootstrap) | C++ bootstrap compiler + VM (reference implementation) |
 | [github.com/kinglet-lang/kinglet](https://github.com/kinglet-lang/kinglet) | Self-host compiler sources + tests (this repo) |
 
 ## License
