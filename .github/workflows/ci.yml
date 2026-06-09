@@ -14,11 +14,13 @@ jobs:
     concurrency:
       group: ci-${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}
       cancel-in-progress: true
+
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        # macOS: reference platform for pass2b_ns_rank / bootstrap byte parity.
+        # ubuntu is exercised in release.yml; full suite on Linux is tracked in docs/ci.md.
+        os: [macos-latest]
 
     env:
       BOOTSTRAP_REPO: sentomk/kinglet

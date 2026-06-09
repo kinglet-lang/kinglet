@@ -6,7 +6,7 @@ GitHub Actions workflows live under [`.github/workflows/`](../.github/workflows/
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| **CI** | push / PR to `main` | Builds [sentomk/kinglet](https://github.com/sentomk/kinglet) bootstrap + VM, runs `tests/run_all.sh` (includes bootstrap parity gate) |
+| **CI** | push / PR to `main` | macOS: builds bootstrap + VM, runs `tests/run_all.sh` (bootstrap parity gate) |
 | **Release** | tag `v*` | Builds `compiler.kbc` and attaches it to the GitHub Release |
 
 ## Local reproduction
