@@ -47,3 +47,5 @@ On cache hit, `kinglet build` skips compilation.
 `ensure_build_stamp` in `tests/common.sh` wraps `scripts/build/kinglet-build.sh --quiet`.
 
 KIR goldens: `bash tests/ir/run_golden.sh` (requires bootstrap with `--ir`).
+
+Native smoke: `bash tests/native/run_smoke.sh` (requires bootstrap with `enable_llvm=true`; see [native.md](native.md)).
