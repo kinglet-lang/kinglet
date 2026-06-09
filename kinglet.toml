@@ -1,3 +1,15 @@
 [project]
 name = "kinglet"
 version = "0.1.0"
+
+[build]
+root = "core/main.kl"
+cache_dir = ".kinglet/cache"
+out_dir = ".kinglet/out"
+
+[build.compiler]
+engine = "ref"
+default_backend = "vm"
+
+[build.prove]
+shadow_root = "core/main.kl"
