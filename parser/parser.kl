@@ -338,10 +338,9 @@ Stmt parse_function_body(Parser p) {
       Token lb = previous(p);
       return parse_block_after_brace(p, lb);
     }
-    Token start = peek_tok(p);
     Expr v = expression(p);
     consume(p, TokenType::Semicolon, "Expected ';' after expression body.");
-    return Stmt::ReturnStmt(v, start.line, start.col);
+    return Stmt::ReturnStmt(v, expr_line(v), expr_col(v));
   }
   error_at(p, peek_tok(p), "Expected function body.");
   Stmt[] empty = [];
@@ -475,9 +474,8 @@ Stmt parse_for(Parser p) {
   if (is_var_decl_start(p)) {
     init = parse_var_decl(p);
   } else if (!check(p, TokenType::Semicolon)) {
-    Token st = peek_tok(p);
     Expr e = expression(p);
-    init = Stmt::ExprStmt(e, st.line, st.col);
+    init = Stmt::ExprStmt(e, expr_line(e), expr_col(e));
     consume(p, TokenType::Semicolon, "Expected ';' after for init.");
   } else {
     consume(p, TokenType::Semicolon, "Expected ';' after for init.");
@@ -489,9 +487,8 @@ Stmt parse_for(Parser p) {
   consume(p, TokenType::Semicolon, "Expected ';' after for condition.");
   Stmt step = Stmt::None;
   if (!check(p, TokenType::RightParen)) {
-    Token st = peek_tok(p);
     Expr e = expression(p);
-    step = Stmt::ExprStmt(e, st.line, st.col);
+    step = Stmt::ExprStmt(e, expr_line(e), expr_col(e));
   }
   consume(p, TokenType::RightParen, "Expected ')' after for clauses.");
   Stmt body = parse_statement(p);
@@ -532,15 +529,14 @@ Stmt parse_var_decl(Parser p) {
   if (match_tt(p, TokenType::Equal)) {
     init = expression(p);
   } else if (check(p, TokenType::LeftBrace) && ty.name != "Map" && ty.name != "Array") {
-    init = parse_struct_literal(p, ty, name);
+    init = parse_struct_literal(p, ty, start);
   }
   consume(p, TokenType::Semicolon, "Expected ';' after variable declaration.");
   return Stmt::VarDecl(storage, ty, name.lexeme, init, start.line, start.col);
 }
 
 Stmt parse_expression_statement(Parser p) {
-  Token start = peek_tok(p);
   Expr e = expression(p);
   consume(p, TokenType::Semicolon, "Expected ';' after expression.");
-  return Stmt::ExprStmt(e, start.line, start.col);
+  return Stmt::ExprStmt(e, expr_line(e), expr_col(e));
 }

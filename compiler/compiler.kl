@@ -611,6 +611,8 @@ int pass2b_ns_rank(string ns) {
   if (ns == "parser") { return 9; }
   if (ns == "compiler_state") { return 10; }
   if (ns == "helpers") { return 11; }
-  return 12;
+  if (ns == "expressions") { return 12; }
+  if (ns == "keywords") { return 13; }
+  return 14;
 }
 
