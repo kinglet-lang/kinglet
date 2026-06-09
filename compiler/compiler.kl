@@ -152,35 +152,41 @@ void register_func_alias(Compiler co, string alias_name, int func_index, int con
   co.funcs.push(FuncEntry { alias_name, func_index, const_index, param_count, first_param_type });
 }
 
-void _reg_import_func(Compiler co, string ns, string n, Parameter[] params, Stmt body, bool is_pub, int dl, int dc, string[] selected, bool is_sel) {
+void _reg_import_func(Compiler co, string ns, string n, string return_type, Parameter[] params, Stmt body, bool is_pub, int dl, int dc, string[] selected, bool is_sel) {
   if (is_pub && is_sel && !str_arr_contains(selected, n)) { return; }
   string qualified = ns + "::" + n;
   if (!func_exists(co, qualified)) {
     register_compiler_function(co, n, qualified, params.len(), first_param_type_name(params));
-    co.imports.pending.push(ImportedFunc { ns, qualified, params, body, dl, dc });
+    co.imports.pending.push(ImportedFunc { ns, qualified, return_type, params, body, dl, dc });
   }
   int fi = resolve_function(co, qualified);
   if (is_pub && is_sel && !func_exists(co, n)) {
     register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len(), co.funcs[fi].first_param_type);
   }
-  if (!is_pub && !func_exists(co, n)) {
+  // Bootstrap always overwrites the bare-name alias for private imports
+  // (compiler.cc:1930); last module wins via resolve_function reverse scan.
+  if (!is_pub) {
     register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len(), co.funcs[fi].first_param_type);
   }
 }
 
-void _reg_import_func_if(Compiler co, string ns, string n, Parameter[] params, Stmt body, bool is_pub, int dl, int dc, string[] selected, bool is_sel, bool want_pub) {
+void _reg_import_func_if(Compiler co, string ns, string n, string return_type, Parameter[] params, Stmt body, bool is_pub, int dl, int dc, string[] selected, bool is_sel, bool want_pub) {
   if (is_pub != want_pub) { return; }
-  _reg_import_func(co, ns, n, params, body, is_pub, dl, dc, selected, is_sel);
+  _reg_import_func(co, ns, n, return_type, params, body, is_pub, dl, dc, selected, is_sel);
 }
 
 void _reg_import_struct(Compiler co, string n, FieldDef[] fields, bool is_pub, string[] selected, bool is_sel) {
   if (is_sel && is_pub && !str_arr_contains(selected, n)) { return; }
-  if (!struct_exists(co, n)) { _register_struct_decl(co, n, fields); }
+  // Bootstrap always appends pub struct metas (may duplicate names in the
+  // chunk table); private structs are skipped once registered.
+  if (!is_pub && struct_exists(co, n)) { return; }
+  _register_struct_decl(co, n, fields);
 }
 
 void _reg_import_enum(Compiler co, string n, EnumVariant[] variants, bool is_pub, string[] selected, bool is_sel) {
   if (is_sel && is_pub && !str_arr_contains(selected, n)) { return; }
-  if (!enum_exists(co, n)) { _register_enum_decl(co, n, variants); }
+  if (!is_pub && enum_exists(co, n)) { return; }
+  _register_enum_decl(co, n, variants);
 }
 
 void _reg_import_struct_if(Compiler co, string n, FieldDef[] fields, bool is_pub, string[] selected, bool is_sel, bool want_pub) {
@@ -246,15 +252,15 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   bool is_sel = selected.len() > 0;
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
-      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
-        _reg_import_func_if(co, ns, n, params, body, is_pub, dl, dc, selected, is_sel, true),
+      Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
+        _reg_import_func_if(co, ns, n, rt.name, params, body, is_pub, dl, dc, selected, is_sel, true),
       _ => {},
     };
   }
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
-      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
-        _reg_import_func_if(co, ns, n, params, body, is_pub, dl, dc, selected, is_sel, false),
+      Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
+        _reg_import_func_if(co, ns, n, rt.name, params, body, is_pub, dl, dc, selected, is_sel, false),
       _ => {},
     };
   }
@@ -512,12 +518,12 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
     if (co.errors.len() > 0) { return co.errors.len(); }
   }
   // Pass 2b: compile imported function bodies.
-  // Stable-sort by namespace to match bootstrap's std::map iteration order
-  // (alphabetical by namespace). Insertion sort is in-place and stable.
+  // Stable-sort by namespace rank to match bootstrap compiler.cc pass 2b
+  // (unordered_map iteration on libc++ / macOS for this module set).
   for (int i = 1; i < co.imports.pending.len(); i = i + 1) {
     ImportedFunc key = co.imports.pending[i];
     int j = i - 1;
-    while (j >= 0 && co.imports.pending[j].ns > key.ns) {
+    while (j >= 0 && pass2b_ns_rank(co.imports.pending[j].ns) > pass2b_ns_rank(key.ns)) {
       co.imports.pending[j + 1] = co.imports.pending[j];
       j = j - 1;
     }
@@ -525,7 +531,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   }
   for (int i = 0; i < co.imports.pending.len(); i = i + 1) {
     ImportedFunc ifn = co.imports.pending[i];
-    compile_function_body(co, ifn.qualified_name, "", ifn.params, ifn.body, ifn.line, ifn.col);
+    compile_function_body(co, ifn.qualified_name, ifn.return_type, ifn.params, ifn.body, ifn.line, ifn.col);
     if (co.errors.len() > 0) { return co.errors.len(); }
   }
   return 0;
@@ -588,4 +594,23 @@ void _register_enum_decl(Compiler co, string name, EnumVariant[] variants) {
 }
 
 void skip_decl(Compiler co) { return; }
+
+// libc++ unordered_map iteration order observed when compiling core/main.kl
+// with the bootstrap compiler (clang / macOS). Keep in sync if bootstrap
+// toolchain changes.
+int pass2b_ns_rank(string ns) {
+  if (ns == "checker") { return 0; }
+  if (ns == "ast_printer") { return 1; }
+  if (ns == "scanner") { return 2; }
+  if (ns == "disasm") { return 3; }
+  if (ns == "ast") { return 4; }
+  if (ns == "bytecode") { return 5; }
+  if (ns == "codegen") { return 6; }
+  if (ns == "compiler") { return 7; }
+  if (ns == "checker_driver") { return 8; }
+  if (ns == "parser") { return 9; }
+  if (ns == "compiler_state") { return 10; }
+  if (ns == "helpers") { return 11; }
+  return 12;
+}
 

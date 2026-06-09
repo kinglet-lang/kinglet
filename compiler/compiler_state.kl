@@ -45,6 +45,7 @@ pub struct CompileError {
 pub struct ImportedFunc {
   string ns;
   string qualified_name;
+  string return_type;
   Parameter[] params;
   Stmt body;
   int line;
@@ -71,6 +72,11 @@ pub struct GlobalConst {
   Expr init;
 }
 
+pub struct LoopFrame {
+  int[] break_jumps;
+  int[] continue_jumps;
+}
+
 pub struct Compiler {
   Chunk chunk;
   Local[] locals;
@@ -80,8 +86,7 @@ pub struct Compiler {
   GlobalConst[] globals;
   string[] concepts;
   CompileError[] errors;
-  int[] loop_breaks;
-  int[] loop_continues;
+  LoopFrame[] loop_stack;
   int loop_depth;
   string[] usings;
   NativeUsingAlias[] native_usings;
@@ -95,7 +100,7 @@ pub struct Compiler {
 pub Compiler make_compiler() {
   Chunk c = bytecode::make_chunk();
   bytecode::register_builtin_enums(c);
-  return Compiler { c, [], [], 0, [], [], [], [], [], [], 0, [], [], [], [],
+  return Compiler { c, [], [], 0, [], [], [], [], [], 0, [], [], [], [],
     ImportState { [], [], [], [], "" }, false, false };
 }
 
@@ -129,14 +134,8 @@ pub int resolve_global_const(Compiler co, string name) {
   return -1;
 }
 
-// Indices of pre-registered built-in enums (mirrors bytecode::register_builtin_enums
-// order). Used by Cast/??/try compilation to encode (type_idx, variant_idx) operands.
 pub int castError_type_idx() => 0;
-pub int intResult_type_idx() => 1;
-pub int floatResult_type_idx() => 2;
 pub int castError_variant_NotANumber() => 1;
-pub int result_variant_Ok() => 0;
-pub int result_variant_Err() => 1;
 
 // jump backpatching
 
@@ -194,8 +193,12 @@ pub int resolve_local(Compiler co, string name) {
 }
 
 pub int resolve_function(Compiler co, string name) {
-  for (int i = 0; i < co.funcs.len(); i = i + 1) {
+  // Last registration wins for duplicate bare names (bootstrap
+  // function_indices_ map overwrite semantics).
+  int i = co.funcs.len() - 1;
+  while (i >= 0) {
     if (co.funcs[i].name == name) { return i; }
+    i = i - 1;
   }
   return -1;
 }
@@ -208,8 +211,10 @@ pub int resolve_enum(Compiler co, string name) {
 }
 
 pub int resolve_struct(Compiler co, string name) {
-  for (int i = 0; i < co.structs.len(); i = i + 1) {
+  int i = co.structs.len() - 1;
+  while (i >= 0) {
     if (co.structs[i].name == name) { return co.structs[i].type_idx; }
+    i = i - 1;
   }
   return -1;
 }

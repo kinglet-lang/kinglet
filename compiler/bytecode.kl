@@ -236,10 +236,7 @@ pub int add_enum_meta(Chunk c, EnumMeta meta) {
   return c.enum_metas.len() - 1;
 }
 
-// Pre-register the built-in error enums (CastError, IntResult, FloatResult).
-// Mirrors bootstrap compiler.cc:252-258. These appear at fixed indices 0/1/2
-// in chunk.enum_metas[] so that ?? / try / Cast can reference them by name
-// without depending on user code declaring them.
+// Pre-register CastError at chunk index 0 (bootstrap compiler.cc:26-35).
 pub void register_builtin_enums(Chunk c) {
   string[] cast_err_variants = [];
   cast_err_variants.push("Empty");
@@ -251,24 +248,6 @@ pub void register_builtin_enums(Chunk c) {
   cast_err_counts.push(1);
   EnumMeta cast_err = EnumMeta { "CastError", cast_err_variants, cast_err_counts };
   c.enum_metas.push(cast_err);
-
-  string[] int_result_variants = [];
-  int_result_variants.push("Ok");
-  int_result_variants.push("Err");
-  int[] int_result_counts = [];
-  int_result_counts.push(1);
-  int_result_counts.push(1);
-  EnumMeta int_result = EnumMeta { "IntResult", int_result_variants, int_result_counts };
-  c.enum_metas.push(int_result);
-
-  string[] float_result_variants = [];
-  float_result_variants.push("Ok");
-  float_result_variants.push("Err");
-  int[] float_result_counts = [];
-  float_result_counts.push(1);
-  float_result_counts.push(1);
-  EnumMeta float_result = EnumMeta { "FloatResult", float_result_variants, float_result_counts };
-  c.enum_metas.push(float_result);
 }
 
 // binary serialization helpers
