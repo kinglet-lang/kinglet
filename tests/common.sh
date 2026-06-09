@@ -84,6 +84,7 @@ resolve_bootstrap() {
   fi
 
   for candidate in \
+    "$root/../kinglet-bootstrap/out/Default/kinglet" \
     "$root/bootstrap/out/Default/kinglet" \
     "$root/../../kinglet/out/Default/kinglet" \
     "$root/../../../kinglet/out/Default/kinglet" \
