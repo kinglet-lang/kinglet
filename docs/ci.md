@@ -8,6 +8,7 @@ GitHub Actions workflows live under [`.github/workflows/`](../.github/workflows/
 |----------|---------|--------------|
 | **CI — test-fast** | push / PR to `main` | macOS: bootstrap + VM, runs `tests/run_all.sh` (Ref path, no Shadow parity) |
 | **CI — test-prove** | push / PR to `main` | macOS: bootstrap + VM, runs `./kinglet prove` (round-trip + differential) |
+| **CI — test-native** | push / PR to `main` | macOS: bootstrap with LLVM, runs `tests/native/run_smoke.sh` (11 cases) |
 | **Release** | tag `v*` | Builds `compiler.kbc` and attaches it to the GitHub Release |
 
 ## Local reproduction
@@ -25,7 +26,12 @@ bash scripts/ci/run-tests-fast.sh
 # 4. Prove tier (Shadow parity)
 bash scripts/ci/run-tests-prove.sh
 # or: ./kinglet prove
+
+# 5. Native smoke (requires LLVM; same as test-native job)
+bash scripts/ci/run-tests-native.sh
 ```
+
+V0 release checklist: [v0.md](v0.md).
 
 `tests/common.sh` resolves bootstrap at `bootstrap/out/Default/kinglet` when
 `KINGLET_BOOTSTRAP` is unset.

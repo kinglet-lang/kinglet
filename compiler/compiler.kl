@@ -401,6 +401,21 @@ bool body_has_tail_expr(Stmt body) {
   };
 }
 
+bool block_last_is_return(Stmt[] stmts) {
+  if (stmts.len() == 0) { return false; }
+  return stmts[stmts.len() - 1] match {
+    Stmt::ReturnStmt(let _v, let _l, let _c) => true,
+    _ => false,
+  };
+}
+
+bool body_has_explicit_return(Stmt body) {
+  return body match {
+    Stmt::Block(let stmts, let _bl, let _bc) => block_last_is_return(stmts),
+    _ => false,
+  };
+}
+
 void compile_function_body(Compiler co, string name, string ret_type, Parameter[] params, Stmt body, int line, int col) {
   int fi = resolve_function(co, name);
   if (fi < 0) {
@@ -425,9 +440,8 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
   // compile_block on the body's outermost block.
   co.fn_tail_return = !(ret_type == "void") && body_has_tail_expr(body);
   compile_stmt(co, body);
-  // Fallthrough safety: every body ends with Null + Return in case the user
-  // forgot. Matches compiler.cc:424.
-  if (co.errors.len() == 0) {
+  // Fallthrough safety: implicit null return when the body does not end with return.
+  if (co.errors.len() == 0 && !body_has_explicit_return(body)) {
     bytecode::write_op(co.chunk, OpCode::Null_, line, col);
     bytecode::write_op(co.chunk, OpCode::Return_, line, col);
   }

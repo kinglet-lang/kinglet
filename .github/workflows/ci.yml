@@ -88,3 +88,44 @@ jobs:
       - name: Run prove suite
         shell: bash
         run: bash scripts/ci/run-tests-prove.sh
+
+  test-native:
+    name: test native smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    concurrency:
+      group: ci-native-${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+
+    steps:
+      - name: Checkout self-host
+        uses: actions/checkout@v4
+
+      - name: Checkout bootstrap compiler
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.BOOTSTRAP_REPO }}
+          ref: ${{ env.BOOTSTRAP_REF }}
+          path: bootstrap
+
+      - name: Install GN
+        shell: bash
+        run: bash scripts/ci/install-gn-ninja.sh
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Install LLVM
+        shell: bash
+        run: brew install llvm
+
+      - name: Run native smoke
+        shell: bash
+        env:
+          LLVM_CONFIG: /opt/homebrew/opt/llvm/bin/llvm-config
+        run: bash scripts/ci/run-tests-native.sh
