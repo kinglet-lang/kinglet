@@ -84,6 +84,8 @@ bootstrap was built without LLVM.
 | Errors | `elvis_null`, `try_ok`, `try_propagate`, `cast_catch` | `?:`, `try`/`catch`, error propagation, cast errors |
 | Match and modules | `match_option_payload`, `enum_guard`, `match_int_lit`, `import_add` | Payload destructuring, guards, literal arms, cross-module calls |
 | Natives | `io_line`, `fs_roundtrip`, `sys_args_len` | `io::out`, `fs::__read`/`__write`, `sys::args` |
+| Floats and concat | `float_arith`, `float_cmp`, `str_concat` | Boxed-float math, relational dispatch, string `+` |
+| Methods and maps | `map_ops`, `array_methods`, `str_methods`, `bit_ops` | Map literal/index/has/keys/remove, array and string methods, bitwise ops |
 
 ## Runtime (`libkinglet_rt`)
 
@@ -92,14 +94,17 @@ Linked into every native binary. Bootstrap sources under `runtime/`:
 - Entry shim (`kinglet_rt_main.cc`) captures `argc`/`argv` for `sys::args` and
   maps user `main`'s return through `kl_exit_code` (0–255 clamp, same as VM).
 - **Wire format**: plain `int64` integers; heap refs tagged `0xFFFE<<48`;
-  no-payload enums inline as `0xFFFD<<48 | type | variant`.
-- **Implemented**: strings (slice, len), arrays (new/get/len/slice), structs
-  (new/field get/set), enums (payload, equality, casts), io/fs/sys natives.
+  no-payload enums inline as `0xFFFD<<48 | type | variant`; floats are boxed
+  heap values (`KlFloat`), so arithmetic dispatches through the runtime.
+- **Implemented**: strings (slice, index, len, methods), arrays (new/get/set/
+  len/slice/methods), maps (literal/index/has/keys/remove), structs (new/field
+  get/set), enums (payload, equality, casts), float math, string concat,
+  bitwise ops, io/fs/sys natives.
 
 ## Known gaps
 
-- Map operations and several array/string methods are not lowered yet;
-  programs using them fail with a named `unsupported KIR opcode` error.
-- `float` arithmetic is bit-carried only (`ConstFloat` as `i64` bits); no FP ops.
-- No GC — heap objects in RT use manual `new`/`delete`; RC may trail the VM.
+- No bool/null tags in the wire format: bools print as `1`/`0` and null prints
+  as `0` (both share the integer wire encoding).
+- No GC — heap objects in RT use manual `new`/`delete`; deterministic
+  destruction per ADR 0002 needs KIR drop insertion (future work).
 - Single host triple; cross-target builds are not wired into `kinglet build`.

@@ -1,0 +1,15 @@
+int main() {
+  string s = "  Hello World  ";
+  string tr = s.trim();
+  int r = tr.len();                       // 11
+  if (tr.starts_with("Hello")) { r = r + 1; }   // 12
+  if (tr.ends_with("World")) { r = r + 2; }     // 14
+  if (tr.contains("lo W")) { r = r + 4; }       // 18
+  r = r + tr.index_of("World");           // 24
+  r = r + tr.replace("World", "KL").len(); // 32
+  r = r + tr.to_upper().len();            // 43
+  r = r + tr.to_lower().len();            // 54
+  string[] parts = "a,b,c".split(",");
+  r = r + parts.len();                    // 57
+  return r;
+}

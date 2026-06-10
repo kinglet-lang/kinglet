@@ -1,0 +1,15 @@
+int main() {
+  Map<string, int> m = {"a": 1, "b": 2};
+  m["c"] = 3;
+  int r = m.len();           // 3
+  r = r + m["b"];            // 5
+  if (m.has("a")) { r = r + 10; }   // 15
+  if (!m.has("z")) { r = r + 20; }  // 35
+  m.remove("a");
+  r = r + m.len();           // 37
+  string[] ks = m.keys();
+  r = r + ks.len();          // 39
+  m["b"] = 20;
+  r = r + m["b"];            // 59
+  return r;
+}

@@ -1,0 +1,20 @@
+int main() {
+  int[] a = [3, 1, 2];
+  a.push(9);
+  int r = a.len();            // 4
+  r = r + a.pop();            // 13
+  a[0] = 7;
+  r = r + a[0];               // 20
+  if (a.contains(2)) { r = r + 1; }   // 21
+  r = r + a.index_of(2);      // 23
+  a.insert(1, 5);
+  r = r + a[1];               // 28
+  a.reverse();
+  r = r + a[0];               // 30
+  r = r + a.remove(0);        // 32
+  a.clear();
+  r = r + a.len();            // 32
+  a.resize(3, 4);
+  r = r + a.len() + a[2];     // 39
+  return r;
+}
