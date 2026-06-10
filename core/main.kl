@@ -72,9 +72,24 @@ int run_save_bytecode(string source, string source_path, string save_path, bool 
   return 0;
 }
 
+int arg_start(string[] argv) {
+  if (argv.len() == 0) {
+    return 0;
+  }
+  string a0 = argv[0];
+  if (a0.len() == 0 || a0.slice(0, 1) == "-") {
+    return 0;
+  }
+  if (a0.len() >= 3 && a0.slice(a0.len() - 3, a0.len()) == ".kl") {
+    return 0;
+  }
+  return 1;
+}
+
 int main() {
   string[] argv = sys::args();
-  if (argv.len() < 2) {
+  int start = arg_start(argv);
+  if (argv.len() < start + 1) {
     io::err.line("usage: kinglet [--ast | --check | --bytecode | --save-bytecode <out>] [--strip-debug] <source.kl>");
     return 64;
   }
@@ -85,7 +100,7 @@ int main() {
   bool strip_debug = false;
   string path = "";
   string save_path = "";
-  for (int i = 1; i < argv.len(); i = i + 1) {
+  for (int i = start; i < argv.len(); i = i + 1) {
     if (argv[i] == "--ast") {
       dump_ast = true;
     } else if (argv[i] == "--check") {

@@ -10,3 +10,4 @@ export KINGLET_BOOTSTRAP="$BOOTSTRAP"
 echo "KINGLET_BOOTSTRAP=$KINGLET_BOOTSTRAP"
 
 bash "$ROOT/tests/native/run_smoke.sh"
+bash "$ROOT/tests/native/run_driver_smoke.sh"

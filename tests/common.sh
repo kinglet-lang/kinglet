@@ -111,6 +111,8 @@ export_kinglet_bins() {
 }
 
 # Ensure toolchain compiler.kbc is built and stamp-fresh (ADR 0014 M0).
+# Selfhost suites need bytecode artefact; always use vm backend here even when
+# kinglet.toml sets default_backend=native (CI bootstrap may lack LLVM).
 # Prints absolute path to .kinglet/out/compiler.kbc on stdout.
 ensure_build_stamp() {
   local root="$1"
@@ -122,7 +124,7 @@ ensure_build_stamp() {
   if [[ -n "${2:-}" ]]; then
     export KINGLET_BOOTSTRAP="$2"
   fi
-  bash "$build_sh" --quiet "$root"
+  bash "$build_sh" --quiet --backend vm "$root"
 }
 
 # Deprecated alias — use ensure_build_stamp.

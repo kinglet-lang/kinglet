@@ -37,7 +37,7 @@ The driver may also install as **`klet`** (short alias, same subcommands); see
 | `[build].cache_dir` | `.kinglet/cache` | Cache directory |
 | `[build].out_dir` | `.kinglet/out` | Output directory |
 | `[build.compiler].engine` | `ref` | `ref` only in M0–M2 |
-| `[build.compiler].default_backend` | `vm` | `vm` or `native` (L1+) |
+| `[build.compiler].default_backend` | `native` | `vm` or `native` (L1+) |
 | `[build.prove].shadow_root` | `core/main.kl` | Entry for `kinglet prove` |
 
 ## Stamp
