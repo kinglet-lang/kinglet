@@ -125,12 +125,15 @@ compiler_source_manifest() {
 }
 
 compute_compiler_stamp() {
-  local root="$1" bootstrap="$2"
+  local root="$1" bootstrap="$2" backend_override="${3:-}"
   local tmp
   local build_root engine backend strip_debug
   build_root=$(get_build_config "$root" root "core/main.kl")
   engine=$(get_build_config "$root" engine "ref")
   backend=$(get_build_config "$root" default_backend "vm")
+  if [[ -n "$backend_override" ]]; then
+    backend="$backend_override"
+  fi
   strip_debug="${KINGLET_STRIP_DEBUG:-0}"
   tmp=$(mktemp)
   {

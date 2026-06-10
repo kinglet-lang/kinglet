@@ -46,6 +46,13 @@ module, links them with `libkinglet_rt` (process `main` shim), and writes an
 executable. Test suites still build `compiler.kbc` on the VM backend
 (`ensure_build_stamp` passes `--backend vm`), so they do not require LLVM.
 
+Native builds are incremental. `kinglet build` keeps a whole-build stamp
+(`.kinglet/stamps/compiler-native`) and exits early when nothing changed.
+On a stamp miss it passes `--obj-cache .kinglet/objects/native` to the
+bootstrap: each module's object is cached under a content stamp (resolved
+KIR fingerprint + compiler identity + target), so unchanged modules skip
+LLVM codegen and only edited modules are re-emitted before the relink.
+
 ## Embedded self-host compiler (L5-2)
 
 The bootstrap binary can embed a natively built toolchain compiler for
@@ -66,8 +73,9 @@ and execs it; no `compiler.kbc` or external compiler binary is involved.
 
 ```bash
 export KINGLET_BOOTSTRAP=/path/to/kinglet-bootstrap/out/Default/kinglet
-bash tests/native/run_smoke.sh          # manifest cases, native vs VM exit codes
-bash tests/native/run_driver_smoke.sh   # kinglet build --backend native + --check
+bash tests/native/run_smoke.sh             # manifest cases, native vs VM exit codes
+bash tests/native/run_driver_smoke.sh      # kinglet build --backend native + --check
+bash tests/native/run_incremental_smoke.sh # per-module object cache reuse
 ```
 
 Cases are listed in `tests/native/manifest.txt`; expected exit codes live beside

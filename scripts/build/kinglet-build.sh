@@ -69,16 +69,31 @@ if [[ "$BACKEND" == "native" ]]; then
   OUT_NAME="compiler"
   kinglet_layout_dirs "$ROOT"
   OUT_PATH="$KINGLET_OUT_DIR/$OUT_NAME"
+  NATIVE_STAMP=$(compute_compiler_stamp "$ROOT" "$BOOTSTRAP" native)
+  CACHED_NATIVE_STAMP=$(stamp_read "$ROOT" compiler-native)
+  if [[ "$NATIVE_STAMP" == "$CACHED_NATIVE_STAMP" && -x "$OUT_PATH" ]]; then
+    if [[ "$QUIET" -eq 0 ]]; then
+      echo "kinglet build: cache hit (stamp $NATIVE_STAMP)" >&2
+    fi
+    printf '%s\n' "$OUT_PATH"
+    exit 0
+  fi
+  # Per-module object cache: unchanged modules skip LLVM codegen and only
+  # changed ones are re-emitted before the relink.
+  OBJ_CACHE_DIR="$KINGLET_OBJECTS_DIR/native"
+  mkdir -p "$OBJ_CACHE_DIR"
   if [[ "$QUIET" -eq 0 ]]; then
     echo "kinglet build: native backend for $BUILD_ROOT ..." >&2
   fi
-  if ! "$BOOTSTRAP" --backend native -o "$OUT_PATH" "$ENTRY" 2>"$ROOT/.kinglet_build.err"; then
+  if ! "$BOOTSTRAP" --backend native -o "$OUT_PATH" --obj-cache "$OBJ_CACHE_DIR" "$ENTRY" \
+      2>"$ROOT/.kinglet_build.err"; then
     echo "kinglet build: native compile failed:" >&2
     cat "$ROOT/.kinglet_build.err" >&2
     rm -f "$ROOT/.kinglet_build.err"
     exit 2
   fi
   rm -f "$ROOT/.kinglet_build.err"
+  stamp_write "$ROOT" compiler-native "$NATIVE_STAMP" ""
   printf '%s\n' "$OUT_PATH"
   exit 0
 fi
