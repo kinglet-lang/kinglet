@@ -14,3 +14,8 @@ match_enum_simple
 elvis_null
 try_ok
 try_propagate
+match_option_payload
+enum_guard
+match_int_lit
+cast_catch
+import_add

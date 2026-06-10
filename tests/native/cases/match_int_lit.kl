@@ -1,0 +1,11 @@
+int describe(int x) {
+  return x match {
+    0 => 10,
+    1 => 11,
+    _ => 12,
+  };
+}
+
+int main() {
+  return describe(42);
+}

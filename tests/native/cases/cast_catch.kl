@@ -1,0 +1,9 @@
+int main() {
+  int b = 0;
+  try {
+    b = int("bad")?;
+  } catch (let _: CastError) {
+    b = 99;
+  }
+  return b;
+}

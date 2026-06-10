@@ -1,0 +1,5 @@
+import { "import_add_lib.kl" }
+
+int main() {
+  return import_add_lib::add(3, 4);
+}
