@@ -1,0 +1,7 @@
+int fail() {
+  return null;
+}
+
+int main() {
+  return fail() ?: 42;
+}

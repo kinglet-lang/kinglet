@@ -1,0 +1,9 @@
+int main() {
+  int x = 0;
+  try {
+    x = 5;
+  } catch (let _: string) {
+    x = 9;
+  }
+  return x;
+}

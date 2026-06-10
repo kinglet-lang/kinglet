@@ -1,0 +1,13 @@
+int fail() {
+  return null;
+}
+
+int main() {
+  int x = 0;
+  try {
+    x = fail()?;
+  } catch (let _: string) {
+    x = 3;
+  }
+  return x;
+}

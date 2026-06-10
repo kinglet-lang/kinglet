@@ -11,3 +11,6 @@ big_int
 neg_add
 enum_no_payload
 match_enum_simple
+elvis_null
+try_ok
+try_propagate
