@@ -96,11 +96,6 @@ Detailed write-ups:
 | Feature probes (`tests/probe`) | 28/28 | Bootstrap aligned on same corpus (see differential) |
 | Builtin methods | 26/26 runtime | Checker 24/26; see builtin README for fix list |
 
-## V0 verification
-
-Before archiving the bootstrap repo, run the three CI tiers locally — see
-[docs/v0.md](docs/v0.md).
-
 ## Documentation
 
 | Document | Purpose |

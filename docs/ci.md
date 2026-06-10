@@ -31,8 +31,6 @@ bash scripts/ci/run-tests-prove.sh
 bash scripts/ci/run-tests-native.sh
 ```
 
-V0 release checklist: [v0.md](v0.md).
-
 `tests/common.sh` resolves bootstrap at `bootstrap/out/Default/kinglet` when
 `KINGLET_BOOTSTRAP` is unset.
 
