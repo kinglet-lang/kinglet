@@ -1,0 +1,6 @@
+using sys;
+
+int main() {
+  string[] argv = sys::args();
+  return argv.len();
+}

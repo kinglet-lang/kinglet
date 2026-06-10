@@ -19,3 +19,6 @@ enum_guard
 match_int_lit
 cast_catch
 import_add
+io_line
+fs_roundtrip
+sys_args_len

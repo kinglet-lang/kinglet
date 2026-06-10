@@ -1,0 +1,13 @@
+using fs;
+using io;
+
+int main() {
+  string path = "/tmp/kinglet_native_fs_test.txt";
+  fs::__write(path, "ok");
+  string data = fs::__read(path);
+  if (data == null) {
+    return 1;
+  }
+  io::out.line(data);
+  return 0;
+}
