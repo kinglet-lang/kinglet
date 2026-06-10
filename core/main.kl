@@ -74,7 +74,7 @@ int run_save_bytecode(string source, string source_path, string save_path, bool 
 
 int main() {
   string[] argv = sys::args();
-  if (argv.len() < 1) {
+  if (argv.len() < 2) {
     io::err.line("usage: kinglet [--ast | --check | --bytecode | --save-bytecode <out>] [--strip-debug] <source.kl>");
     return 64;
   }
@@ -85,7 +85,7 @@ int main() {
   bool strip_debug = false;
   string path = "";
   string save_path = "";
-  for (int i = 0; i < argv.len(); i = i + 1) {
+  for (int i = 1; i < argv.len(); i = i + 1) {
     if (argv[i] == "--ast") {
       dump_ast = true;
     } else if (argv[i] == "--check") {

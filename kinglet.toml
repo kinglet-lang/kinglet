@@ -9,7 +9,7 @@ out_dir = ".kinglet/out"
 
 [build.compiler]
 engine = "ref"
-default_backend = "vm"
+default_backend = "native"
 
 [build.prove]
 shadow_root = "core/main.kl"

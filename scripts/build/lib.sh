@@ -89,6 +89,23 @@ bootstrap_compiler_id() {
   fi
 }
 
+# Hash of libkinglet_rt linked by native builds (ABI / runtime changes invalidate stamp).
+bootstrap_rt_id() {
+  local bootstrap="$1"
+  local dir rt
+  dir=$(cd "$(dirname "$bootstrap")" && pwd)
+  for rt in \
+    "$dir/obj/runtime/libkinglet_rt.a" \
+    "$dir/libkinglet_rt.a" \
+    "$dir/../obj/runtime/libkinglet_rt.a"; do
+    if [[ -f "$rt" ]]; then
+      shasum -a 256 "$rt" | awk '{print $1}'
+      return 0
+    fi
+  done
+  printf 'missing'
+}
+
 compiler_source_manifest() {
   local root="$1"
   local f rel
@@ -123,6 +140,7 @@ compute_compiler_stamp() {
     printf 'backend:%s\n' "$backend"
     printf 'strip_debug:%s\n' "$strip_debug"
     printf 'bootstrap:%s\n' "$(bootstrap_compiler_id "$bootstrap")"
+    printf 'rt_version:%s\n' "$(bootstrap_rt_id "$bootstrap")"
     if [[ -f "$root/kinglet.toml" ]]; then
       printf 'kinglet.toml:%s\n' "$(shasum -a 256 "$root/kinglet.toml" | awk '{print $1}')"
     fi
