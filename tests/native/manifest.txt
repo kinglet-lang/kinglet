@@ -3,3 +3,7 @@ just42
 addmain
 while_count
 if_pos
+# L2 native smoke (struct, array, string aggregates)
+struct_sum
+array_index
+str_len
