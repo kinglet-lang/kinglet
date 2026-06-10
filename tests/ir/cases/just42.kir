@@ -1,5 +1,5 @@
-fn main() {
+fn main() -> int {
   bb0:
-    %0 = const_int 42
+    %0 = const_int 42 0 : int
     ret 0
 }

@@ -31,3 +31,5 @@ map_ops
 array_methods
 str_methods
 bit_ops
+bool_null_print
+int64_high

@@ -111,8 +111,10 @@ Linked into every native binary. Bootstrap sources under `runtime/`:
 
 ## Known gaps
 
-- No bool/null tags in the wire format: bools print as `1`/`0` and null prints
-  as `0` (both share the integer wire encoding).
+- Typed KIR (ADR 0016) lowers known `int`/`float`/`bool` scalars to raw LLVM
+  registers; `string(bool)` / `string(null)` print `true`/`false`/`null`. Generic
+  `io` formatting and `+` concat still use the untagged wire format (`1`/`0`).
+- Fixed-width `int8`–`int64` and container element unboxing are not done yet.
 - No GC — heap objects in RT use manual `new`/`delete`; deterministic
   destruction per ADR 0002 needs KIR drop insertion (future work).
 - Single host triple; cross-target builds are not wired into `kinglet build`.

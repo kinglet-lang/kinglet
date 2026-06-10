@@ -1,0 +1,9 @@
+int main() {
+  if (string(true) != "true") {
+    return 1;
+  }
+  if (string(null) != "null") {
+    return 2;
+  }
+  return 0;
+}
