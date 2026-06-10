@@ -27,5 +27,3 @@
 26  4:3  Jmp +-15
 27  7:10  LoadLocal slot 0
 28  7:3  Return
-29  1:1  Null
-30  1:1  Return

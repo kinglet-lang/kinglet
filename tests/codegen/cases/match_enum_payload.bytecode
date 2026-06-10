@@ -29,5 +29,3 @@
 28  5:3  Pop
 29  9:10  LoadLocal slot 1
 30  9:3  Return
-31  3:1  Null
-32  3:1  Return

@@ -10,5 +10,3 @@
 9  3:3  Pop
 10  4:10  LoadLocal slot 1
 11  4:3  Return
-12  1:1  Null
-13  1:1  Return
