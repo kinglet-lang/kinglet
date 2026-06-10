@@ -1,0 +1,8 @@
+enum Color { Red, Green, Blue }
+
+int main() {
+  return Color::Green match {
+    Color::Green => 0,
+    _ => 1,
+  };
+}

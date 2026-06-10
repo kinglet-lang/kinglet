@@ -1,0 +1,7 @@
+int main() {
+  int big = 3000000000;
+  if (big == 3000000000) {
+    return 42;
+  }
+  return 1;
+}

@@ -7,3 +7,7 @@ if_pos
 struct_sum
 array_index
 str_len
+big_int
+neg_add
+enum_no_payload
+match_enum_simple
