@@ -1,6 +1,8 @@
 # Native backend (LLVM)
 
-Spike path for KIR → LLVM → executable ([ADR 0015](../decisions/0015-llvm-backend-roadmap.md) L0).
+KIR → LLVM IR → object → link → executable ([ADR 0015](../decisions/0015-llvm-backend-roadmap.md)).
+Bootstrap native lowering covers integers, control flow, strings, arrays, structs, and
+simple enum `match`. Error propagation, multi-module link, and I/O are not implemented yet.
 
 ## Prerequisites
 
@@ -35,20 +37,34 @@ export KINGLET_BOOTSTRAP=/path/to/kinglet-bootstrap/out/Default/kinglet
 bash tests/native/run_smoke.sh
 ```
 
-Cases are listed in `tests/native/manifest.txt`. Expected exit codes live beside sources as `<name>.exit` when not zero.
+Cases are listed in `tests/native/manifest.txt`. Expected exit codes live beside sources as `<name>.exit` when not zero. The smoke gate is **11 cases** (all must match VM exit codes; stderr must be empty).
 
-## L1 coverage
+## Manifest coverage
 
-`tests/native/manifest.txt` lists programs that must match VM exit codes:
+| Group | Cases | What they exercise |
+|-------|-------|-------------------|
+| Core | `just42`, `addmain`, `while_count`, `if_pos` | Literals, locals, integer ops, calls, loops, branches |
+| Aggregates | `struct_sum`, `array_index`, `str_len` | Struct fields, array index, string length via `libkinglet_rt` |
+| Numeric and enum | `big_int`, `neg_add`, `enum_no_payload`, `match_enum_simple` | Full `int64` range, unary negation, inline enum wire, simple `match` |
 
-- Literals (`just42`)
-- Locals + integer ops + calls (`addmain`)
-- `while` loops (`while_count`)
-- `if` + comparisons (`if_pos`)
+## Runtime (`libkinglet_rt`)
 
-Still **no** `io`, strings, arrays, or structs on native (L2+).
+Linked into every native binary. Bootstrap sources under `runtime/`:
+
+- Entry shim (`kinglet_rt_main.cc`) calls user `main` and maps the return value through `kl_exit_code` (0–255 clamp, same rules as the VM).
+- **Wire format**: plain `int64` integers; heap refs tagged `0xFFFE<<48`; no-payload enums inline as `0xFFFD<<48 | type | variant`.
+- **Implemented**: strings, arrays, structs, enum equality (`kl_value_eq`), heap enum allocation (`kl_enum_new`).
+
+## Not yet on native
+
+- `try` / `catch`, `?:` error propagation (`JmpIfErr`, `PropagateErr`)
+- Enum payload destructuring, guarded match arms
+- `float` / `double` arithmetic
+- `io`, `fs`, `sys` natives
+- Multi-module link (import graph → multiple `.o` files)
 
 ## Limitations
 
-- `kinglet build --backend native` compiles `[build].root` to a native executable in `.kinglet/out/` (toolchain-sized programs may fail until later phases).
-- Runtime is a thin exit-code wrapper only (`runtime/kinglet_rt_main.cc` in bootstrap).
+- `kinglet build --backend native` compiles `[build].root` to a native executable in `.kinglet/out/`; toolchain-sized programs may fail until error handling, linking, and I/O land.
+- Single host triple first; no DWARF debug info yet.
+- No GC — heap objects in RT use manual `new`/`delete` (RC may trail VM).
