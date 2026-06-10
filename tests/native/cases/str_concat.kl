@@ -1,0 +1,5 @@
+int main() {
+  string s = "ab" + "cd";
+  string t = s + "!";
+  return t.len();
+}

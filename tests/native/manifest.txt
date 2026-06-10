@@ -22,3 +22,7 @@ import_add
 io_line
 fs_roundtrip
 sys_args_len
+# float arithmetic and polymorphic + (concat) dispatch
+float_arith
+float_cmp
+str_concat

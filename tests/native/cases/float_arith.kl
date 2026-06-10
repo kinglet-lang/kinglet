@@ -1,0 +1,10 @@
+int main() {
+  float a = 1.5;
+  float b = 2.25;
+  float s = a + b;
+  float p = a * b;
+  float q = b / a;
+  float d = b - a;
+  int r = int(s * 8.0)? + int(p * 8.0)? + int(q * 2.0)? + int(d * 4.0)?;
+  return r;
+}

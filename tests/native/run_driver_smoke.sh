@@ -36,15 +36,19 @@ if [[ ! -x "$COMPILER" ]]; then
   exit 1
 fi
 
-out=$("$COMPILER" --check "$CASE" 2>&1) || {
-  echo "FAIL driver smoke: compiler --check exit $?" >&2
-  echo "$out" >&2
-  exit 1
-}
+# float_arith.kl exercises the scanner's float-literal parsing, which relies
+# on native float arithmetic inside the driver itself.
+for case_file in "$CASE" "$ROOT/tests/native/cases/float_arith.kl"; do
+  out=$("$COMPILER" --check "$case_file" 2>&1) || {
+    echo "FAIL driver smoke: compiler --check $case_file exit $?" >&2
+    echo "$out" >&2
+    exit 1
+  }
 
-if [[ "$out" != "OK: no type errors" ]]; then
-  echo "FAIL driver smoke: unexpected output: $out" >&2
-  exit 1
-fi
+  if [[ "$out" != "OK: no type errors" ]]; then
+    echo "FAIL driver smoke: unexpected output for $case_file: $out" >&2
+    exit 1
+  fi
+done
 
 echo "Native driver smoke passed."
