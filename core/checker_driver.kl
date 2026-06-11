@@ -23,7 +23,11 @@ pub int run_checker(Program prog) {
   int err_count = check_program(c, prog);
   for (int i = 0; i < c.errors.len(); i = i + 1) {
     CheckError e = c.errors[i];
-    io::err.line("{}:{}: {}", e.line, e.col, e.message);
+    if (e.is_warning) {
+      io::err.line("{}:{}: warning: {}", e.line, e.col, e.message);
+    } else {
+      io::err.line("{}:{}: {}", e.line, e.col, e.message);
+    }
   }
   return err_count;
 }

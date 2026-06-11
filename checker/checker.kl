@@ -130,6 +130,7 @@ pub struct CheckError {
   int line;
   int col;
   string message;
+  bool is_warning;
 }
 
 pub struct Checker {
@@ -166,7 +167,11 @@ int current_scope_start(Checker c) {
 }
 
 pub void add_error(Checker c, int line, int col, string msg) {
-  c.errors.push(CheckError { line, col, msg });
+  c.errors.push(CheckError { line, col, msg, false });
+}
+
+pub void add_warning(Checker c, int line, int col, string msg) {
+  c.errors.push(CheckError { line, col, msg, true });
 }
 
 void declare_var(Checker c, string name, Type t, int line, int col) {
@@ -1712,6 +1717,60 @@ void check_struct_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int lin
     ". Add a catch-all or destructure all fields with binding/wildcard patterns.");
 }
 
+void check_match_arm_warnings(Checker c, MatchArm[] arms) {
+  bool past_catchall = false;
+  string[] seen_enum = [];
+  bool seen_null = false;
+  for (int i = 0; i < arms.len(); i = i + 1) {
+    MatchArm arm = arms[i];
+    int pl = 0;
+    int pc = 0;
+    if (arm.pattern match { Expr::EnumPat(_, _, _, let l, let c) => true, _ => false, }) {
+      pl = arm.pattern match { Expr::EnumPat(_, _, _, let l, _) => l, _ => 0, };
+      pc = arm.pattern match { Expr::EnumPat(_, _, _, _, let c) => c, _ => 0, };
+    } else if (arm.pattern match { Expr::StructPat(_, _, let l, let c) => true, _ => false, }) {
+      pl = arm.pattern match { Expr::StructPat(_, _, let l, _) => l, _ => 0, };
+      pc = arm.pattern match { Expr::StructPat(_, _, _, let c) => c, _ => 0, };
+    } else if (arm.pattern match { Expr::Ident(_, let l, let c) => true, _ => false, }) {
+      pl = arm.pattern match { Expr::Ident(_, let l, _) => l, _ => 0, };
+      pc = arm.pattern match { Expr::Ident(_, _, let c) => c, _ => 0, };
+    } else if (arm.pattern match { Expr::BindingPat(_, let l, let c) => true, _ => false, }) {
+      pl = arm.pattern match { Expr::BindingPat(_, let l, _) => l, _ => 0, };
+      pc = arm.pattern match { Expr::BindingPat(_, _, let c) => c, _ => 0, };
+    }
+    if (past_catchall) {
+      add_warning(c, pl, pc, "Unreachable match arm.");
+      continue;
+    }
+    if (match_arm_is_catchall(arm)) {
+      past_catchall = true;
+      continue;
+    }
+    if (!match_arm_has_guard(arm)) {
+      if (pattern_is_null_literal(arm.pattern)) {
+        if (seen_null) {
+          add_warning(c, pl, pc, "Duplicate match arm for 'null'.");
+        }
+        seen_null = true;
+      }
+      if (arm.pattern match { Expr::EnumPat(let en, let vn, _, _, _) => true, _ => false, }) {
+        string en = arm.pattern match { Expr::EnumPat(let n, _, _, _, _) => n, _ => "", };
+        string vn = arm.pattern match { Expr::EnumPat(_, let n, _, _, _) => n, _ => "", };
+        string key = en + "::" + vn;
+        bool dup = false;
+        for (int j = 0; j < seen_enum.len(); j = j + 1) {
+          if (seen_enum[j] == key) { dup = true; break; }
+        }
+        if (dup) {
+          add_warning(c, pl, pc, "Duplicate match arm for variant '" + vn + "'.");
+        } else {
+          seen_enum.push(key);
+        }
+      }
+    }
+  }
+}
+
 void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
   if (scrutinee.nullable) {
     check_nullable_exhaustive(c, scrutinee, arms, line, col);
@@ -1747,6 +1806,7 @@ Type check_match(Checker c, Expr val, MatchArm[] arms, int line, int col) {
     result = unify_match_types(c, result, bt, line, col);
   }
   check_match_exhaustive(c, vt, arms, line, col);
+  check_match_arm_warnings(c, arms);
   return result;
 }
 
@@ -2046,5 +2106,9 @@ pub int check_program(Checker c, Program prog) {
     check_decl(c, prog.declarations[i]);
   }
   pop_scope(c);
-  return c.errors.len();
+  int n = 0;
+  for (int i = 0; i < c.errors.len(); i = i + 1) {
+    if (!c.errors[i].is_warning) { n = n + 1; }
+  }
+  return n;
 }

@@ -1,0 +1,13 @@
+// RUN: check
+// EXPECT-EXIT: 0
+// CHECK-ERR: warning: Unreachable match arm
+int pick(int x) {
+  return x match {
+    _ => 1,
+    0 => 2,
+  };
+}
+
+int main() {
+  return pick(3);
+}

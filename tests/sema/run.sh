@@ -4,4 +4,5 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 exec bash "$ROOT/tests/harness/run.sh" \
   "$ROOT/tests/sema/pass" \
-  "$ROOT/tests/sema/fail"
+  "$ROOT/tests/sema/fail" \
+  "$ROOT/tests/sema/warn"
