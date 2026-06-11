@@ -5,66 +5,10 @@
 # `ensure_build_stamp` (Klos + stamp via bootstrap Ref compile on cache miss).
 # A warm cache hit is ~instant; bootstrap compile is ~0.1s locally.
 #
-# Selfhost suites run bytecode on backend/vm (`backend/vm/out/kinglet`).
-# Bootstrap C++ kinglet compiles compiler.kbc and powers differential tests.
+# Selfhost suites run bytecode on the bootstrap Ref compiler, which doubles as
+# the VM host (`--run`). The standalone backend/vm C++ VM copy was removed; the
+# self-host backend is to be reimplemented in Kinglet itself.
 # Override with KINGLET (VM host) or KINGLET_BOOTSTRAP (C++ compiler).
-
-# Build backend/vm/out/kinglet when missing or stale vs vm sources.
-build_backend_vm() {
-  local root="$1"
-  local build_sh="$root/backend/vm/build.sh"
-  if [[ ! -f "$build_sh" ]]; then
-    echo "backend/vm/build.sh not found under $root" >&2
-    return 2
-  fi
-  bash "$build_sh"
-}
-
-# Resolve the selfhost VM host (backend/vm). Prints absolute path, exits 2 on
-# failure.
-resolve_kinglet() {
-  local root="$1"
-  local k="${KINGLET:-}"
-  local vm="$root/backend/vm/out/kinglet"
-  local f
-  local needs_build=0
-
-  if [[ -n "$k" ]]; then
-    if [[ -x "$k" || -f "$k" ]]; then
-      printf '%s' "$k"
-      return 0
-    fi
-    if [[ -x "$k.exe" || -f "$k.exe" ]]; then
-      printf '%s' "$k.exe"
-      return 0
-    fi
-  fi
-
-  if [[ ! -x "$vm" ]]; then
-    needs_build=1
-  else
-    for f in "$root"/backend/vm/*.cc "$root"/backend/vm/*.h; do
-      [[ -f "$f" ]] || continue
-      if [[ "$f" -nt "$vm" ]]; then
-        needs_build=1
-        break
-      fi
-    done
-  fi
-
-  if [[ "$needs_build" -eq 1 ]]; then
-    build_backend_vm "$root" || return 2
-  fi
-
-  if [[ -x "$vm" ]]; then
-    printf '%s' "$(cd "$(dirname "$vm")" && pwd)/$(basename "$vm")"
-    return 0
-  fi
-
-  echo "backend/vm kinglet not found (expected $vm)" >&2
-  echo "Set KINGLET=/path/to/kinglet to override." >&2
-  return 2
-}
 
 # Bootstrap C++ compiler + full CLI (--ast, --check, --save-bytecode on .kl).
 resolve_bootstrap() {
@@ -103,10 +47,11 @@ resolve_bootstrap() {
 }
 
 # Export VM host + bootstrap paths for suites that source common.sh.
+# The bootstrap Ref compiler is the VM host (`--run`); KINGLET overrides it.
 export_kinglet_bins() {
   local root="$1"
-  export KINGLET_BIN="$(resolve_kinglet "$root")" || return 2
   export KINGLET_BOOTSTRAP="$(resolve_bootstrap "$root")" || return 2
+  export KINGLET_BIN="${KINGLET:-$KINGLET_BOOTSTRAP}"
   export KINGLET="$KINGLET_BIN"
 }
 

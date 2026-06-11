@@ -42,7 +42,7 @@ bash scripts/ci/run-tests-native.sh
 | `BOOTSTRAP_REF` | `main` | Git ref for bootstrap |
 | `BOOTSTRAP_ROOT` | `$REPO/bootstrap` | Bootstrap source tree |
 | `KINGLET_BOOTSTRAP` | auto | C++ compiler binary |
-| `KINGLET` | `backend/vm/out/kinglet` | VM host for `--run` |
+| `KINGLET` | `$KINGLET_BOOTSTRAP` | VM host for `--run` (bootstrap Ref) |
 | `KINGLET_COMPILE_TIMEOUT` | `600` | Self-host compile timeout (seconds) |
 
 ## Platform notes

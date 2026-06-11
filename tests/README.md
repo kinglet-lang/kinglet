@@ -79,7 +79,7 @@ Environment:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `KINGLET` | `backend/vm/out/kinglet` (auto-built) | selfhost VM host |
+| `KINGLET` | `$KINGLET_BOOTSTRAP` (bootstrap Ref) | selfhost VM host |
 | `KINGLET_BOOTSTRAP` | `../kinglet/out/Default/kinglet` | C++ compiler + differential bootstrap |
 | `FUZZ_ROUNDS` | `32` | property fuzz iterations |
 | `PER_CASE_TIMEOUT` | `15`–`30` | parser/property wall-clock cap |

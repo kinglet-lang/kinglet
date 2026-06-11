@@ -39,10 +39,6 @@ jobs:
         shell: bash
         run: bash scripts/ci/build-bootstrap.sh
 
-      - name: Build VM host
-        shell: bash
-        run: bash backend/vm/build.sh
-
       - name: Build compiler.kbc
         shell: bash
         run: |

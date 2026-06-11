@@ -12,9 +12,6 @@ err.log
 # Smoke / scratch drivers (underscore prefix = excluded from suite)
 codegen/_*.kl
 
-# backend/vm build output
-backend/vm/out/
-
 # CI bootstrap checkout (scripts/ci)
 bootstrap/
 .cli_kbc_compile.err

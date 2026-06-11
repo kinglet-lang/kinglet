@@ -10,5 +10,4 @@ echo "KINGLET_BOOTSTRAP=$KINGLET_BOOTSTRAP"
 echo "KINGLET (VM)=$KINGLET_BIN"
 
 bash "$ROOT/scripts/ci/setup-fixtures.sh"
-bash "$ROOT/backend/vm/build.sh"
 bash "$ROOT/tests/run_all.sh"

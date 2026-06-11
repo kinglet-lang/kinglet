@@ -32,8 +32,8 @@ export KINGLET_BOOTSTRAP=../kinglet/out/Default/kinglet   # adjust if needed
 
 # Shadow / VM path (prove, parser goldens): build bytecode explicitly
 ./kinglet build --backend vm
-export KINGLET=backend/vm/out/kinglet
-$KINGLET --run .kinglet/out/compiler.kbc --ast path/to/file.kl
+# The bootstrap Ref compiler doubles as the VM host (`--run`):
+$KINGLET_BOOTSTRAP --run .kinglet/out/compiler.kbc --ast path/to/file.kl
 
 # One-off native program (LLVM backend)
 $KINGLET_BOOTSTRAP --native /tmp/out path/to/file.kl && /tmp/out
@@ -54,7 +54,6 @@ kinglet-self/
   parser/         AST, recursive-descent + Pratt parser
   checker/        Type checker
   compiler/       AST → bytecode (imports, match, builtins, …)
-  backend/        C++ VM experiments (embedded self-host; see decisions/0010)
   decisions/      Design RFCs (English)
   tests/          Harness-driven suites (see tests/README.md)
   kinglet         Project build driver (`./kinglet build`)
