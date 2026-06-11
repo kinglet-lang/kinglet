@@ -111,10 +111,11 @@ Linked into every native binary. Bootstrap sources under `runtime/`:
 
 ## Known gaps
 
-- Typed KIR (ADR 0016) lowers known `int`/`float`/`bool` scalars to raw LLVM
-  registers; `string(bool)` / `string(null)` print `true`/`false`/`null`. Generic
-  `io` formatting and `+` concat still use the untagged wire format (`1`/`0`).
-- Fixed-width `int8`–`int64` and container element unboxing are not done yet.
+See [0016 phase 2](../decisions/0016-typed-kir.md) and [0015 D6](../decisions/0015-llvm-backend-roadmap.md).
+
+- Typed KIR phase 1: scalar `string(bool)` / `string(null)` print correctly;
+  generic `io` formatting and `+` concat may still show wire `1`/`0`.
+- Fixed-width `int8`–`int64` and container element unboxing — planned (V0).
 - No GC — heap objects in RT use manual `new`/`delete`; deterministic
   destruction per ADR 0002 needs KIR drop insertion (future work).
 - Single host triple; cross-target builds are not wired into `kinglet build`.

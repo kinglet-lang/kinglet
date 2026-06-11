@@ -24,13 +24,19 @@ the language spec alone.
 # Bootstrap compiler (C++ reference implementation)
 export KINGLET_BOOTSTRAP=../kinglet/out/Default/kinglet   # adjust if needed
 
-# Build toolchain artefact (Ref compile → .kinglet/out/compiler.kbc; cached by stamp)
+# Build toolchain (Ref → native .kinglet/out/compiler by default; stamp-cached)
 ./kinglet build
 
-# Run the self-host CLI on a source file (VM host = backend/vm/out/kinglet)
+# Native compiler driver (no compiler.kbc on hot path)
+.kinglet/out/compiler --check path/to/file.kl
+
+# Shadow / VM path (prove, parser goldens): build bytecode explicitly
+./kinglet build --backend vm
 export KINGLET=backend/vm/out/kinglet
 $KINGLET --run .kinglet/out/compiler.kbc --ast path/to/file.kl
-$KINGLET --run .kinglet/out/compiler.kbc --save-bytecode out.kbc path/to/file.kl
+
+# One-off native program (LLVM backend)
+$KINGLET_BOOTSTRAP --native /tmp/out path/to/file.kl && /tmp/out
 
 # Run the full test suite (rebuilds only on stamp miss)
 bash tests/run_all.sh
@@ -89,7 +95,7 @@ Detailed write-ups:
 - [tests/builtin_methods/README.md](tests/builtin_methods/README.md) — builtin
   method coverage, opcode reference, checker gaps
 
-### Current snapshot (2026-06-08)
+### Current snapshot (2026-06-10)
 
 | Matrix | run✓ | Notes |
 |--------|-----:|-------|

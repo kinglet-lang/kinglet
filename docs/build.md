@@ -1,33 +1,39 @@
-# Build system (M0)
+# Build system
 
-See [decisions/0014](../decisions/0014-compilation-toolchain-architecture.md).
+See [decisions/0014](../decisions/0014-compilation-toolchain-architecture.md) (implemented).
 
 ## Layout
 
 ```
 .kinglet/
-├── cache/           # reserved for stamp indexes (M0+)
-├── objects/         # content-addressed blobs + <id>.meta
-├── out/             # default outputs (e.g. compiler.kbc)
-└── stamps/          # last-success stamp per target
+├── cache/           # reserved for stamp indexes
+├── objects/         # content-addressed blobs + <id>.meta (+ native/ obj cache)
+├── out/             # default outputs (compiler native exe, or compiler.kbc with --backend vm)
+└── stamps/          # last-success fingerprint per target (compiler, compiler-native, …)
 ```
 
 ## Commands
 
 ```bash
-./kinglet build              # compile [build].root via bootstrap (Ref)
+./kinglet build              # Ref compile [build].root → .kinglet/out/compiler (native default)
+./kinglet build --backend vm # → .kinglet/out/compiler.kbc (Shadow / prove path)
 ./kinglet build --quiet      # cache hit/miss only on stderr
 ./kinglet prove              # Shadow vs Ref parity (round-trip + differential)
 ./kinglet debug emit-kbc out.kbc src.kl
 ./kinglet debug emit-kbc --shadow out.kbc src.kl
+./kinglet native -o out prog.kl   # shorthand for bootstrap --backend native
 KINGLET_BOOTSTRAP=... ./kinglet build
 ```
 
 `build` uses the Ref compiler only. `prove` runs Shadow parity suites. Non-build
-subcommands other than `prove` / `debug` / `native` forward to bootstrap `kinglet`.
+subcommands forward to bootstrap `kinglet` except `build` / `prove` / `debug`.
 
-The driver may also install as **`klet`** (short alias, same subcommands); see
-[0014](../decisions/0014-compilation-toolchain-architecture.md) § D5.
+### `kinglet clean` (planned — V0 CLI)
+
+Prune `.kinglet/objects/` blobs no longer referenced by any stamp. **Build-cache
+housekeeping only** — not language/runtime GC ([0014](../decisions/0014-compilation-toolchain-architecture.md)
+§ Post-0014). Not implemented in the Bash driver yet; until then remove
+`.kinglet/objects` manually if needed.
 
 ## Configuration (`kinglet.toml`)
 
@@ -36,7 +42,7 @@ The driver may also install as **`klet`** (short alias, same subcommands); see
 | `[build].root` | `core/main.kl` | Toolchain entry source |
 | `[build].cache_dir` | `.kinglet/cache` | Cache directory |
 | `[build].out_dir` | `.kinglet/out` | Output directory |
-| `[build.compiler].engine` | `ref` | `ref` only in M0–M2 |
+| `[build.compiler].engine` | `ref` | `ref` only (`shadow` via `kinglet prove`) |
 | `[build.compiler].default_backend` | `native` | `vm` or `native` (L1+) |
 | `[build.prove].shadow_root` | `core/main.kl` | Entry for `kinglet prove` |
 
