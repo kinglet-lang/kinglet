@@ -1,0 +1,9 @@
+int main() {
+  int32 x = 2000000000i32;
+  int32 y = 2000000000i32;
+  int32 z = x + y;
+  if (z != -294967296i32) {
+    return 1;
+  }
+  return 42;
+}

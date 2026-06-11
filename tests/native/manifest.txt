@@ -33,3 +33,5 @@ str_methods
 bit_ops
 bool_null_print
 int64_high
+fixed_width_int32
+fixed_width_parity

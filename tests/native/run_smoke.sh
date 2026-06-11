@@ -62,7 +62,31 @@ run_case() {
     return
   fi
 
-  "$bin" 2>>"$stderr" || ec=$?
+  local stdout_file="$TMP_DIR/$name.stdout"
+  local parity_file="$CASES_DIR/$name.stdout"
+  if [[ -f "$parity_file" ]]; then
+    local vm_stdout="$TMP_DIR/$name.vm.stdout"
+    local want_stdout="$TMP_DIR/$name.want.stdout"
+    cp "$parity_file" "$want_stdout"
+    "$BOOTSTRAP" "$src" >"$vm_stdout" 2>>"$stderr" || true
+    strip_cr "$want_stdout" "$vm_stdout"
+    if ! diff -u "$want_stdout" "$vm_stdout" >/dev/null; then
+      echo "FAIL $name: VM stdout mismatch" >&2
+      diff -u "$want_stdout" "$vm_stdout" >&2
+      FAILURES=$((FAILURES + 1))
+      return
+    fi
+    "$bin" >"$stdout_file" 2>>"$stderr" || ec=$?
+    strip_cr "$stdout_file"
+    if ! diff -u "$vm_stdout" "$stdout_file" >/dev/null; then
+      echo "FAIL $name: native stdout != VM stdout" >&2
+      diff -u "$vm_stdout" "$stdout_file" >&2
+      FAILURES=$((FAILURES + 1))
+      return
+    fi
+  else
+    "$bin" 2>>"$stderr" || ec=$?
+  fi
   strip_cr "$stderr"
 
   if [[ "$ec" -ne "$want_exit" ]]; then
