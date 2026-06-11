@@ -1,0 +1,14 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Missing case: null
+bool? pick(bool ok) {
+  return ok ? true : null;
+}
+
+int main() {
+  bool? b = pick(false);
+  return b match {
+    true => 1,
+    false => 2,
+  };
+}

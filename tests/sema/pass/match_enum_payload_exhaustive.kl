@@ -1,0 +1,10 @@
+// RUN: check
+enum Option { Some(int), None, }
+
+int main() {
+  Option o = Option::Some(42);
+  return o match {
+    Option::Some(let x) => x,
+    Option::None => 0,
+  };
+}

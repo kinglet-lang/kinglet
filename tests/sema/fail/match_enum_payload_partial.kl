@@ -1,0 +1,12 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Non-exhaustive payload pattern
+enum Option { Some(int), None, }
+
+int main() {
+  Option o = Option::Some(0);
+  return o match {
+    Option::Some(0) => 1,
+    Option::None => 0,
+  };
+}

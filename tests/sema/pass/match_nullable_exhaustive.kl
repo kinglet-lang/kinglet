@@ -1,0 +1,12 @@
+// RUN: check
+int? pick(bool ok) {
+  return ok ? 42 : null;
+}
+
+int main() {
+  int? v = pick(false);
+  return v match {
+    null => 0,
+    let n => n,
+  };
+}

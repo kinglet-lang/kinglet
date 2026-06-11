@@ -1,0 +1,9 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Missing non-null case
+int main() {
+  int? v = null;
+  return v match {
+    null => 0,
+  };
+}

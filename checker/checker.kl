@@ -23,6 +23,7 @@ pub enum TypeKind {
 pub struct Type {
   TypeKind kind;
   string tag;
+  bool nullable;
 }
 
 pub struct StructField {
@@ -58,18 +59,18 @@ pub struct NativeUsingAlias {
   string member;
 }
 
-pub Type type_int()     => Type { TypeKind::Int,     "" };
-pub Type type_float()   => Type { TypeKind::Float,   "" };
-pub Type type_bool()    => Type { TypeKind::Bool,    "" };
-pub Type type_string()  => Type { TypeKind::String,  "" };
-pub Type type_void()    => Type { TypeKind::Void,    "" };
-pub Type type_unknown() => Type { TypeKind::Unknown, "" };
-pub Type type_null()    => Type { TypeKind::Null,    "" };
+pub Type type_int()     => Type { TypeKind::Int,     "", false };
+pub Type type_float()   => Type { TypeKind::Float,   "", false };
+pub Type type_bool()    => Type { TypeKind::Bool,    "", false };
+pub Type type_string()  => Type { TypeKind::String,  "", false };
+pub Type type_void()    => Type { TypeKind::Void,    "", false };
+pub Type type_unknown() => Type { TypeKind::Unknown, "", false };
+pub Type type_null()    => Type { TypeKind::Null,    "", false };
 
-pub Type type_array(string elem_enc) => Type { TypeKind::Array, elem_enc };
-pub Type type_map(string key_enc, string val_enc) => Type { TypeKind::Map, key_enc + ":" + val_enc };
-pub Type type_struct(string name) => Type { TypeKind::Struct, name };
-pub Type type_enum(string name) => Type { TypeKind::Enum, name };
+pub Type type_array(string elem_enc) => Type { TypeKind::Array, elem_enc, false };
+pub Type type_map(string key_enc, string val_enc) => Type { TypeKind::Map, key_enc + ":" + val_enc, false };
+pub Type type_struct(string name) => Type { TypeKind::Struct, name, false };
+pub Type type_enum(string name) => Type { TypeKind::Enum, name, false };
 
 pub string type_kind_name(Type t) {
   return t.kind match {
@@ -326,7 +327,9 @@ Type resolve_type_expr(Checker c, TypeExpr t) {
     return type_map(t.type_args[0], t.type_args[1]);
   }
   if (t.name == "Nullable" && t.type_args.len() == 1) {
-    return resolve_type_name(c, t.type_args[0]);
+    Type inner = resolve_type_name(c, t.type_args[0]);
+    inner.nullable = true;
+    return inner;
   }
   Type scalar = resolve_scalar_name(t.name);
   if (scalar.kind != TypeKind::Unknown) { return scalar; }
@@ -1420,6 +1423,46 @@ string[] remove_string(string[] names, string target) {
   return out;
 }
 
+bool pattern_is_null_literal(Expr pattern) {
+  return pattern match { Expr::NullLit(_, _) => true, _ => false, };
+}
+
+bool payload_pattern_is_exhaustive(Checker c, Expr pattern, Type payload_type) {
+  if (match_pattern_is_catchall(pattern)) { return true; }
+  if (payload_type.kind == TypeKind::Bool) { return false; }
+  if (payload_type.kind == TypeKind::Int) { return false; }
+  if (payload_type.kind == TypeKind::Float) { return false; }
+  if (payload_type.kind == TypeKind::String) { return false; }
+  if (payload_type.kind == TypeKind::Enum) {
+    if (!(pattern match { Expr::EnumPat(_, _, _, _, _) => true, _ => false, })) {
+      return false;
+    }
+    string en = pattern match {
+      Expr::EnumPat(let n, _, _, _, _) => n,
+      _ => "",
+    };
+    if (en != payload_type.tag) { return false; }
+    string vn = pattern match {
+      Expr::EnumPat(_, let n, _, _, _) => n,
+      _ => "",
+    };
+    Expr[] fs = pattern match {
+      Expr::EnumPat(_, _, let f, _, _) => f,
+      _ => [],
+    };
+    EnumVariantInfo variant = lookup_enum_variant(c, en, vn);
+    if (variant.name.len() == 0) { return false; }
+    if (variant.payload_encs.len() == 0) { return true; }
+    if (fs.len() != variant.payload_encs.len()) { return false; }
+    for (int i = 0; i < fs.len(); i = i + 1) {
+      Type pt = resolve_type_name(c, variant.payload_encs[i]);
+      if (!payload_pattern_is_exhaustive(c, fs[i], pt)) { return false; }
+    }
+    return true;
+  }
+  return false;
+}
+
 void check_bool_exhaustive(Checker c, MatchArm[] arms, int line, int col) {
   bool has_true = false;
   bool has_false = false;
@@ -1446,16 +1489,58 @@ void check_bool_exhaustive(Checker c, MatchArm[] arms, int line, int col) {
 void check_enum_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
   string[] uncovered = enum_variant_names(c, scrutinee.tag);
   if (uncovered.len() == 0) { return; }
+  string[] partial_payload = [];
   for (int i = 0; i < arms.len(); i = i + 1) {
     MatchArm arm = arms[i];
     if (match_arm_is_catchall(arm)) {
       uncovered = [];
       break;
     }
-    string vn = match_pattern_enum_variant(arm.pattern);
-    if (vn.len() > 0) {
-      uncovered = remove_string(uncovered, vn);
+    if (!(arm.pattern match { Expr::EnumPat(_, _, _, _, _) => true, _ => false, })) {
+      continue;
     }
+    string vn = match_pattern_enum_variant(arm.pattern);
+    string en = arm.pattern match {
+      Expr::EnumPat(let n, _, _, _, _) => n,
+      _ => "",
+    };
+    Expr[] fs = arm.pattern match {
+      Expr::EnumPat(_, _, let f, _, _) => f,
+      _ => [],
+    };
+    if (en != scrutinee.tag) { continue; }
+    EnumVariantInfo variant = lookup_enum_variant(c, en, vn);
+    if (variant.name.len() == 0) { continue; }
+    if (variant.payload_encs.len() == 0) {
+      uncovered = remove_string(uncovered, vn);
+      continue;
+    }
+    if (fs.len() != variant.payload_encs.len()) {
+      partial_payload.push(vn);
+      continue;
+    }
+    bool all_exhaustive = true;
+    for (int j = 0; j < fs.len(); j = j + 1) {
+      Type pt = resolve_type_name(c, variant.payload_encs[j]);
+      if (!payload_pattern_is_exhaustive(c, fs[j], pt)) {
+        all_exhaustive = false;
+        break;
+      }
+    }
+    if (all_exhaustive) {
+      uncovered = remove_string(uncovered, vn);
+    } else {
+      partial_payload.push(vn);
+    }
+  }
+  if (partial_payload.len() > 0) {
+    string partial = "";
+    for (int i = 0; i < partial_payload.len(); i = i + 1) {
+      if (partial.len() > 0) { partial = partial + ", "; }
+      partial = partial + partial_payload[i];
+    }
+    add_error(c, line, col, "Non-exhaustive payload pattern for variant(s): " + partial + ".");
+    return;
   }
   if (uncovered.len() == 0) { return; }
   string missing = "";
@@ -1466,7 +1551,51 @@ void check_enum_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line,
   add_error(c, line, col, "Non-exhaustive match. Missing variant(s): " + missing + ".");
 }
 
+void check_nullable_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
+  for (int i = 0; i < arms.len(); i = i + 1) {
+    if (match_arm_is_catchall(arms[i])) { return; }
+  }
+  bool has_null = false;
+  bool has_non_null_binding = false;
+  MatchArm[] non_null_arms = [];
+  for (int i = 0; i < arms.len(); i = i + 1) {
+    MatchArm arm = arms[i];
+    if (pattern_is_null_literal(arm.pattern)) {
+      has_null = true;
+      continue;
+    }
+    non_null_arms.push(arm);
+    if (match_pattern_is_catchall(arm.pattern) && !match_arm_has_guard(arm)) {
+      has_non_null_binding = true;
+    }
+  }
+  if (!has_null) {
+    add_error(c, line, col, "Non-exhaustive match on nullable type. Missing case: null.");
+    return;
+  }
+  if (has_non_null_binding) { return; }
+  if (non_null_arms.len() == 0) {
+    add_error(c, line, col, "Non-exhaustive match on nullable type. Missing non-null case.");
+    return;
+  }
+  Type inner = scrutinee;
+  inner.nullable = false;
+  if (inner.kind == TypeKind::Bool) {
+    check_bool_exhaustive(c, non_null_arms, line, col);
+    return;
+  }
+  if (inner.kind == TypeKind::Enum) {
+    check_enum_exhaustive(c, inner, non_null_arms, line, col);
+    return;
+  }
+  add_error(c, line, col, "Non-exhaustive match on nullable type. Missing non-null case.");
+}
+
 void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
+  if (scrutinee.nullable) {
+    check_nullable_exhaustive(c, scrutinee, arms, line, col);
+    return;
+  }
   if (scrutinee.kind == TypeKind::Bool) {
     check_bool_exhaustive(c, arms, line, col);
     return;
