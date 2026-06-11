@@ -59,6 +59,8 @@ pub enum OpCode {
   PushHandler, PopHandler, PropagateErr,
   // added after the original VM opcode order
   IsNull, StringToInt, StringToFloat, StringCode, StringCodeAt,
+  // int32-width arithmetic (appended; kept in lockstep with bootstrap chunk.h)
+  AddI32, SubtractI32, MultiplyI32, DivideI32, ModuloI32,
 }
 
 // Constant pool entry. Tag dispatches which storage field to read.

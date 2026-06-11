@@ -98,6 +98,11 @@ string opcode_name(OpCode op) {
   if (op == OpCode::StringToFloat)    { return "StringToFloat"; }
   if (op == OpCode::StringCode)       { return "StringCode"; }
   if (op == OpCode::StringCodeAt)     { return "StringCodeAt"; }
+  if (op == OpCode::AddI32)      { return "AddI32"; }
+  if (op == OpCode::SubtractI32) { return "SubtractI32"; }
+  if (op == OpCode::MultiplyI32) { return "MultiplyI32"; }
+  if (op == OpCode::DivideI32)   { return "DivideI32"; }
+  if (op == OpCode::ModuloI32)   { return "ModuloI32"; }
   if (op == OpCode::EnumVariantPayload) { return "EnumVariantPayload"; }
   if (op == OpCode::EnumPayloadGet)     { return "EnumPayloadGet"; }
   if (op == OpCode::MapNew)    { return "MapNew"; }
