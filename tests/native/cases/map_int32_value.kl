@@ -1,0 +1,9 @@
+int main() {
+  Map<string, int32> m = {"a": 10i32, "b": 20i32};
+  int32 x = m["a"];
+  int32 y = m["b"];
+  if (x + y != 30i32) {
+    return 1;
+  }
+  return 42;
+}
