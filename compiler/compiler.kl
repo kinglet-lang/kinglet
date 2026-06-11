@@ -30,7 +30,7 @@ using compiler_state {
   is_native_namespace, is_native_member, register_native_using_alias,
   open_native_namespace
 };
-using scanner { scan };
+using scanner { scan, emit_lexer_errors };
 using codegen { compile_stmt };
 
 // path helpers
@@ -226,6 +226,7 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   string source = fs::__read(resolved);
   if (source == null) { return "Cannot read: " + import_path; }
   Token[] tokens = scan(source);
+  if (emit_lexer_errors(tokens) > 0) { return "Lexer error in " + import_path; }
   Parser p = helpers::make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) { return "Parse error in " + import_path + ": " + p.errors[0].message; }

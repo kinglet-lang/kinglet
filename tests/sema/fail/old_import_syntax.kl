@@ -1,0 +1,8 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Expected '{' after 'import'
+import "../lexer/token.kl" { scan };
+
+int main() {
+  return 0;
+}

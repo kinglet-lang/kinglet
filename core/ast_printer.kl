@@ -56,7 +56,6 @@ string tt_name(TokenType t) {
   if (t == TokenType::Struct)          { return "Struct"; }
   if (t == TokenType::Enum)            { return "Enum"; }
   if (t == TokenType::Concept)         { return "Concept"; }
-  if (t == TokenType::Where)           { return "Where"; }
   if (t == TokenType::True)            { return "True"; }
   if (t == TokenType::False)           { return "False"; }
   if (t == TokenType::Null_)           { return "Null"; }
@@ -86,7 +85,6 @@ string tt_name(TokenType t) {
   if (t == TokenType::Arrow)           { return "Arrow"; }
   if (t == TokenType::FatArrow)        { return "FatArrow"; }
   if (t == TokenType::Question)        { return "Question"; }
-  if (t == TokenType::QuestionQuestion){ return "QuestionQuestion"; }
   if (t == TokenType::QuestionColon)   { return "QuestionColon"; }
   if (t == TokenType::ColonColon)      { return "ColonColon"; }
   if (t == TokenType::Dot)             { return "Dot"; }

@@ -49,7 +49,6 @@ pub KeywordEntry[] all_keywords() {
   push_kw(kws, "struct",    TokenType::Struct,    "Struct");
   push_kw(kws, "enum",      TokenType::Enum,      "Enum");
   push_kw(kws, "concept",   TokenType::Concept,   "Concept");
-  push_kw(kws, "where",     TokenType::Where,     "Where");
   push_kw(kws, "true",      TokenType::True,      "True");
   push_kw(kws, "false",     TokenType::False,     "False");
   push_kw(kws, "null",      TokenType::Null_,     "Null");

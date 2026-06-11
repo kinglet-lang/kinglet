@@ -57,7 +57,7 @@ Kinglet is a C-family language designed as "C++ after completing worthwhile stan
 ```kl
 // Types: int, float, double, bool, string, byte, void, auto
 // Structs, Enums (with payload variants)
-// match expressions, ?? (null coalesce), try (error propagation)
+// match expressions, ?: (null/error coalesce), try (error propagation)
 // Module system: import { "../path/module.kl" } + using module { sym1, sym2 };
 // Namespaces: io::out, io::err (built-in), file-stem (e.g. ast::, parser::) for
 //             user modules

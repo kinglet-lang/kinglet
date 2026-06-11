@@ -5,7 +5,7 @@ pub enum TokenType {
   Return, If, Else, For, While, Break, Continue, Guard,
   Match, Let, When, Try, Catch,
   Pub, Import, Export, Namespace, Using,
-  Struct, Enum, Concept, Where,
+  Struct, Enum, Concept,
   True, False, Null_,
 
   // operators
@@ -14,7 +14,7 @@ pub enum TokenType {
   Less, Greater, LessEqual, GreaterEqual,
   AmpAmp, PipePipe, Bang,
   Amp, Pipe, Caret, Tilde, LessLess, GreaterGreater, PipeGreater,
-  Arrow, FatArrow, Question, QuestionQuestion, QuestionColon, ColonColon, Dot, DotDot, DotDotDot,
+  Arrow, FatArrow, Question, QuestionColon, ColonColon, Dot, DotDot, DotDotDot,
   PlusEqual, MinusEqual, StarEqual, SlashEqual,
 
   // delimiters

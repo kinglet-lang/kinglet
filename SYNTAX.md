@@ -286,14 +286,14 @@ fs::__read(path)   fs::__write(path, data)
 sys::args()
 ```
 
-## Keywords (33)
+## Keywords (32)
 
 ```
 auto int float double bool string void byte const
 return if else for while break continue guard
 match let when try catch
 pub import export namespace using
-struct enum concept where
+struct enum concept
 true false null
 ```
 
@@ -307,5 +307,6 @@ From `decisions/0001-pending-syntax-and-perf.md`: `once` lazy blocks,
 `retry N { }`, `test "name" { }`, `scope` resource management, struct patterns
 in match, `[[nodiscard]]`, and `spawn`/`channel`/`select` concurrency.
 
-Selfhost-only syntax not in bootstrap: `?:` / `?: let e =>` (bootstrap uses
-`??`), and call-site generic type args `f<T>(args)`.
+Call-site generic type args `f<T>(args)` are selfhost-only until bootstrap
+catches up. Null/error coalescing uses `?:` / `?: let e =>` on both compilers;
+`??` is rejected at lex time.

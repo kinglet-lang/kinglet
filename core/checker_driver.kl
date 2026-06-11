@@ -12,7 +12,7 @@ import {
 }
 
 using io;
-using scanner { scan };
+using scanner { scan, emit_lexer_errors };
 using token { Token };
 using ast { Program };
 using helpers { Parser, ParseError };
@@ -30,6 +30,7 @@ pub int run_checker(Program prog) {
 
 pub int run_check(string source) {
   Token[] tokens = scan(source);
+  if (emit_lexer_errors(tokens) > 0) { return 65; }
   Parser p = helpers::make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) {

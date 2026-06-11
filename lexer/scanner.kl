@@ -3,6 +3,7 @@ import {
   "keywords.kl"
 }
 
+using io;
 using token { Token, TokenType };
 using keywords { KeywordEntry, all_keywords };
 
@@ -328,6 +329,10 @@ ScanResult scan_token(Scanner s) {
   if (c == ",") { return ScanResult { s, make_token(s, TokenType::Comma) }; }
   if (c == ";") { return ScanResult { s, make_token(s, TokenType::Semicolon) }; }
   if (c == "?") {
+    MatchResult mr_q = match_char(s, "?"); s = mr_q.sc;
+    if (mr_q.matched) {
+      return ScanResult { s, make_error(s, "Use '?:' for null/error coalescing; '?' '?' is not supported.") };
+    }
     MatchResult mr = match_char(s, ":"); s = mr.sc;
     if (mr.matched) { return ScanResult { s, make_token(s, TokenType::QuestionColon) }; }
     return ScanResult { s, make_token(s, TokenType::Question) };
@@ -412,6 +417,18 @@ ScanResult scan_token(Scanner s) {
   }
 
   return ScanResult { s, make_error(s, "Unexpected character.") };
+}
+
+pub int emit_lexer_errors(Token[] tokens) {
+  int n = 0;
+  for (int i = 0; i < tokens.len(); i = i + 1) {
+    Token t = tokens[i];
+    if (t.type == TokenType::Error) {
+      io::err.line("{}:{}: lexer error: {}", t.line, t.col, t.lexeme);
+      n = n + 1;
+    }
+  }
+  return n;
 }
 
 pub Token[] scan(string source) {

@@ -1,0 +1,7 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: not supported
+int main() {
+  int x = 1 ?? 0;
+  return x;
+}
