@@ -538,6 +538,41 @@ Expr match_expression(Parser p, Expr value) {
   return Expr::Match(value, arms, mt.line, mt.col);
 }
 
+bool struct_pattern_name_start(Parser p) {
+  if (!check(p, TokenType::Identifier)) { return false; }
+  Token t = peek_tok(p);
+  if (t.lexeme.len() == 0) { return false; }
+  string c = t.lexeme.slice(0, 1);
+  if (c < "A" || c > "Z") { return false; }
+  return check_at(p, 1, TokenType::LeftBrace);
+}
+
+Expr parse_struct_pattern(Parser p, Token struct_tok) {
+  consume(p, TokenType::LeftBrace, "Expected '{' after struct name in pattern.");
+  FieldInit[] fields = [];
+  while (!check(p, TokenType::RightBrace) && !is_at_end(p)) {
+    string field_name = "";
+    Expr pat = Expr::None;
+    if (match_tt(p, TokenType::Let)) {
+      Token n = consume(p, TokenType::Identifier, "Expected variable name after 'let'.");
+      pat = Expr::BindingPat(n.lexeme, n.line, n.col);
+    } else if (check(p, TokenType::Identifier) && check_at(p, 1, TokenType::Colon)) {
+      Token n = advance_tok(p);
+      field_name = n.lexeme;
+      advance_tok(p);
+      pat = parse_pattern(p);
+    } else {
+      pat = parse_pattern(p);
+    }
+    fields.push(FieldInit { field_name, pat });
+    if (!check(p, TokenType::RightBrace)) {
+      consume(p, TokenType::Comma, "Expected ',' between struct pattern fields.");
+    }
+  }
+  consume(p, TokenType::RightBrace, "Expected '}' after struct pattern.");
+  return Expr::StructPat(struct_tok.lexeme, fields, struct_tok.line, struct_tok.col);
+}
+
 Expr parse_pattern(Parser p) {
   if (match_tt(p, TokenType::Let)) {
     Token n = consume(p, TokenType::Identifier, "Expected variable name after 'let'.");
@@ -547,12 +582,7 @@ Expr parse_pattern(Parser p) {
     Token lb = previous(p);
     Expr[] elems = [];
     while (!check(p, TokenType::RightBracket) && !is_at_end(p)) {
-      if (match_tt(p, TokenType::Let)) {
-        Token n = consume(p, TokenType::Identifier, "Expected variable name after 'let'.");
-        elems.push(Expr::BindingPat(n.lexeme, n.line, n.col));
-      } else {
-        elems.push(expression(p));
-      }
+      elems.push(parse_pattern(p));
       if (!check(p, TokenType::RightBracket)) {
         consume(p, TokenType::Comma, "Expected ',' between array pattern elements.");
       }
@@ -567,12 +597,7 @@ Expr parse_pattern(Parser p) {
     Expr[] fields = [];
     if (match_tt(p, TokenType::LeftParen)) {
       while (!check(p, TokenType::RightParen) && !is_at_end(p)) {
-        if (match_tt(p, TokenType::Let)) {
-          Token n = consume(p, TokenType::Identifier, "Expected variable name after 'let'.");
-          fields.push(Expr::BindingPat(n.lexeme, n.line, n.col));
-        } else {
-          fields.push(expression(p));
-        }
+        fields.push(parse_pattern(p));
         if (!check(p, TokenType::RightParen)) {
           consume(p, TokenType::Comma, "Expected ',' between enum pattern fields.");
         }
@@ -580,6 +605,10 @@ Expr parse_pattern(Parser p) {
       consume(p, TokenType::RightParen, "Expected ')' after enum pattern fields.");
     }
     return Expr::EnumPat(enum_tok.lexeme, variant.lexeme, fields, enum_tok.line, enum_tok.col);
+  }
+  if (struct_pattern_name_start(p)) {
+    Token struct_tok = advance_tok(p);
+    return parse_struct_pattern(p, struct_tok);
   }
   return expression(p);
 }

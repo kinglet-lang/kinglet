@@ -241,6 +241,7 @@ void print_expr(Expr e, int depth) {
     Expr::BindingPat(let n, let _l, let _c) => io::out.line("{}BindingPat {}", pad, n),
     Expr::ArrayPat(let elems, let _l, let _c) => print_array_pat(elems, depth),
     Expr::EnumPat(let en, let v, let fields, let _l, let _c) => print_enum_pat(en, v, fields, depth),
+    Expr::StructPat(let sn, let fields, let _l, let _c) => print_struct_pat(sn, fields, depth),
     Expr::Match(let v, let arms, let _l, let _c) => print_match(v, arms, depth),
     Expr::Cast(let t, let v, let _l, let _c) => print_cast(t, v, depth),
     Expr::NullCoalesce(let left, let eb, let right, let _l, let _c) => print_coalesce(left, eb, right, depth),
@@ -292,6 +293,16 @@ void print_enum_pat(string en, string v, Expr[] fields, int depth) {
   io::out.line("{}EnumPat {}::{}", indent_str(depth), en, v);
   for (int i = 0; i < fields.len(); i = i + 1) {
     print_expr(fields[i], depth + 1);
+  }
+}
+
+void print_struct_pat(string sn, FieldInit[] fields, int depth) {
+  io::out.line("{}StructPat {}", indent_str(depth), sn);
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    if (fields[i].name.len() > 0) {
+      io::out.line("{}field {}", indent_str(depth + 1), fields[i].name);
+    }
+    print_expr(fields[i].value, depth + 1);
   }
 }
 

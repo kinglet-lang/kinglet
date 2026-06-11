@@ -39,6 +39,7 @@ pub TypeExpr make_type(string name) => TypeExpr { name, [] };
 //   BindingPat(name, line, col)              // `let x` inside a match pattern
 //   ArrayPat(elements, line, col)            // `[a, b, c]` pattern
 //   EnumPat(enum_name, variant, fields, line, col)
+//   StructPat(struct_name, fields, line, col)  // Point { let x, y: 0 }
 //   Match(value, arms, line, col)
 //   Cast(target, value, line, col)             // fallback is now handled by ??
 //   NsAccess(ns, member, line, col)            // io::out
@@ -64,6 +65,7 @@ pub enum Expr {
   BindingPat(string, int, int),
   ArrayPat(Expr[], int, int),
   EnumPat(string, string, Expr[], int, int),
+  StructPat(string, FieldInit[], int, int),
   Match(Expr, MatchArm[], int, int),
   Cast(TypeExpr, Expr, int, int),
   NsAccess(string, string, int, int),
