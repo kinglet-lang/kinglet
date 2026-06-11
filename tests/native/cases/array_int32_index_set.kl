@@ -1,0 +1,8 @@
+int main() {
+  Array<int32> xs = [1i32, 2i32];
+  xs[1] = 20i32;
+  if (xs[0] + xs[1] != 21i32) {
+    return 1;
+  }
+  return 42;
+}
