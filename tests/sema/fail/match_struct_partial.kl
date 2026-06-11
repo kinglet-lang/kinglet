@@ -1,0 +1,11 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Non-exhaustive struct pattern
+struct Point { int x; int y; }
+
+int main() {
+  Point p = Point { 1, 2 };
+  return p match {
+    Point { 0, 0 } => 0,
+  };
+}

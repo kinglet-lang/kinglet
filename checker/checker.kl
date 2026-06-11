@@ -1664,6 +1664,54 @@ void check_scalar_catchall_exhaustive(Checker c, MatchArm[] arms, string type_la
     "Non-exhaustive match on " + type_label + ". Add a catch-all pattern (`_` or `let x`).");
 }
 
+bool struct_pattern_is_exhaustive(Checker c, Expr pattern, Type struct_type) {
+  if (!(pattern match { Expr::StructPat(let n, _, _, _) => n == struct_type.tag, _ => false, })) {
+    return false;
+  }
+  FieldInit[] pfields = pattern match {
+    Expr::StructPat(_, let fs, _, _) => fs,
+    _ => [],
+  };
+  StructInfo info = lookup_struct_info(c, struct_type.tag);
+  if (pfields.len() != info.fields.len()) { return false; }
+  for (int i = 0; i < pfields.len(); i = i + 1) {
+    string field_name = pfields[i].name;
+    int field_idx = i;
+    if (field_name.len() > 0) {
+      field_idx = -1;
+      for (int j = 0; j < info.fields.len(); j = j + 1) {
+        if (info.fields[j].name == field_name) {
+          field_idx = j;
+          break;
+        }
+      }
+      if (field_idx < 0) { return false; }
+    }
+    Type ft = resolve_type_name(c, info.fields[field_idx].type_enc);
+    if (!payload_pattern_is_exhaustive(c, pfields[i].value, ft)) { return false; }
+  }
+  return true;
+}
+
+void check_struct_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
+  if (match_arms_have_catchall(arms)) { return; }
+  bool saw_partial = false;
+  for (int i = 0; i < arms.len(); i = i + 1) {
+    if (!(arms[i].pattern match { Expr::StructPat(let n, _, _, _) => n == scrutinee.tag, _ => false, })) {
+      continue;
+    }
+    if (struct_pattern_is_exhaustive(c, arms[i].pattern, scrutinee)) { return; }
+    saw_partial = true;
+  }
+  if (saw_partial) {
+    add_error(c, line, col, "Non-exhaustive struct pattern for '" + scrutinee.tag + "'.");
+    return;
+  }
+  add_error(c, line, col,
+    "Non-exhaustive match on struct " + scrutinee.tag +
+    ". Add a catch-all or destructure all fields with binding/wildcard patterns.");
+}
+
 void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
   if (scrutinee.nullable) {
     check_nullable_exhaustive(c, scrutinee, arms, line, col);
@@ -1683,6 +1731,10 @@ void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line
   }
   if (scrutinee.kind == TypeKind::String) {
     check_scalar_catchall_exhaustive(c, arms, "string", line, col);
+    return;
+  }
+  if (scrutinee.kind == TypeKind::Struct) {
+    check_struct_exhaustive(c, scrutinee, arms, line, col);
   }
 }
 
