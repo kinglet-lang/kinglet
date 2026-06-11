@@ -11,6 +11,7 @@ using ast {
   Expr, Stmt, TypeExpr, BinaryOp, UnaryOp, AssignOp,
   MatchArm, FieldInit, CatchArm, Parameter
 };
+using bytecode { StructMeta };
 using compiler_state {
   Compiler, LoopFrame, NativeUsingAlias, FuncEntry,
   compile_error, emit_jump, patch_jump, patch_jump_to,
@@ -340,6 +341,10 @@ void compile_match(Compiler co, Expr value, MatchArm[] arms, int line, int col) 
       Expr::ArrayPat(let _es, let _l, let _c) => true,
       _ => false,
     };
+    bool is_struct_pat = arm.pattern match {
+      Expr::StructPat(_, _, _, _) => true,
+      _ => false,
+    };
 
     if (is_wildcard) {
       // Wildcard _: pop the temp, compile body.
@@ -384,6 +389,8 @@ void compile_match(Compiler co, Expr value, MatchArm[] arms, int line, int col) 
     } else if (is_array_pat) {
       // ArrayPat: destructure elements.
       _compile_array_arm(co, arm, temp_slot, line, col, end_jumps);
+    } else if (is_struct_pat) {
+      _compile_struct_arm(co, arm, temp_slot, line, col, end_jumps);
     } else {
       // Literal/default pattern: LoadLocal temp, compile pattern, Eq, JmpFalse.
       int[] fail_jumps = [];
@@ -503,6 +510,78 @@ void _compile_enum_arm(Compiler co, MatchArm arm, int temp_slot, int line, int c
   }
 
   // Pop binding locals.
+  for (int j = 0; j < bind_slots.len(); j = j + 1) {
+    co.locals.pop();
+  }
+}
+
+string struct_pattern_field_name(Compiler co, string struct_name, FieldInit pf, int index) {
+  if (pf.name.len() > 0) { return pf.name; }
+  int type_idx = resolve_struct(co, struct_name);
+  if (type_idx < 0) { return ""; }
+  StructMeta meta = co.chunk.struct_metas[type_idx];
+  if (index < meta.field_names.len()) { return meta.field_names[index]; }
+  return "";
+}
+
+void _compile_struct_arm(Compiler co, MatchArm arm, int temp_slot, int line, int col, int[] end_jumps) {
+  FieldInit[] no_fields = [];
+  string struct_name = arm.pattern match {
+    Expr::StructPat(let n, _, _, _) => n,
+    _ => "",
+  };
+  FieldInit[] fields = arm.pattern match {
+    Expr::StructPat(_, let fs, _, _) => fs,
+    _ => no_fields,
+  };
+  int pat_line = line;
+  int pat_col = col;
+  if (arm.pattern match { Expr::StructPat(_, _, let pl, _) => true, _ => false, }) {
+    pat_line = arm.pattern match { Expr::StructPat(_, _, let pl, _) => pl, _ => line, };
+    pat_col = arm.pattern match { Expr::StructPat(_, _, _, let pc) => pc, _ => col, };
+  }
+  int[] fail_jumps = [];
+  int[] bind_slots = [];
+  for (int i = 0; i < fields.len(); i = i + 1) {
+    string fname = struct_pattern_field_name(co, struct_name, fields[i], i);
+    if (fname.len() == 0) {
+      compile_error(co, pat_line, pat_col, "Struct pattern has too many fields.");
+      return;
+    }
+    Expr fp = fields[i].value;
+    bool is_bind = fp match { Expr::BindingPat(_, _, _) => true, _ => false, };
+    bool is_wild = fp match { Expr::Ident(let n, _, _) => n == "_", _ => false, };
+    if (is_bind) {
+      string bn = fp match { Expr::BindingPat(let n, _, _) => n, _ => "", };
+      int slot = co.locals.len();
+      co.locals.push(Local { bn, slot, co.scope_depth, "" });
+      bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, pat_line, pat_col);
+      int fc = bytecode::add_constant(co.chunk, bytecode::const_string(fname));
+      bytecode::write_operand(co.chunk, OpCode::FieldGet, fc, pat_line, pat_col);
+      bytecode::write_operand(co.chunk, OpCode::StoreLocal, slot, pat_line, pat_col);
+      bytecode::write_op(co.chunk, OpCode::Pop, pat_line, pat_col);
+      bind_slots.push(slot);
+    } else if (!is_wild) {
+      bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, pat_line, pat_col);
+      int fc = bytecode::add_constant(co.chunk, bytecode::const_string(fname));
+      bytecode::write_operand(co.chunk, OpCode::FieldGet, fc, pat_line, pat_col);
+      compile_expr(co, fp);
+      bytecode::write_op(co.chunk, OpCode::Eq, pat_line, pat_col);
+      fail_jumps.push(emit_jump(co, OpCode::JmpFalse, pat_line, pat_col));
+    }
+  }
+  if (arm.guard_expr match { Expr::None => false, _ => true, }) {
+    compile_expr(co, arm.guard_expr);
+    fail_jumps.push(emit_jump(co, OpCode::JmpFalse, line, col));
+    bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+  } else {
+    bytecode::write_op(co.chunk, OpCode::Pop, line, col);
+  }
+  compile_expr(co, arm.body);
+  end_jumps.push(emit_jump(co, OpCode::Jmp, line, col));
+  for (int j = 0; j < fail_jumps.len(); j = j + 1) {
+    patch_jump(co, fail_jumps[j]);
+  }
   for (int j = 0; j < bind_slots.len(); j = j + 1) {
     co.locals.pop();
   }

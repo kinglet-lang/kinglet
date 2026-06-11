@@ -1256,6 +1256,58 @@ Type unify_match_types(Checker c, Type acc, Type next, int line, int col) {
   return acc;
 }
 
+void bind_struct_pattern(Checker c, Expr pattern, Type scrutinee) {
+  string struct_name = pattern match {
+    Expr::StructPat(let n, _, _, _) => n,
+    _ => "",
+  };
+  FieldInit[] pfields = pattern match {
+    Expr::StructPat(_, let fs, _, _) => fs,
+    _ => [],
+  };
+  if (scrutinee.kind != TypeKind::Struct || scrutinee.tag != struct_name) {
+    add_error(c, 0, 0, "Struct pattern '" + struct_name + "' does not match scrutinee type.");
+    return;
+  }
+  StructInfo info = lookup_struct_info(c, struct_name);
+  for (int i = 0; i < pfields.len(); i = i + 1) {
+    string field_name = pfields[i].name;
+    int field_idx = i;
+    if (field_name.len() > 0) {
+      field_idx = -1;
+      for (int j = 0; j < info.fields.len(); j = j + 1) {
+        if (info.fields[j].name == field_name) {
+          field_idx = j;
+          break;
+        }
+      }
+      if (field_idx < 0) {
+        add_error(c, 0, 0, "Struct '" + struct_name + "' has no field '" + field_name + "'.");
+        continue;
+      }
+    } else if (field_idx >= info.fields.len()) {
+      add_error(c, 0, 0, "Struct pattern has too many fields for '" + struct_name + "'.");
+      continue;
+    }
+    Type field_type = resolve_type_name(c, info.fields[field_idx].type_enc);
+    Expr fp = pfields[i].value;
+    if (fp match { Expr::BindingPat(let n, let l, let co) => true, _ => false, }) {
+      string n = fp match { Expr::BindingPat(let n, let _l, let _c) => n, _ => "", };
+      int l = fp match { Expr::BindingPat(let _n, let ln, let _c) => ln, _ => 0, };
+      int co = fp match { Expr::BindingPat(let _n, let _l, let cn) => cn, _ => 0, };
+      declare_var(c, n, field_type, l, co);
+      continue;
+    }
+    if (fp match { Expr::Ident(let n, _, _) => n == "_", _ => false, }) {
+      continue;
+    }
+    Type pt = check_expr(c, fp);
+    if (!types_compatible(pt, field_type)) {
+      add_error(c, 0, 0, "Struct field pattern type mismatch.");
+    }
+  }
+}
+
 void bind_enum_pattern(Checker c, Expr pattern) {
   bool is_pat = pattern match {
     Expr::EnumPat(let _en, let _vn, let _fs, let _l, let _c) => true,
@@ -1328,6 +1380,14 @@ void bind_match_pattern(Checker c, Expr pattern, Type scrutinee, int line, int c
   };
   if (is_enum) {
     bind_enum_pattern(c, pattern);
+    return;
+  }
+  bool is_struct = pattern match {
+    Expr::StructPat(_, _, _, _) => true,
+    _ => false,
+  };
+  if (is_struct) {
+    bind_struct_pattern(c, pattern, scrutinee);
     return;
   }
   bool is_ident = pattern match {

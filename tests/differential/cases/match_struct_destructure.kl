@@ -1,0 +1,16 @@
+// RUN: diff
+using io;
+
+struct Point { int x; int y; }
+
+int sum(Point p) {
+  return p match {
+    Point { let x, let y } => x + y,
+  };
+}
+
+int main() {
+  Point p = Point { 3, 4 };
+  io::out.line(sum(p));
+  return 0;
+}
