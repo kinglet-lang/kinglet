@@ -1,0 +1,11 @@
+// RUN: check
+bool negate(bool b) {
+  return b match {
+    true => false,
+    false => true,
+  };
+}
+
+int main() {
+  return negate(true) ? 1 : 0;
+}

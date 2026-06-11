@@ -1,0 +1,13 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Missing variant(s): Blue
+enum Color { Red, Green, Blue, }
+
+int main() {
+  Color c = Color::Red;
+  int n = c match {
+    Color::Red => 1,
+    Color::Green if (true) => 2,
+  };
+  return n;
+}

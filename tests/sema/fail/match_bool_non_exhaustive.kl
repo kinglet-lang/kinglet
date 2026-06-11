@@ -1,0 +1,12 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Non-exhaustive match on bool
+bool flip(bool b) {
+  return b match {
+    true => true,
+  };
+}
+
+int main() {
+  return flip(true) ? 1 : 0;
+}

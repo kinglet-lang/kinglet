@@ -1380,6 +1380,19 @@ bool match_pattern_is_catchall(Expr pattern) {
   return false;
 }
 
+bool match_arm_is_catchall(MatchArm arm) {
+  if (match_arm_has_guard(arm)) { return false; }
+  return match_pattern_is_catchall(arm.pattern);
+}
+
+bool match_pattern_is_true_lit(Expr pattern) {
+  return pattern match { Expr::BoolLit(let v, _, _) => v, _ => false, };
+}
+
+bool match_pattern_is_false_lit(Expr pattern) {
+  return pattern match { Expr::BoolLit(let v, _, _) => !v, _ => false, };
+}
+
 string match_pattern_enum_variant(Expr pattern) {
   return pattern match {
     Expr::EnumPat(let _en, let vn, let _fs, let _l, let _c) => vn,
@@ -1407,14 +1420,35 @@ string[] remove_string(string[] names, string target) {
   return out;
 }
 
-void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
-  if (scrutinee.kind != TypeKind::Enum) { return; }
+void check_bool_exhaustive(Checker c, MatchArm[] arms, int line, int col) {
+  bool has_true = false;
+  bool has_false = false;
+  for (int i = 0; i < arms.len(); i = i + 1) {
+    MatchArm arm = arms[i];
+    if (match_arm_is_catchall(arm)) {
+      has_true = true;
+      has_false = true;
+      break;
+    }
+    if (match_pattern_is_true_lit(arm.pattern)) { has_true = true; }
+    if (match_pattern_is_false_lit(arm.pattern)) { has_false = true; }
+  }
+  if (has_true && has_false) { return; }
+  string missing = "";
+  if (!has_true) { missing = "true"; }
+  if (!has_false) {
+    if (missing.len() > 0) { missing = missing + ", "; }
+    missing = missing + "false";
+  }
+  add_error(c, line, col, "Non-exhaustive match on bool. Missing case(s): " + missing + ".");
+}
+
+void check_enum_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
   string[] uncovered = enum_variant_names(c, scrutinee.tag);
   if (uncovered.len() == 0) { return; }
   for (int i = 0; i < arms.len(); i = i + 1) {
     MatchArm arm = arms[i];
-    if (match_arm_has_guard(arm)) { continue; }
-    if (match_pattern_is_catchall(arm.pattern)) {
+    if (match_arm_is_catchall(arm)) {
       uncovered = [];
       break;
     }
@@ -1430,6 +1464,16 @@ void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line
     missing = missing + uncovered[i];
   }
   add_error(c, line, col, "Non-exhaustive match. Missing variant(s): " + missing + ".");
+}
+
+void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
+  if (scrutinee.kind == TypeKind::Bool) {
+    check_bool_exhaustive(c, arms, line, col);
+    return;
+  }
+  if (scrutinee.kind == TypeKind::Enum) {
+    check_enum_exhaustive(c, scrutinee, arms, line, col);
+  }
 }
 
 Type check_match(Checker c, Expr val, MatchArm[] arms, int line, int col) {
