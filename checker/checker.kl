@@ -1366,6 +1366,72 @@ Type check_match_arm(Checker c, MatchArm arm, Type scrutinee, int line, int col)
   return bt;
 }
 
+bool match_arm_has_guard(MatchArm arm) {
+  return arm.guard_expr match { Expr::None => false, _ => true, };
+}
+
+bool match_pattern_is_catchall(Expr pattern) {
+  if (pattern match { Expr::BindingPat(_, _, _) => true, _ => false, }) {
+    return true;
+  }
+  if (pattern match { Expr::Ident(let n, _, _) => n == "_", _ => false, }) {
+    return true;
+  }
+  return false;
+}
+
+string match_pattern_enum_variant(Expr pattern) {
+  return pattern match {
+    Expr::EnumPat(let _en, let vn, let _fs, let _l, let _c) => vn,
+    _ => "",
+  };
+}
+
+string[] enum_variant_names(Checker c, string enum_name) {
+  string[] out = [];
+  for (int i = 0; i < c.enums.len(); i = i + 1) {
+    if (c.enums[i].name != enum_name) { continue; }
+    for (int j = 0; j < c.enums[i].variants.len(); j = j + 1) {
+      out.push(c.enums[i].variants[j].name);
+    }
+    break;
+  }
+  return out;
+}
+
+string[] remove_string(string[] names, string target) {
+  string[] out = [];
+  for (int i = 0; i < names.len(); i = i + 1) {
+    if (names[i] != target) { out.push(names[i]); }
+  }
+  return out;
+}
+
+void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
+  if (scrutinee.kind != TypeKind::Enum) { return; }
+  string[] uncovered = enum_variant_names(c, scrutinee.tag);
+  if (uncovered.len() == 0) { return; }
+  for (int i = 0; i < arms.len(); i = i + 1) {
+    MatchArm arm = arms[i];
+    if (match_arm_has_guard(arm)) { continue; }
+    if (match_pattern_is_catchall(arm.pattern)) {
+      uncovered = [];
+      break;
+    }
+    string vn = match_pattern_enum_variant(arm.pattern);
+    if (vn.len() > 0) {
+      uncovered = remove_string(uncovered, vn);
+    }
+  }
+  if (uncovered.len() == 0) { return; }
+  string missing = "";
+  for (int i = 0; i < uncovered.len(); i = i + 1) {
+    if (missing.len() > 0) { missing = missing + ", "; }
+    missing = missing + uncovered[i];
+  }
+  add_error(c, line, col, "Non-exhaustive match. Missing variant(s): " + missing + ".");
+}
+
 Type check_match(Checker c, Expr val, MatchArm[] arms, int line, int col) {
   Type vt = check_expr(c, val);
   if (arms.len() == 0) { return type_unknown(); }
@@ -1374,6 +1440,7 @@ Type check_match(Checker c, Expr val, MatchArm[] arms, int line, int col) {
     Type bt = check_match_arm(c, arms[i], vt, line, col);
     result = unify_match_types(c, result, bt, line, col);
   }
+  check_match_exhaustive(c, vt, arms, line, col);
   return result;
 }
 
