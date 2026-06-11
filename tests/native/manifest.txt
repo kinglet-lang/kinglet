@@ -36,3 +36,4 @@ int64_high
 fixed_width_int32
 fixed_width_parity
 struct_int32_field
+array_int32_index

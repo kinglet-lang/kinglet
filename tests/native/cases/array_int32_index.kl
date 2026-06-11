@@ -1,0 +1,9 @@
+int main() {
+  Array<int32> xs = [10i32, 20i32];
+  int32 a = xs[0];
+  int32 b = xs[1];
+  if (a + b != 30i32) {
+    return 1;
+  }
+  return 42;
+}
