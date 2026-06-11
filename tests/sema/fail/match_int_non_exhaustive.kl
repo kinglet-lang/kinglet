@@ -1,0 +1,13 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Non-exhaustive match on int
+int describe(int x) {
+  return x match {
+    0 => 10,
+    1 => 11,
+  };
+}
+
+int main() {
+  return describe(42);
+}

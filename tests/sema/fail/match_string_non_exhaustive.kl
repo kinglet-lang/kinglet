@@ -1,0 +1,13 @@
+// RUN: check
+// COMPILE-FAIL
+// CHECK-ERR: Non-exhaustive match on string
+string tag(string s) {
+  return s match {
+    "ok" => "yes",
+    "no" => "nope",
+  };
+}
+
+int main() {
+  return tag("maybe").len();
+}

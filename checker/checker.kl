@@ -1591,6 +1591,19 @@ void check_nullable_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int l
   add_error(c, line, col, "Non-exhaustive match on nullable type. Missing non-null case.");
 }
 
+bool match_arms_have_catchall(MatchArm[] arms) {
+  for (int i = 0; i < arms.len(); i = i + 1) {
+    if (match_arm_is_catchall(arms[i])) { return true; }
+  }
+  return false;
+}
+
+void check_scalar_catchall_exhaustive(Checker c, MatchArm[] arms, string type_label, int line, int col) {
+  if (match_arms_have_catchall(arms)) { return; }
+  add_error(c, line, col,
+    "Non-exhaustive match on " + type_label + ". Add a catch-all pattern (`_` or `let x`).");
+}
+
 void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line, int col) {
   if (scrutinee.nullable) {
     check_nullable_exhaustive(c, scrutinee, arms, line, col);
@@ -1602,6 +1615,14 @@ void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line
   }
   if (scrutinee.kind == TypeKind::Enum) {
     check_enum_exhaustive(c, scrutinee, arms, line, col);
+    return;
+  }
+  if (scrutinee.kind == TypeKind::Int || scrutinee.kind == TypeKind::Float) {
+    check_scalar_catchall_exhaustive(c, arms, "int", line, col);
+    return;
+  }
+  if (scrutinee.kind == TypeKind::String) {
+    check_scalar_catchall_exhaustive(c, arms, "string", line, col);
   }
 }
 
