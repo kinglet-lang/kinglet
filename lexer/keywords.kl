@@ -21,8 +21,19 @@ pub KeywordEntry[] all_keywords() {
   // keywords
   push_kw(kws, "auto",      TokenType::Auto,      "Auto");
   push_kw(kws, "int",       TokenType::Int,       "Int");
+  push_kw(kws, "int8",      TokenType::Int8,      "Int8");
+  push_kw(kws, "int16",     TokenType::Int16,     "Int16");
+  push_kw(kws, "int32",     TokenType::Int32,     "Int32");
+  push_kw(kws, "int64",     TokenType::Int64,     "Int64");
+  push_kw(kws, "uint8",     TokenType::Uint8,     "Uint8");
+  push_kw(kws, "uint16",    TokenType::Uint16,    "Uint16");
+  push_kw(kws, "uint32",    TokenType::Uint32,    "Uint32");
+  push_kw(kws, "uint64",    TokenType::Uint64,    "Uint64");
   push_kw(kws, "float",     TokenType::Float,     "Float");
+  push_kw(kws, "float32",   TokenType::Float32,   "Float32");
+  push_kw(kws, "float64",   TokenType::Float64,   "Float64");
   push_kw(kws, "double",    TokenType::Double,    "Double");
+  push_kw(kws, "char",      TokenType::Char,      "Char");
   push_kw(kws, "bool",      TokenType::Bool,      "Bool");
   push_kw(kws, "string",    TokenType::String,    "String");
   push_kw(kws, "void",      TokenType::Void,      "Void");

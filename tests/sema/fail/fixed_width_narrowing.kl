@@ -1,0 +1,8 @@
+// RUN: check
+// COMPILE-FAIL
+int main() {
+  int32 x = 42;
+  int64 wide = 100;
+  int32 y = wide;
+  return y;
+}

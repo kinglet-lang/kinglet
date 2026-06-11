@@ -93,7 +93,17 @@ Token consume(Parser p, TokenType t, string msg) {
 bool is_type_start(TokenType t) {
   if (t == TokenType::Auto)   { return true; }
   if (t == TokenType::Int)    { return true; }
+  if (t == TokenType::Int8)   { return true; }
+  if (t == TokenType::Int16)  { return true; }
+  if (t == TokenType::Int32)  { return true; }
+  if (t == TokenType::Int64)  { return true; }
+  if (t == TokenType::Uint8)  { return true; }
+  if (t == TokenType::Uint16) { return true; }
+  if (t == TokenType::Uint32) { return true; }
+  if (t == TokenType::Uint64) { return true; }
   if (t == TokenType::Float)  { return true; }
+  if (t == TokenType::Float32) { return true; }
+  if (t == TokenType::Float64) { return true; }
   if (t == TokenType::Double) { return true; }
   if (t == TokenType::Bool)   { return true; }
   if (t == TokenType::String) { return true; }

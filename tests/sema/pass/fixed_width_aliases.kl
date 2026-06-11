@@ -1,0 +1,7 @@
+// RUN: check
+int main() {
+  int64 a = 42;
+  int32 b = 42;
+  int x = a;
+  return x;
+}

@@ -1,6 +1,7 @@
 pub enum TokenType {
   // keywords
-  Auto, Int, Float, Double, Bool, String, Void, Byte, Char,
+  Auto, Int, Int8, Int16, Int32, Int64, Uint8, Uint16, Uint32, Uint64,
+  Float, Float32, Float64, Double, Bool, String, Void, Byte, Char,
   Const,
   Return, If, Else, For, While, Break, Continue, Guard,
   Match, Let, When, Try, Catch,

@@ -59,8 +59,9 @@ pub struct NativeUsingAlias {
   string member;
 }
 
-pub Type type_int()     => Type { TypeKind::Int,     "", false };
-pub Type type_float()   => Type { TypeKind::Float,   "", false };
+pub Type type_int()     => Type { TypeKind::Int,     "int64", false };
+pub Type type_float()   => Type { TypeKind::Float,   "float32", false };
+pub Type type_double()  => Type { TypeKind::Float,   "float64", false };
 pub Type type_bool()    => Type { TypeKind::Bool,    "", false };
 pub Type type_string()  => Type { TypeKind::String,  "", false };
 pub Type type_void()    => Type { TypeKind::Void,    "", false };
@@ -72,10 +73,25 @@ pub Type type_map(string key_enc, string val_enc) => Type { TypeKind::Map, key_e
 pub Type type_struct(string name) => Type { TypeKind::Struct, name, false };
 pub Type type_enum(string name) => Type { TypeKind::Enum, name, false };
 
+string int_type_name(Type t) {
+  if (t.tag == "int64") { return "int"; }
+  if (t.tag == "uint8") { return "byte"; }
+  if (t.tag == "int8")  { return "char"; }
+  if (t.tag.len() > 0)  { return t.tag; }
+  return "int";
+}
+
+string float_type_name(Type t) {
+  if (t.tag == "float32") { return "float"; }
+  if (t.tag == "float64") { return "double"; }
+  if (t.tag.len() > 0)    { return t.tag; }
+  return "float";
+}
+
 pub string type_kind_name(Type t) {
   return t.kind match {
-    TypeKind::Int     => "int",
-    TypeKind::Float   => "float",
+    TypeKind::Int     => int_type_name(t),
+    TypeKind::Float   => float_type_name(t),
     TypeKind::Bool    => "bool",
     TypeKind::String  => "string",
     TypeKind::Void    => "void",
@@ -88,12 +104,67 @@ pub string type_kind_name(Type t) {
   };
 }
 
+bool int_tags_equal(string a, string b) {
+  if (a.len() == 0) { a = "int64"; }
+  if (b.len() == 0) { b = "int64"; }
+  return a == b;
+}
+
+bool integer_assignable(Type from, Type to) {
+  if (from.kind != TypeKind::Int || to.kind != TypeKind::Int) { return false; }
+  string ft = from.tag;
+  string tt = to.tag;
+  if (ft.len() == 0) { ft = "int64"; }
+  if (tt.len() == 0) { tt = "int64"; }
+  if (ft == tt) { return true; }
+  if (ft == "int32" && tt == "int64") { return true; }
+  return false;
+}
+
+bool float_assignable(Type from, Type to) {
+  if (from.kind != TypeKind::Float || to.kind != TypeKind::Float) { return false; }
+  string ft = from.tag;
+  string tt = to.tag;
+  if (ft.len() == 0) { ft = "float32"; }
+  if (tt.len() == 0) { tt = "float32"; }
+  if (ft == tt) { return true; }
+  if (ft == "float32" && tt == "float64") { return true; }
+  return false;
+}
+
+bool types_assignable(Type from, Type to) {
+  if (integer_assignable(from, to)) { return true; }
+  if (float_assignable(from, to)) { return true; }
+  if (from.kind == TypeKind::Struct && to.kind == TypeKind::Struct) {
+    return from.tag == to.tag;
+  }
+  if (from.kind == TypeKind::Array && to.kind == TypeKind::Array) {
+    if (from.tag == to.tag) { return true; }
+    if (from.tag == "int32" && to.tag == "int") { return true; }
+    if (from.tag == "float32" && to.tag == "float") { return true; }
+    return false;
+  }
+  return types_compatible(from, to);
+}
+
 bool types_compatible(Type a, Type b) {
   if (a.kind == TypeKind::Unknown) { return true; }
   if (b.kind == TypeKind::Unknown) { return true; }
   if (a.kind == TypeKind::Null || b.kind == TypeKind::Null) { return true; }
+  if (a.kind == TypeKind::Int && b.kind == TypeKind::Int) {
+    return true;
+  }
   if (a.kind == TypeKind::Int && b.kind == TypeKind::Float) { return true; }
   if (a.kind == TypeKind::Float && b.kind == TypeKind::Int) { return true; }
+  if (a.kind == TypeKind::Float && b.kind == TypeKind::Float) {
+    string at = a.tag;
+    string bt = b.tag;
+    if (at.len() == 0) { at = "float32"; }
+    if (bt.len() == 0) { bt = "float32"; }
+    if (at == bt) { return true; }
+    if (at == "float32" || bt == "float32") { return true; }
+    return false;
+  }
   if (a.kind == TypeKind::Struct && b.kind == TypeKind::Struct) { return a.tag == b.tag; }
   if (a.kind == TypeKind::Enum && b.kind == TypeKind::Enum) { return a.tag == b.tag; }
   if (a.kind == TypeKind::Array && b.kind == TypeKind::Array) { return a.tag == b.tag; }
@@ -303,16 +374,36 @@ bool is_auto_type(TypeExpr t) {
   return t.name == "auto";
 }
 
+Type make_int_tag(string tag) => Type { TypeKind::Int, tag, false };
+Type make_float_tag(string tag) => Type { TypeKind::Float, tag, false };
+
 Type resolve_scalar_name(string name) {
-  if (name == "int")    { return type_int(); }
-  if (name == "float")  { return type_float(); }
-  if (name == "double") { return type_float(); }
-  if (name == "bool")   { return type_bool(); }
-  if (name == "string") { return type_string(); }
-  if (name == "void")   { return type_void(); }
-  if (name == "byte")   { return type_int(); }
-  if (name == "char")   { return type_int(); }
+  if (name == "int")     { return type_int(); }
+  if (name == "int8")    { return make_int_tag("int8"); }
+  if (name == "int16")   { return make_int_tag("int16"); }
+  if (name == "int32")   { return make_int_tag("int32"); }
+  if (name == "int64")   { return type_int(); }
+  if (name == "uint8")   { return make_int_tag("uint8"); }
+  if (name == "uint16")  { return make_int_tag("uint16"); }
+  if (name == "uint32")  { return make_int_tag("uint32"); }
+  if (name == "uint64")  { return make_int_tag("uint64"); }
+  if (name == "float")   { return type_float(); }
+  if (name == "float32") { return type_float(); }
+  if (name == "float64") { return type_double(); }
+  if (name == "double")  { return type_double(); }
+  if (name == "bool")    { return type_bool(); }
+  if (name == "string")  { return type_string(); }
+  if (name == "void")    { return type_void(); }
+  if (name == "byte")    { return make_int_tag("uint8"); }
+  if (name == "char")    { return make_int_tag("int8"); }
   return type_unknown();
+}
+
+Type default_int_literal_type(int value) {
+  if (value >= -2147483648 && value <= 2147483647) {
+    return make_int_tag("int32");
+  }
+  return type_int();
 }
 
 Type resolve_type_name(Checker c, string encoded) {
@@ -382,8 +473,8 @@ bool op_is_add(BinaryOp op) {
 
 Type check_expr(Checker c, Expr e) {
   return e match {
-    Expr::IntLit(_, _, _)       => type_int(),
-    Expr::FloatLit(_, _, _)     => type_float(),
+    Expr::IntLit(let v, _, _)   => default_int_literal_type(v),
+    Expr::FloatLit(_, _, _)     => type_double(),
     Expr::StringLit(_, _, _)    => type_string(),
     Expr::BoolLit(_, _, _)      => type_bool(),
     Expr::NullLit(_, _)         => type_null(),
@@ -570,7 +661,7 @@ Type check_assign(Checker c, string name, AssignOp op, Expr value, int line, int
   Type target = lookup_var(c, name);
   bool is_plain = op match { AssignOp::Assign => true, _ => false, };
   if (is_plain) {
-    if (!types_compatible(vt, target)) {
+    if (!types_assignable(vt, target)) {
       add_error(c, line, col,
         "Cannot assign '" + type_kind_name(vt) + "' to variable '" + name + "' of type '" + type_kind_name(target) + "'.");
     }
@@ -630,7 +721,7 @@ Type check_call(Checker c, Expr callee, TypeExpr[] type_args, Expr[] args, int l
   }
   for (int i = 0; i < args.len(); i = i + 1) {
     Type at = check_expr(c, args[i]);
-    if (!types_compatible(at, sig.param_types[i])) {
+    if (!types_assignable(at, sig.param_types[i])) {
       add_error(c, line, col, "Argument type mismatch.");
     }
   }
@@ -764,7 +855,7 @@ Type check_qualified_call(Checker c, string ns, string member, Expr[] args, int 
   }
   for (int i = 0; i < args.len(); i = i + 1) {
     Type at = check_expr(c, args[i]);
-    if (!types_compatible(at, sig.param_types[i])) {
+    if (!types_assignable(at, sig.param_types[i])) {
       add_error(c, line, col, "Argument type mismatch.");
     }
   }
@@ -878,7 +969,7 @@ Type check_array_builtin_method(Checker c, Type ot, string method, Expr[] args, 
     } else if (ot.kind == TypeKind::Array) {
       Type at = check_expr(c, args[0]);
       Type elem = resolve_type_name(c, ot.tag);
-      if (!types_compatible(at, elem)) {
+      if (!types_assignable(at, elem)) {
         add_error(c, line, col, "Array element type mismatch.");
       }
     } else {
@@ -1834,7 +1925,7 @@ void check_return(Checker c, Expr v, int line, int col) {
     return;
   }
   Type vt = check_expr(c, v);
-  if (!types_compatible(vt, c.expected_return)) {
+  if (!types_assignable(vt, c.expected_return)) {
     add_error(c, line, col, "Return type mismatch.");
   }
 }
@@ -1861,7 +1952,7 @@ void check_var_decl(Checker c, TypeExpr t, string n, Expr init, int line, int co
     Type init_type = check_expr(c, init);
     if (auto_typed) {
       final_type = init_type;
-    } else if (!types_compatible(init_type, declared)) {
+    } else if (!types_assignable(init_type, declared)) {
       add_error(c, line, col,
         "Cannot assign '" + type_kind_name(init_type) + "' to variable '" + n + "' of type '" + type_kind_name(declared) + "'.");
     }
