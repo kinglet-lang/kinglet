@@ -42,3 +42,4 @@ map_int32_value
 nested_array_index
 nested_map_array_index
 if_else_array_index
+dense_array_literal
