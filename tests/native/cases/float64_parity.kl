@@ -1,0 +1,8 @@
+using io;
+
+int main() {
+  float64 a = 1.5f64;
+  float64 b = 2.25f64;
+  io::out.line("{} {}", a, b);
+  return 0;
+}

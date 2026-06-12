@@ -1,0 +1,9 @@
+int main() {
+  float64 a = 1.5f64;
+  float64 b = 2.25f64;
+  float64 s = a + b;
+  if (s < 3.74f64 || s > 3.76f64) {
+    return 1;
+  }
+  return 42;
+}

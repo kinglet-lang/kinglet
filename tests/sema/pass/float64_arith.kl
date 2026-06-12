@@ -1,0 +1,7 @@
+// RUN: check
+int main() {
+  float64 a = 1.5;
+  float64 b = 2.25;
+  float64 s = a + b;
+  return 0;
+}

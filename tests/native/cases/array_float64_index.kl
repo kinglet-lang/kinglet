@@ -1,0 +1,12 @@
+int main() {
+  Array<float64> xs = [1.0f64, 2.5f64];
+  float64 a = xs[0];
+  float64 b = xs[1];
+  if (a < 0.99f64 || a > 1.01f64) {
+    return 1;
+  }
+  if (b < 2.49f64 || b > 2.51f64) {
+    return 2;
+  }
+  return 42;
+}
