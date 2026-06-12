@@ -1,0 +1,6 @@
+// RUN: check
+int main() {
+  int64 a = 3000000000;
+  int64 b = a + a;
+  return b;
+}

@@ -1,0 +1,9 @@
+int main() {
+  Array<int64> xs = [10i64, 20i64];
+  int64 a = xs[0];
+  int64 b = xs[1];
+  if (a + b != 30i64) {
+    return 1;
+  }
+  return 42;
+}

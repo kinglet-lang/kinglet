@@ -1,0 +1,9 @@
+int main() {
+  int64 x = 3000000000i64;
+  int64 y = 3000000000i64;
+  int64 z = x + y;
+  if (z != 6000000000) {
+    return 1;
+  }
+  return 42;
+}

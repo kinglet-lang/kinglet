@@ -43,3 +43,6 @@ nested_array_index
 nested_map_array_index
 if_else_array_index
 dense_array_literal
+io_bool_null
+fixed_width_int64
+array_int64_index
