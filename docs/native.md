@@ -88,12 +88,16 @@ bootstrap was built without LLVM.
 |-------|-------|-------------------|
 | Core | `just42`, `addmain`, `while_count`, `if_pos` | Literals, locals, integer ops, calls, loops, branches |
 | Aggregates | `struct_sum`, `array_index`, `str_len` | Struct fields, array index, string length via `libkinglet_rt` |
-| Numeric and enum | `big_int`, `neg_add`, `enum_no_payload`, `match_enum_simple` | Full `int64` range, unary negation, inline enum wire, simple `match` |
+| Numeric and enum | `big_int`, `neg_add`, `int64_high`, `enum_no_payload`, `match_enum_simple` | Full `int64` range, unary negation, inline enum wire, simple `match` |
 | Errors | `elvis_null`, `try_ok`, `try_propagate`, `cast_catch` | `?:`, `try`/`catch`, error propagation, cast errors |
 | Match and modules | `match_option_payload`, `enum_guard`, `match_int_lit`, `import_add` | Payload destructuring, guards, literal arms, cross-module calls |
 | Natives | `io_line`, `fs_roundtrip`, `sys_args_len` | `io::out`, `fs::__read`/`__write`, `sys::args` |
 | Floats and concat | `float_arith`, `float_cmp`, `str_concat` | Boxed-float math, relational dispatch, string `+` |
 | Methods and maps | `map_ops`, `array_methods`, `str_methods`, `bit_ops` | Map literal/index/has/keys/remove, array and string methods, bitwise ops |
+| Typed scalars | `bool_null_print`, `fixed_width_int32`, `fixed_width_parity` | `string(bool/null)`; `int32` literals and `io` format |
+| Typed containers | `struct_int32_field`, `array_int32_index`, `array_int32_index_set`, `map_int32_value` | Scalar unbox on field get and single-level `IndexGet` |
+| Nested containers | `nested_array_index`, `nested_map_array_index`, `if_else_array_index` | Chained `IndexGet`; CFG merge after `if/else` array assign |
+| Dense `T[][]` | `dense_array_literal` | Rectangular literal → `DenseArrayNew` row-major storage ([0017](../decisions/0017-dense-nested-array-layout.md)) |
 
 ## Runtime (`libkinglet_rt`)
 
@@ -105,17 +109,19 @@ Linked into every native binary. Bootstrap sources under `runtime/`:
   no-payload enums inline as `0xFFFD<<48 | type | variant`; floats are boxed
   heap values (`KlFloat`), so arithmetic dispatches through the runtime.
 - **Implemented**: strings (slice, index, len, methods), arrays (new/get/set/
-  len/slice/methods), maps (literal/index/has/keys/remove), structs (new/field
-  get/set), enums (payload, equality, casts), float math, string concat,
-  bitwise ops, io/fs/sys natives.
+  len/slice/methods; **dense 2D** via `kl_dense_array_new` / `DenseArrayNew`),
+  maps (literal/index/has/keys/remove), structs (new/field get/set), enums
+  (payload, equality, casts), float math, string concat, bitwise ops, io/fs/sys
+  natives.
 
 ## Known gaps
 
-See [0016 phase 2](../decisions/0016-typed-kir.md) and [0015 D6](../decisions/0015-llvm-backend-roadmap.md).
+See [0016 phase 2b](../decisions/0016-typed-kir.md) and [0015 D6](../decisions/0015-llvm-backend-roadmap.md).
 
-- Typed KIR phase 1: scalar `string(bool)` / `string(null)` print correctly;
-  generic `io` formatting and `+` concat may still show wire `1`/`0`.
-- Fixed-width `int8`–`int64` and container element unboxing — planned (V0).
+- Generic `io` formatting and `+` concat may still show wire `1`/`0` for bool/null
+  on some paths (scalar `string(bool)` / `string(null)` are resolved).
+- Full fixed-width surface (`int8`–`int64`, all float widths) — `int32` slice only.
+- Dense `m[i][j]` still uses two `IndexGet` in v1; `kl_dense2d_get` fusion deferred.
 - No GC — heap objects in RT use manual `new`/`delete`; deterministic
   destruction per ADR 0002 needs KIR drop insertion (future work).
 - Single host triple; cross-target builds are not wired into `kinglet build`.
