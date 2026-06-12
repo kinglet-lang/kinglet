@@ -103,6 +103,7 @@ string opcode_name(OpCode op) {
   if (op == OpCode::MultiplyI32) { return "MultiplyI32"; }
   if (op == OpCode::DivideI32)   { return "DivideI32"; }
   if (op == OpCode::ModuloI32)   { return "ModuloI32"; }
+  if (op == OpCode::DenseArrayNew) { return "DenseArrayNew"; }
   if (op == OpCode::EnumVariantPayload) { return "EnumVariantPayload"; }
   if (op == OpCode::EnumPayloadGet)     { return "EnumPayloadGet"; }
   if (op == OpCode::MapNew)    { return "MapNew"; }
@@ -205,6 +206,11 @@ string format_insn(Chunk c, int idx) {
   }
   if (ins.op == OpCode::MapNew) {
     return head + " pairs=" + operand_s;
+  }
+  if (ins.op == OpCode::DenseArrayNew) {
+    int rows = ins.operand / 65536;
+    int cols = ins.operand % 65536;
+    return head + " rows=" + string(rows) + " cols=" + string(cols);
   }
   return head;
 }

@@ -121,6 +121,12 @@ OP_NAMES = {
     82: "StringToFloat",
     83: "StringCode",
     84: "StringCodeAt",
+    85: "AddI32",
+    86: "SubtractI32",
+    87: "MultiplyI32",
+    88: "DivideI32",
+    89: "ModuloI32",
+    90: "DenseArrayNew",
 }
 
 
