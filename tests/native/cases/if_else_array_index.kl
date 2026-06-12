@@ -1,0 +1,11 @@
+using sys;
+
+int main() {
+  int32[] xs;
+  if (sys::args().len() > 0) {
+    xs = [10i32, 20i32];
+  } else {
+    xs = [30i32, 40i32];
+  }
+  return xs[0];
+}
