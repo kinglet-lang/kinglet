@@ -1,0 +1,6 @@
+// RUN: check
+int main() {
+  {string: int32[]} groups;
+  int32 x = groups["a"][0];
+  return x;
+}

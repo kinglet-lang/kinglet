@@ -410,12 +410,27 @@ Type default_int_literal_type(int value) {
   return type_int();
 }
 
-Type resolve_type_name(Checker c, string encoded) {
+// Parse surface encodings produced by parser type_to_string (e.g. Array<int32>).
+Type resolve_encoded_type(Checker c, string encoded) {
+  if (encoded.len() >= 7) {
+    string head = encoded.slice(0, 6);
+    if (head == "Array<") {
+      string tail = encoded.slice(encoded.len() - 1, encoded.len());
+      if (tail == ">") {
+        string inner = encoded.slice(6, encoded.len() - 1);
+        return type_array(inner);
+      }
+    }
+  }
   Type scalar = resolve_scalar_name(encoded);
   if (scalar.kind != TypeKind::Unknown) { return scalar; }
   if (enum_exists(c, encoded)) { return type_enum(encoded); }
   if (struct_exists(c, encoded)) { return type_struct(encoded); }
   return type_unknown();
+}
+
+Type resolve_type_name(Checker c, string encoded) {
+  return resolve_encoded_type(c, encoded);
 }
 
 Type resolve_type_expr(Checker c, TypeExpr t) {
@@ -427,7 +442,7 @@ Type resolve_type_expr(Checker c, TypeExpr t) {
     return type_map(t.type_args[0], t.type_args[1]);
   }
   if (t.name == "Nullable" && t.type_args.len() == 1) {
-    Type inner = resolve_type_name(c, t.type_args[0]);
+    Type inner = resolve_encoded_type(c, t.type_args[0]);
     inner.nullable = true;
     return inner;
   }
@@ -882,6 +897,23 @@ Type check_array_lit(Checker c, Expr[] elems, int line, int col) {
 Type check_index(Checker c, Expr obj, Expr idx, int line, int col) {
   Type ot = check_expr(c, obj);
   Type it = check_expr(c, idx);
+  if (ot.kind == TypeKind::Map) {
+    Type key_ty = resolve_encoded_type(c, map_key_enc(ot));
+    if (key_ty.kind == TypeKind::String) {
+      if (it.kind != TypeKind::String && it.kind != TypeKind::Unknown) {
+        add_error(c, line, col, "Map key must be string.");
+      }
+    } else if (it.kind != TypeKind::Int && it.kind != TypeKind::Unknown) {
+      add_error(c, line, col, "Map key must be int.");
+    }
+    return resolve_encoded_type(c, map_val_enc(ot));
+  }
+  if (ot.kind == TypeKind::String) {
+    if (it.kind != TypeKind::Int && it.kind != TypeKind::Unknown) {
+      add_error(c, line, col, "String index must be int.");
+    }
+    return type_int();
+  }
   if (it.kind != TypeKind::Int && it.kind != TypeKind::Unknown) {
     add_error(c, line, col, "Array index must be int.");
   }
@@ -890,7 +922,7 @@ Type check_index(Checker c, Expr obj, Expr idx, int line, int col) {
     return type_unknown();
   }
   if (ot.kind == TypeKind::Array) {
-    return resolve_type_name(c, ot.tag);
+    return resolve_encoded_type(c, ot.tag);
   }
   return type_unknown();
 }
@@ -948,6 +980,17 @@ string map_key_enc(Type m) {
     i = i + 1;
   }
   return "string";
+}
+
+string map_val_enc(Type m) {
+  int i = 0;
+  while (i < m.tag.len()) {
+    if (m.tag.slice(i, i + 1) == ":") {
+      return m.tag.slice(i + 1, m.tag.len());
+    }
+    i = i + 1;
+  }
+  return "int";
 }
 
 void check_string_operand(Checker c, Type at, int line, int col, string ctx) {

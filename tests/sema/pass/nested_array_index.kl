@@ -1,0 +1,6 @@
+// RUN: check
+int main() {
+  int32[][] m;
+  int32 x = m[0][1];
+  return x;
+}
