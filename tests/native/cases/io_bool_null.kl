@@ -1,0 +1,12 @@
+using io;
+
+int main() {
+  io::out.line("{} {}", true, false);
+  io::out.line("{}", null);
+  string s = "a" + true;
+  string t = null + "b";
+  if (s != "atrue" || t != "nullb") {
+    return 1;
+  }
+  return 0;
+}
