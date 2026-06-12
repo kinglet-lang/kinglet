@@ -39,3 +39,5 @@ struct_int32_field
 array_int32_index
 array_int32_index_set
 map_int32_value
+nested_array_index
+nested_map_array_index

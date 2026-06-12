@@ -1,0 +1,4 @@
+int main() {
+  {string: int32[]} groups = {"a": [10i32, 20i32]};
+  return groups["a"][1];
+}

@@ -1,0 +1,6 @@
+int main() {
+  int32[] row0 = [1i32, 2i32];
+  int32[] row1 = [3i32, 4i32];
+  int32[][] m = [row0, row1];
+  return m[1][0];
+}
