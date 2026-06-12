@@ -125,8 +125,14 @@ void emit_ident(Compiler co, string name, int line, int col) {
   compile_error(co, line, col, "Use of undeclared variable '" + name + "'.");
 }
 
+string int_literal_width_name(string suffix, int value) {
+  if (suffix.len() > 0) { return int_suffix_type_name(suffix); }
+  if (value >= -2147483648 && value <= 2147483647) { return "int32"; }
+  return "int64";
+}
+
 string int_suffix_type_name(string suffix) {
-  if (suffix.len() == 0) { return "int"; }
+  if (suffix.len() == 0) { return "int64"; }
   if (suffix == "i8") { return "int8"; }
   if (suffix == "i16") { return "int16"; }
   if (suffix == "i32") { return "int32"; }
@@ -135,7 +141,7 @@ string int_suffix_type_name(string suffix) {
   if (suffix == "u16") { return "uint16"; }
   if (suffix == "u32") { return "uint32"; }
   if (suffix == "u64") { return "uint64"; }
-  return "int";
+  return "int64";
 }
 
 string float_suffix_type_name(string suffix) {
@@ -144,9 +150,47 @@ string float_suffix_type_name(string suffix) {
   return "float";
 }
 
+string join_int_widths(string lhs, string rhs) {
+  if (lhs.len() == 0 || rhs.len() == 0 || lhs != rhs) {
+    if ((lhs == "int32" && rhs == "int64") || (lhs == "int64" && rhs == "int32")) {
+      return "int64";
+    }
+    return "";
+  }
+  return lhs;
+}
+
+string infer_arith_binary_type(Compiler co, Expr l, BinaryOp op, Expr r) {
+  bool is_arith = op match {
+    BinaryOp::Add => true, BinaryOp::Sub => true, BinaryOp::Mul => true,
+    BinaryOp::Div => true, BinaryOp::Mod => true,
+    _ => false,
+  };
+  if (!is_arith) { return ""; }
+  string lt = infer_expr_type_name(co, l);
+  string rt = infer_expr_type_name(co, r);
+  if (lt.len() == 0 || rt.len() == 0) { return ""; }
+  if (lt == "float32" || lt == "float64" || rt == "float32" || rt == "float64") {
+    if (lt == rt) { return lt; }
+    return "float64";
+  }
+  return join_int_widths(lt, rt);
+}
+
+string infer_expr_type_name(Compiler co, Expr e) {
+  return e match {
+    Expr::IntLit(let v, let suf, _, _) => int_literal_width_name(suf, v),
+    Expr::FloatLit(_, let suf, _, _) => float_suffix_type_name(suf),
+    Expr::CharLit(_, _, _) => "int8",
+    Expr::Ident(let n, let _l, let _c) => lookup_local_type(co, n),
+    Expr::Binary(let l, let op, let r, _, _) => infer_arith_binary_type(co, l, op, r),
+    _ => "",
+  };
+}
+
 string infer_arg_type_name(Compiler co, Expr e) {
   return e match {
-    Expr::IntLit(_, let suf, _, _) => int_suffix_type_name(suf),
+    Expr::IntLit(_, let suf, _, _) => suf.len() == 0 ? "int" : int_suffix_type_name(suf),
     Expr::FloatLit(_, let suf, _, _) => float_suffix_type_name(suf),
     Expr::BoolLit(_, _, _) => "bool",
     Expr::StringLit(_, _, _) => "string",
@@ -154,6 +198,27 @@ string infer_arg_type_name(Compiler co, Expr e) {
     Expr::StructLit(let ty, let _fields, let _l, let _c) => ty.name,
     Expr::Ident(let n, let _l, let _c) => lookup_local_type(co, n),
     _ => "",
+  };
+}
+
+OpCode width_arithmetic_opcode(BinaryOp op, string width_name) {
+  if (width_name == "int32") {
+    return op match {
+      BinaryOp::Add => OpCode::AddI32,
+      BinaryOp::Sub => OpCode::SubtractI32,
+      BinaryOp::Mul => OpCode::MultiplyI32,
+      BinaryOp::Div => OpCode::DivideI32,
+      BinaryOp::Mod => OpCode::ModuloI32,
+      _ => OpCode::Add,
+    };
+  }
+  return op match {
+    BinaryOp::Add => OpCode::Add,
+    BinaryOp::Sub => OpCode::Subtract,
+    BinaryOp::Mul => OpCode::Multiply,
+    BinaryOp::Div => OpCode::Divide,
+    BinaryOp::Mod => OpCode::Modulo,
+    _ => OpCode::Add,
   };
 }
 
@@ -191,6 +256,18 @@ void emit_binary(Compiler co, Expr lhs, BinaryOp op, Expr rhs, int line, int col
   if (is_or)  { emit_logical_or(co, lhs, rhs, line, col);  return; }
   compile_expr(co, lhs);
   compile_expr(co, rhs);
+  bool is_arith = op match {
+    BinaryOp::Add => true, BinaryOp::Sub => true, BinaryOp::Mul => true,
+    BinaryOp::Div => true, BinaryOp::Mod => true,
+    _ => false,
+  };
+  if (is_arith) {
+    Expr bin = Expr::Binary(lhs, op, rhs, line, col);
+    string width = infer_expr_type_name(co, bin);
+    OpCode code = width_arithmetic_opcode(op, width);
+    bytecode::write_op(co.chunk, code, line, col);
+    return;
+  }
   op match {
     BinaryOp::Add => bytecode::write_op(co.chunk, OpCode::Add, line, col),
     BinaryOp::Sub => bytecode::write_op(co.chunk, OpCode::Subtract, line, col),
