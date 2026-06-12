@@ -243,9 +243,9 @@ string strip_string_quotes(string lexeme) {
 // position helpers: extract line/col from any Expr variant
 
 int expr_line(Expr e) => e match {
-  Expr::IntLit(_, let l, _) => l,
+  Expr::IntLit(_, _, let l, _) => l,
   Expr::CharLit(_, let l, _) => l,
-  Expr::FloatLit(_, let l, _) => l,
+  Expr::FloatLit(_, _, let l, _) => l,
   Expr::StringLit(_, let l, _) => l,
   Expr::NullLit(let l, _) => l,
   Expr::BoolLit(_, let l, _) => l,
@@ -276,9 +276,9 @@ int expr_line(Expr e) => e match {
 };
 
 int expr_col(Expr e) => e match {
-  Expr::IntLit(_, _, let c) => c,
+  Expr::IntLit(_, _, _, let c) => c,
   Expr::CharLit(_, _, let c) => c,
-  Expr::FloatLit(_, _, let c) => c,
+  Expr::FloatLit(_, _, _, let c) => c,
   Expr::StringLit(_, _, let c) => c,
   Expr::NullLit(_, let c) => c,
   Expr::BoolLit(_, _, let c) => c,

@@ -26,9 +26,9 @@ using compiler_state {
 
 void compile_expr(Compiler co, Expr e) {
   e match {
-    Expr::IntLit(let v, let l, let c)    => emit_int(co, v, l, c),
+    Expr::IntLit(let v, let _suf, let l, let c)    => emit_int(co, v, l, c),
     Expr::CharLit(let v, let l, let c)   => emit_char(co, v, l, c),
-    Expr::FloatLit(let v, let l, let c)  => emit_float(co, v, l, c),
+    Expr::FloatLit(let v, let _suf, let l, let c)  => emit_float(co, v, l, c),
     Expr::StringLit(let v, let l, let c) => emit_string(co, v, l, c),
     Expr::NullLit(let l, let c)          => bytecode::write_op(co.chunk, OpCode::Null_, l, c),
     Expr::BoolLit(let v, let l, let c)   => emit_bool(co, v, l, c),
@@ -125,10 +125,29 @@ void emit_ident(Compiler co, string name, int line, int col) {
   compile_error(co, line, col, "Use of undeclared variable '" + name + "'.");
 }
 
+string int_suffix_type_name(string suffix) {
+  if (suffix.len() == 0) { return "int"; }
+  if (suffix == "i8") { return "int8"; }
+  if (suffix == "i16") { return "int16"; }
+  if (suffix == "i32") { return "int32"; }
+  if (suffix == "i64") { return "int64"; }
+  if (suffix == "u8") { return "uint8"; }
+  if (suffix == "u16") { return "uint16"; }
+  if (suffix == "u32") { return "uint32"; }
+  if (suffix == "u64") { return "uint64"; }
+  return "int";
+}
+
+string float_suffix_type_name(string suffix) {
+  if (suffix == "f64") { return "float64"; }
+  if (suffix == "f32") { return "float32"; }
+  return "float";
+}
+
 string infer_arg_type_name(Compiler co, Expr e) {
   return e match {
-    Expr::IntLit(_, _, _) => "int",
-    Expr::FloatLit(_, _, _) => "float",
+    Expr::IntLit(_, let suf, _, _) => int_suffix_type_name(suf),
+    Expr::FloatLit(_, let suf, _, _) => float_suffix_type_name(suf),
     Expr::BoolLit(_, _, _) => "bool",
     Expr::StringLit(_, _, _) => "string",
     Expr::CharLit(_, _, _) => "char",

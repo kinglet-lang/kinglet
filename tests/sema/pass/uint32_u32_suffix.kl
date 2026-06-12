@@ -1,0 +1,6 @@
+// RUN: check
+int main() {
+  uint32 a = 42u32;
+  uint32 b = a + 1u32;
+  return 0;
+}

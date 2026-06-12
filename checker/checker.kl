@@ -425,6 +425,25 @@ Type default_int_literal_type(int value) {
   return type_int();
 }
 
+Type int_literal_type_from_suffix(string suffix, int value) {
+  if (suffix.len() == 0) { return default_int_literal_type(value); }
+  if (suffix == "i8") { return make_int_tag("int8"); }
+  if (suffix == "i16") { return make_int_tag("int16"); }
+  if (suffix == "i32") { return make_int_tag("int32"); }
+  if (suffix == "i64") { return type_int(); }
+  if (suffix == "u8") { return make_int_tag("uint8"); }
+  if (suffix == "u16") { return make_int_tag("uint16"); }
+  if (suffix == "u32") { return make_int_tag("uint32"); }
+  if (suffix == "u64") { return make_int_tag("uint64"); }
+  return default_int_literal_type(value);
+}
+
+Type float_literal_type_from_suffix(string suffix) {
+  if (suffix == "f32") { return type_float(); }
+  if (suffix == "f64") { return type_double(); }
+  return type_float();
+}
+
 // Parse surface encodings produced by parser type_to_string (e.g. Array<int32>).
 Type resolve_encoded_type(Checker c, string encoded) {
   if (encoded.len() >= 7) {
@@ -507,8 +526,8 @@ bool op_is_add(BinaryOp op) {
 
 Type check_expr(Checker c, Expr e) {
   return e match {
-    Expr::IntLit(let v, _, _)   => default_int_literal_type(v),
-    Expr::FloatLit(_, _, _)     => type_float(),
+    Expr::IntLit(let v, let suf, _, _)   => int_literal_type_from_suffix(suf, v),
+    Expr::FloatLit(_, let suf, _, _)     => float_literal_type_from_suffix(suf),
     Expr::StringLit(_, _, _)    => type_string(),
     Expr::BoolLit(_, _, _)      => type_bool(),
     Expr::NullLit(_, _)         => type_null(),
@@ -666,7 +685,18 @@ Type check_arithmetic(Checker c, BinaryOp op, Type l, Type r, int line, int col)
     add_error(c, line, col, "Arithmetic operands must be numeric.");
     return type_int();
   }
-  if (l.kind == TypeKind::Float || r.kind == TypeKind::Float) { return type_float(); }
+  if (l.kind == TypeKind::Float || r.kind == TypeKind::Float) {
+    if (l.kind == TypeKind::Float && r.kind == TypeKind::Float && l.tag == r.tag && l.tag.len() > 0) {
+      return l;
+    }
+    if (float_type_name(l) == "float64" || float_type_name(r) == "float64") {
+      return type_double();
+    }
+    return type_float();
+  }
+  if (l.kind == TypeKind::Int && r.kind == TypeKind::Int && l.tag == r.tag && l.tag.len() > 0) {
+    return l;
+  }
   return type_int();
 }
 

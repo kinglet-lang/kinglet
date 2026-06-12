@@ -137,9 +137,17 @@ string display_string(string s) {
 void print_token(Token t) {
   string name = tt_name(t.type);
   if (t.type == TokenType::Integer || t.type == TokenType::CharLit) {
-    io::out.line("{}:{} {} {} {}", t.line, t.col, name, t.lexeme, t.int_value);
+    if (t.suffix.len() > 0) {
+      io::out.line("{}:{} {} {} {} {}", t.line, t.col, name, t.lexeme, t.int_value, t.suffix);
+    } else {
+      io::out.line("{}:{} {} {} {}", t.line, t.col, name, t.lexeme, t.int_value);
+    }
   } else if (t.type == TokenType::FloatLit) {
-    io::out.line("{}:{} {} {} {}", t.line, t.col, name, t.lexeme, t.float_value);
+    if (t.suffix.len() > 0) {
+      io::out.line("{}:{} {} {} {} {}", t.line, t.col, name, t.lexeme, t.float_value, t.suffix);
+    } else {
+      io::out.line("{}:{} {} {} {}", t.line, t.col, name, t.lexeme, t.float_value);
+    }
   } else if (t.type == TokenType::StringLit) {
     io::out.line("{}:{} {} {} {}", t.line, t.col, name, t.lexeme, display_string(t.string_value));
   } else if (t.type == TokenType::Eof) {
@@ -226,11 +234,27 @@ string type_name(TypeExpr t) {
   return s;
 }
 
+void print_int_lit(string pad, int v, string suf) {
+  if (suf.len() > 0) {
+    io::out.line("{}IntLit {} {}", pad, v, suf);
+  } else {
+    io::out.line("{}IntLit {}", pad, v);
+  }
+}
+
+void print_float_lit(string pad, float v, string suf) {
+  if (suf.len() > 0) {
+    io::out.line("{}FloatLit {} {}", pad, v, suf);
+  } else {
+    io::out.line("{}FloatLit {}", pad, v);
+  }
+}
+
 void print_expr(Expr e, int depth) {
   string pad = indent_str(depth);
   e match {
-    Expr::IntLit(let v, let _l, let _c)    => io::out.line("{}IntLit {}", pad, v),
-    Expr::FloatLit(let v, let _l, let _c)  => io::out.line("{}FloatLit {}", pad, v),
+    Expr::IntLit(let v, let suf, let _l, let _c)    => print_int_lit(pad, v, suf),
+    Expr::FloatLit(let v, let suf, let _l, let _c)  => print_float_lit(pad, v, suf),
     Expr::StringLit(let v, let _l, let _c) => io::out.line("{}StringLit \"{}\"", pad, display_string(v)),
     Expr::BoolLit(let v, let _l, let _c)   => io::out.line("{}BoolLit {}", pad, v),
     Expr::Ident(let n, let _l, let _c)     => io::out.line("{}Ident {}", pad, n),

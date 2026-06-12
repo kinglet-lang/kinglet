@@ -1,0 +1,6 @@
+// RUN: check
+int main() {
+  int32 a = 42i32;
+  int32 b = a + 1i32;
+  return 0;
+}

@@ -16,7 +16,7 @@ import {
 // --- AST type helpers (need to match compiler.kl's enum variant indices) ---
 
 // Helper: build an IntLit expression
-Expr int_lit(int v, int line, int col) => Expr::IntLit(v, line, col);
+Expr int_lit(int v, int line, int col) => Expr::IntLit(v, "", line, col);
 
 // Helper: build a BoolLit
 Expr bool_lit(bool v, int line, int col) => Expr::BoolLit(v, line, col);

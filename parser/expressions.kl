@@ -442,7 +442,7 @@ Expr primary(Parser p) {
   if (starts_cast(p)) { return cast_expr(p); }
   if (match_tt(p, TokenType::Integer)) {
     Token t = previous(p);
-    return Expr::IntLit(t.int_value, t.line, t.col);
+    return Expr::IntLit(t.int_value, t.suffix, t.line, t.col);
   }
   if (match_tt(p, TokenType::CharLit)) {
     Token t = previous(p);
@@ -450,7 +450,7 @@ Expr primary(Parser p) {
   }
   if (match_tt(p, TokenType::FloatLit)) {
     Token t = previous(p);
-    return Expr::FloatLit(t.float_value, t.line, t.col);
+    return Expr::FloatLit(t.float_value, t.suffix, t.line, t.col);
   }
   if (match_tt(p, TokenType::StringLit)) {
     Token t = previous(p);

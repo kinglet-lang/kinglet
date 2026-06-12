@@ -27,8 +27,8 @@ pub TypeExpr make_type(string name) => TypeExpr { name, [] };
 
 // Expression node. Variant payloads, in order:
 //
-//   IntLit(value, line, col)
-//   FloatLit(value, line, col)
+//   IntLit(value, width_suffix, line, col)
+//   FloatLit(value, width_suffix, line, col)
 //   StringLit(value, line, col)
 //   BoolLit(value, line, col)
 //   Ident(name, line, col)
@@ -51,9 +51,9 @@ pub TypeExpr make_type(string name) => TypeExpr { name, [] };
 //   TryExpr(value, line, col)                   // try expr — Ok(v)→v, Err→early return
 //   None                                       // sentinel for "no expression"
 pub enum Expr {
-  IntLit(int, int, int),
+  IntLit(int, string, int, int),
   CharLit(int, int, int),          // value, line, col
-  FloatLit(float, int, int),
+  FloatLit(float, string, int, int),
   StringLit(string, int, int),
   NullLit(int, int),               // line, col
   BoolLit(bool, int, int),

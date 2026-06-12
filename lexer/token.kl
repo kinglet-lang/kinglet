@@ -43,4 +43,5 @@ pub struct Token {
   int int_value;
   float float_value;
   string string_value;
+  string suffix;
 }

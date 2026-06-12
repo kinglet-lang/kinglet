@@ -65,11 +65,60 @@ MatchResult match_char(Scanner s, string expected) {
 
 Token make_token(Scanner s, TokenType type) {
   string lexeme = s.source.slice(s.start, s.current);
-  return Token { type, lexeme, s.token_line, s.token_col, 0, 0.0, "" };
+  return Token { type, lexeme, s.token_line, s.token_col, 0, 0.0, "", "" };
 }
 
 Token make_error(Scanner s, string msg) {
-  return Token { TokenType::Error, msg, s.token_line, s.token_col, 0, 0.0, "" };
+  return Token { TokenType::Error, msg, s.token_line, s.token_col, 0, 0.0, "", "" };
+}
+
+bool is_int_suffix(string suffix) {
+  return suffix == "i8" || suffix == "i16" || suffix == "i32" || suffix == "i64" ||
+         suffix == "u8" || suffix == "u16" || suffix == "u32" || suffix == "u64";
+}
+
+bool is_float_suffix(string suffix) {
+  return suffix == "f32" || suffix == "f64";
+}
+
+struct SuffixResult { Scanner sc; string suffix; }
+
+SuffixResult scan_int_suffix(Scanner s) {
+  string c = peek(s);
+  if (c != "i" && c != "u") { return SuffixResult { s, "" }; }
+  int saved = s.current;
+  AdvResult r = advance(s);
+  s = r.sc;
+  string suffix = r.ch;
+  while (is_digit(peek(s))) {
+    r = advance(s);
+    s = r.sc;
+    suffix = suffix + r.ch;
+  }
+  if (!is_int_suffix(suffix)) {
+    s.current = saved;
+    return SuffixResult { s, "" };
+  }
+  return SuffixResult { s, suffix };
+}
+
+SuffixResult scan_float_suffix(Scanner s) {
+  if (peek(s) != "f") { return SuffixResult { s, "" }; }
+  int saved = s.current;
+  AdvResult r = advance(s);
+  s = r.sc;
+  if (peek(s) == "3" && peek_next(s) == "2") {
+    r = advance(s); s = r.sc;
+    r = advance(s); s = r.sc;
+    return SuffixResult { s, "f32" };
+  }
+  if (peek(s) == "6" && peek_next(s) == "4") {
+    r = advance(s); s = r.sc;
+    r = advance(s); s = r.sc;
+    return SuffixResult { s, "f64" };
+  }
+  s.current = saved;
+  return SuffixResult { s, "" };
 }
 
 TokenType keyword_type(string w) {
@@ -143,6 +192,9 @@ ScanResult scan_number(Scanner s) {
     }
     Token tok = make_token(s, TokenType::Integer);
     tok.int_value = val;
+    SuffixResult sr = scan_int_suffix(s);
+    s = sr.sc;
+    tok.suffix = sr.suffix;
     return ScanResult { s, tok };
   }
 
@@ -163,6 +215,9 @@ ScanResult scan_number(Scanner s) {
     }
     Token tok = make_token(s, TokenType::Integer);
     tok.int_value = val;
+    SuffixResult sr = scan_int_suffix(s);
+    s = sr.sc;
+    tok.suffix = sr.suffix;
     return ScanResult { s, tok };
   }
 
@@ -224,11 +279,17 @@ ScanResult scan_number(Scanner s) {
     }
     Token tok = make_token(s, TokenType::FloatLit);
     tok.float_value = v;
+    SuffixResult sr = scan_float_suffix(s);
+    s = sr.sc;
+    tok.suffix = sr.suffix;
     return ScanResult { s, tok };
   }
 
   Token tok = make_token(s, TokenType::Integer);
   tok.int_value = int_val;
+  SuffixResult sr = scan_int_suffix(s);
+  s = sr.sc;
+  tok.suffix = sr.suffix;
   return ScanResult { s, tok };
 }
 
