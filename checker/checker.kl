@@ -104,6 +104,21 @@ pub string type_kind_name(Type t) {
   };
 }
 
+// Full surface encoding for container element types (e.g. Array<int32>, Array<Array<int32>>).
+pub string type_encode(Type t) {
+  return t.kind match {
+    TypeKind::Int     => int_type_name(t),
+    TypeKind::Float   => float_type_name(t),
+    TypeKind::Bool    => "bool",
+    TypeKind::String  => "string",
+    TypeKind::Array   => "Array<" + t.tag + ">",
+    TypeKind::Map     => "Map<" + t.tag + ">",
+    TypeKind::Struct  => t.tag,
+    TypeKind::Enum    => t.tag,
+    _                 => type_kind_name(t),
+  };
+}
+
 bool int_tags_equal(string a, string b) {
   if (a.len() == 0) { a = "int64"; }
   if (b.len() == 0) { b = "int64"; }
@@ -891,7 +906,7 @@ Type check_array_lit(Checker c, Expr[] elems, int line, int col) {
       return type_array("");
     }
   }
-  return type_array(type_kind_name(first));
+  return type_array(type_encode(first));
 }
 
 Type check_index(Checker c, Expr obj, Expr idx, int line, int col) {

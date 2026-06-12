@@ -1,0 +1,8 @@
+// RUN: check
+int main() {
+  int32[] row0 = [1, 2];
+  int32[] row1 = [3, 4];
+  int32[][] m = [row0, row1];
+  int32 x = m[1][0];
+  return x;
+}
