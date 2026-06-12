@@ -1,0 +1,6 @@
+// RUN: check
+int main() {
+  Array<uint32> xs;
+  uint32 x = xs[0];
+  return 0;
+}

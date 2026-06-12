@@ -46,3 +46,8 @@ dense_array_literal
 io_bool_null
 fixed_width_int64
 array_int64_index
+fixed_width_float64
+float64_parity
+array_float64_index
+fixed_width_uint32
+array_uint32_index
