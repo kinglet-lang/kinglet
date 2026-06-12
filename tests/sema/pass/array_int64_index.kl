@@ -1,0 +1,8 @@
+// RUN: check
+int main() {
+  Array<int64> xs = [10i64, 20i64];
+  int64 a = xs[0];
+  int64 b = xs[1];
+  int64 sum = a + b;
+  return 0;
+}

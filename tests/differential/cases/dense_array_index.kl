@@ -1,6 +1,5 @@
-// RUN: check
+// RUN: diff
 int main() {
   int32[][] m = [[1i32, 2i32], [3i32, 4i32]];
-  int32 x = m[0][1];
-  return x;
+  return m[0][1];
 }

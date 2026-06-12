@@ -1,6 +1,8 @@
 // RUN: check
 int main() {
   Array<uint32> xs = [10u32, 20u32];
-  uint32 x = xs[0];
+  uint32 a = xs[0];
+  uint32 b = xs[1];
+  uint32 sum = a + b;
   return 0;
 }

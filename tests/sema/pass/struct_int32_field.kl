@@ -1,0 +1,8 @@
+// RUN: check
+struct Box { int32 v; }
+
+int main() {
+  Box b = Box { 41i32 };
+  int32 n = b.v + 2i32;
+  return n;
+}

@@ -1,0 +1,7 @@
+// RUN: check
+int main() {
+  int32 x = 2000000000i32;
+  int32 y = 2000000000i32;
+  int32 z = x + y;
+  return 0;
+}

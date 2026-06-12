@@ -1,0 +1,10 @@
+// RUN: diff
+int main() {
+  uint32 x = 4294967295u32;
+  uint32 y = 1u32;
+  uint32 z = x + y;
+  if (z != 0u32) {
+    return 1;
+  }
+  return 42;
+}

@@ -104,11 +104,20 @@ pub string type_kind_name(Type t) {
   };
 }
 
+string canonical_type_tag(Type t) {
+  if (t.tag.len() > 0) { return t.tag; }
+  return t.kind match {
+    TypeKind::Int   => "int64",
+    TypeKind::Float => "float32",
+    _               => type_kind_name(t),
+  };
+}
+
 // Full surface encoding for container element types (e.g. Array<int32>, Array<Array<int32>>).
 pub string type_encode(Type t) {
   return t.kind match {
-    TypeKind::Int     => int_type_name(t),
-    TypeKind::Float   => float_type_name(t),
+    TypeKind::Int     => canonical_type_tag(t),
+    TypeKind::Float   => canonical_type_tag(t),
     TypeKind::Bool    => "bool",
     TypeKind::String  => "string",
     TypeKind::Array   => "Array<" + t.tag + ">",
