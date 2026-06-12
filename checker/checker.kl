@@ -133,8 +133,12 @@ bool float_assignable(Type from, Type to) {
 }
 
 bool types_assignable(Type from, Type to) {
-  if (integer_assignable(from, to)) { return true; }
-  if (float_assignable(from, to)) { return true; }
+  if (from.kind == TypeKind::Int && to.kind == TypeKind::Int) {
+    return integer_assignable(from, to);
+  }
+  if (from.kind == TypeKind::Float && to.kind == TypeKind::Float) {
+    return float_assignable(from, to);
+  }
   if (from.kind == TypeKind::Struct && to.kind == TypeKind::Struct) {
     return from.tag == to.tag;
   }
