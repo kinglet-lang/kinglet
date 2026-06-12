@@ -478,7 +478,7 @@ bool op_is_add(BinaryOp op) {
 Type check_expr(Checker c, Expr e) {
   return e match {
     Expr::IntLit(let v, _, _)   => default_int_literal_type(v),
-    Expr::FloatLit(_, _, _)     => type_double(),
+    Expr::FloatLit(_, _, _)     => type_float(),
     Expr::StringLit(_, _, _)    => type_string(),
     Expr::BoolLit(_, _, _)      => type_bool(),
     Expr::NullLit(_, _)         => type_null(),
