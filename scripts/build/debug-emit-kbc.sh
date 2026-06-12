@@ -2,7 +2,7 @@
 # Explicit kbc emission for debugging (ADR 0014 M2).
 #
 # Usage:
-#   kinglet-debug-emit-kbc.sh [--shadow] <out.kbc> <src.kl> [project_root]
+#   debug-emit-kbc.sh [--shadow] <out.kbc> <src.kl> [project_root]
 #
 #   --shadow   compile via self-host compiler.kbc (VM host)
 #   (default)  compile via bootstrap Ref compiler

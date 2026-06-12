@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Klos + stamp helpers for kinglet build (ADR 0014 M0).
-# Sourced by kinglet-build.sh and tests/common.sh — do not execute directly.
+# Sourced by build.sh and tests/common.sh — do not execute directly.
 
 set -euo pipefail
 

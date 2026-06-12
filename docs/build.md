@@ -15,25 +15,37 @@ See [decisions/0014](../decisions/0014-compilation-toolchain-architecture.md) (i
 ## Commands
 
 ```bash
+./kinglet init [name]        # new project dir (prompt; default kinglet-app/)
 ./kinglet build              # Ref compile [build].root → .kinglet/out/compiler (native default)
 ./kinglet build --backend vm # → .kinglet/out/compiler.kbc (Shadow / prove path)
-./kinglet build --quiet      # cache hit/miss only on stderr
-./kinglet prove              # Shadow vs Ref parity (round-trip + differential)
+./kinglet build --quiet      # minimal stderr
+./kinglet run                # run default build output (.kinglet/out/compiler or .kbc)
+./kinglet file.kl            # compile + run one-off (same as bootstrap default)
+./kinglet -v / --version     # bootstrap version
+./kinglet prove              # Shadow vs Ref parity (bash script; stamp/Klos cache)
 ./kinglet debug emit-kbc out.kbc src.kl
 ./kinglet debug emit-kbc --shadow out.kbc src.kl
 ./kinglet native -o out prog.kl   # shorthand for bootstrap --backend native
 KINGLET_BOOTSTRAP=... ./kinglet build
 ```
 
-`build` uses the Ref compiler only. `prove` runs Shadow parity suites. Non-build
-subcommands forward to bootstrap `kinglet` except `build` / `prove` / `debug`.
+`init` / `build` / `run` / direct `.kl` execution are implemented in the bootstrap
+binary. `prove` and `debug emit-kbc` are dev scripts under `scripts/build/`
+(`prove.sh`, `debug-emit-kbc.sh`; `build.sh` is the internal stamp/Klos path used by prove/tests).
 
-### `kinglet clean` (planned — V0 CLI)
+### `kinglet prune`
 
-Prune `.kinglet/objects/` blobs no longer referenced by any stamp. **Build-cache
-housekeeping only** — not language/runtime GC ([0014](../decisions/0014-compilation-toolchain-architecture.md)
-§ Post-0014). Not implemented in the Bash driver yet; until then remove
-`.kinglet/objects` manually if needed.
+Prune `.kinglet/objects/` blobs no longer referenced by any stamp (reads
+`.kinglet/stamps/*.object`). **Build-cache housekeeping only** — not language/runtime
+GC ([0014](../decisions/0014-compilation-toolchain-architecture.md) § Post-0014).
+
+```bash
+./kinglet prune              # remove unreferenced Klos objects
+./kinglet prune --all        # remove entire .kinglet/ (stamps, out, objects, cache)
+./kinglet prune -n           # dry-run
+```
+
+`objects/native/` (LLVM module cache) is kept by default; use `--all` to wipe it.
 
 ## Configuration (`kinglet.toml`)
 
@@ -58,7 +70,7 @@ On cache hit, `kinglet build` skips compilation.
 
 ## Tests
 
-`ensure_build_stamp` in `tests/common.sh` wraps `scripts/build/kinglet-build.sh --quiet`.
+`ensure_build_stamp` in `tests/common.sh` wraps `scripts/build/build.sh --quiet` (internal stamp/Klos path; `./kinglet build` uses the bootstrap binary).
 
 KIR goldens: `bash tests/ir/run_golden.sh` (requires bootstrap with `--ir`).
 

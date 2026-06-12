@@ -2,8 +2,11 @@
 # Build toolchain artefacts via Ref compiler + Klos (ADR 0014 M0).
 #
 # Usage:
-#   kinglet-build.sh [--quiet] [project_root]
-#   KINGLET_BOOTSTRAP=/path/to/kinglet kinglet-build.sh
+#   build.sh [--quiet] [--backend native|vm] [project_root]
+#   KINGLET_BOOTSTRAP=/path/to/kinglet build.sh
+#
+# Internal toolchain build (stamp/Klos). User-facing `kinglet build` uses the
+# bootstrap binary; prove and tests call this script for cache semantics.
 
 set -euo pipefail
 

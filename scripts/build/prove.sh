@@ -2,7 +2,7 @@
 # Shadow vs Ref parity orchestration (ADR 0014 M2).
 #
 # Usage:
-#   kinglet-prove.sh [--quiet] [project_root]
+#   prove.sh [--quiet] [project_root]
 #
 # Runs self-host round-trip and differential suites. Ref compiler artefact comes
 # from kinglet build (bootstrap); Shadow path uses compiler.kbc on the VM.

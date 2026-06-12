@@ -44,7 +44,7 @@ jobs:
         run: |
           source tests/common.sh
           export_kinglet_bins "$(pwd)"
-          chmod +x kinglet scripts/build/kinglet-build.sh
+          chmod +x kinglet scripts/build/build.sh
           ensure_build_stamp "$(pwd)"
           ls -la .kinglet/out/compiler.kbc
 

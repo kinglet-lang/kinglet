@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Kinglet project driver (ADR 0014 M0).
+# Kinglet project driver (ADR 0014).
 #
-#   ./kinglet build [--quiet] [--backend native]   Build toolchain artefact (Ref)
-#   ./kinglet prove [--quiet]                      Shadow vs Ref parity suites
-#   ./kinglet debug emit-kbc [--shadow] <out> <src>
-#   ./kinglet ...               Pass through to bootstrap kinglet (VM host)
+# User-facing commands are implemented by the bootstrap kinglet binary:
+#   init, build, run, <file.kl>, --version, --help
+# Dev-only workflows stay in scripts/build/:
+#   prove, debug emit-kbc
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_SH="$ROOT/scripts/build/kinglet-build.sh"
-PROVE_SH="$ROOT/scripts/build/kinglet-prove.sh"
-DEBUG_EMIT_KBC_SH="$ROOT/scripts/build/kinglet-debug-emit-kbc.sh"
+PROVE_SH="$ROOT/scripts/build/prove.sh"
+DEBUG_EMIT_KBC_SH="$ROOT/scripts/build/debug-emit-kbc.sh"
 
 pass_through() {
   # shellcheck source=tests/common.sh
@@ -22,10 +21,6 @@ pass_through() {
 }
 
 case "${1:-}" in
-  build)
-    shift
-    exec bash "$BUILD_SH" "$@"
-    ;;
   prove)
     shift
     exec bash "$PROVE_SH" "$@"
@@ -46,23 +41,6 @@ case "${1:-}" in
   native)
     shift
     pass_through --backend native "$@"
-    ;;
-  help|--help|-h)
-    cat <<EOF
-Usage: kinglet build [--quiet] [--backend native]
-       kinglet prove [--quiet]
-       kinglet debug emit-kbc [--shadow] <out.kbc> <src.kl>
-       kinglet native -o <out> <file.kl>
-       kinglet <bootstrap-args...>
-
-  build   Compile [build].root via Ref compiler; cache in .kinglet/
-  prove   Self-host round-trip + differential (Shadow vs Ref)
-  debug   Explicit debug helpers (emit-kbc for tests and tooling)
-  native  Shorthand for bootstrap --backend native -o ...
-  other   Forwarded to bootstrap kinglet (set KINGLET_BOOTSTRAP to override)
-
-See decisions/0014-compilation-toolchain-architecture.md
-EOF
     ;;
   "")
     pass_through

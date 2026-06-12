@@ -61,7 +61,7 @@ export_kinglet_bins() {
 # Prints absolute path to .kinglet/out/compiler.kbc on stdout.
 ensure_build_stamp() {
   local root="$1"
-  local build_sh="$root/scripts/build/kinglet-build.sh"
+  local build_sh="$root/scripts/build/build.sh"
   if [[ ! -f "$build_sh" ]]; then
     echo "ensure_build_stamp: $build_sh not found" >&2
     return 2
