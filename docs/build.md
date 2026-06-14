@@ -17,6 +17,7 @@ See [decisions/0014](../decisions/0014-compilation-toolchain-architecture.md) (i
 ```bash
 ./kinglet init [name]        # new project dir (prompt; default kinglet-app/)
 ./kinglet build              # Ref compile [build].root → .kinglet/out/compiler (native default)
+./klet build                 # same as kinglet build (short CLI alias)
 ./kinglet build --backend vm # → .kinglet/out/compiler.kbc (Shadow / prove path)
 ./kinglet build --quiet      # minimal stderr
 ./kinglet run                # run default build output (.kinglet/out/compiler or .kbc)
