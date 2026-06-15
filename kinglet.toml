@@ -13,3 +13,14 @@ default_backend = "native"
 
 [build.prove]
 shadow_root = "core/main.kl"
+
+# Standard library location and implicit imports (ADR 0003).
+# Reserved for the prelude wiring (Phase A.3); currently inert — the compiler
+# still resolves `using io;` via its native-namespace handling.
+[paths]
+stdlib = "stdlib"
+
+[prelude]
+import = [
+  "//stdlib/native/manifest.kl",
+]

@@ -1,0 +1,18 @@
+// stdlib/native/io — platform I/O binding (ADR 0003, layer L2).
+//
+// SCAFFOLD ONLY. This file declares the intended `io` native surface. It is not
+// yet imported by the compiler: the API list currently lives in
+// `stdlib/native/manifest.kl` (L1), and `using io;` is still resolved by the
+// compiler's native-namespace handling. Once `extern native` lands in the
+// parser/checker (ADR 0003 Phase A.3/A.4), this file becomes the importable
+// source of truth and the manifest is generated from it.
+//
+// Intended declarations (syntax TBD, semantics fixed by ADR 0003):
+//
+//   extern native namespace io {
+//     void out(...);      // stdout, printf-style {} formatting
+//     void outln(...);    // stdout + newline
+//     void err(...);      // stderr
+//     void errln(...);    // stderr + newline
+//     string in();        // read a line from stdin
+//   }
