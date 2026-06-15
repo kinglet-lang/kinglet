@@ -7,6 +7,7 @@ import {
   "bytecode.kl"
   "compiler_state.kl"
   "codegen.kl"
+  "project_config.kl"
   "//parser/ast.kl"
   "//parser/helpers.kl"
   "//parser/parser.kl"
@@ -211,6 +212,23 @@ void handle_import_block(Compiler co, string[] paths, string[] aliases, string b
     string[] selected = [];
     string err = load_module(co, paths[i], base_dir, alias, selected);
     if (err.len() > 0) { compile_error(co, line, col, err); return; }
+  }
+}
+
+void load_prelude_modules(Compiler co) {
+  if (co.imports.project_root.len() == 0) { return; }
+  string toml_path = co.imports.project_root + "/kinglet.toml";
+  string toml = fs::__read(toml_path);
+  if (toml == null) { return; }
+  string[] paths = project_config::parse_prelude_imports(toml);
+  string base_dir = co.imports.project_root;
+  for (int i = 0; i < paths.len(); i = i + 1) {
+    string[] selected = [];
+    string err = load_module(co, paths[i], base_dir, "", selected);
+    if (err.len() > 0) {
+      compile_error(co, 0, 0, "prelude import '" + paths[i] + "': " + err);
+      return;
+    }
   }
 }
 
@@ -462,6 +480,11 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   // Discover project root from kinglet.toml for // path resolution.
   if (source_path.len() > 0) {
     co.imports.project_root = find_project_root(dir_of(source_path));
+  }
+  // Pass 0a-prelude: implicit imports from [prelude] in kinglet.toml.
+  if (source_path.len() > 0) {
+    load_prelude_modules(co);
+    if (co.errors.len() > 0) { return co.errors.len(); }
   }
   // Pass 0a: process imports.
   if (source_path.len() > 0) {

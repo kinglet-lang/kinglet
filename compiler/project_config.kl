@@ -1,0 +1,95 @@
+// Minimal kinglet.toml reader for compiler prelude wiring (ADR 0003 Phase A.3).
+// Parses only [prelude] import = [ "path", ... ]; other keys are ignored here.
+
+string trim_line(string s) {
+  int start = 0;
+  while (start < s.len()) {
+    string c = s.slice(start, start + 1);
+    if (c == " " || c == "\t" || c == "\r") { start = start + 1; } else { break; }
+  }
+  int end = s.len();
+  while (end > start) {
+    string c = s.slice(end - 1, end);
+    if (c == " " || c == "\t" || c == "\r") { end = end - 1; } else { break; }
+  }
+  return s.slice(start, end);
+}
+
+bool line_starts_with(string s, string prefix) {
+  if (s.len() < prefix.len()) { return false; }
+  return s.slice(0, prefix.len()) == prefix;
+}
+
+// Extract a double-quoted string starting at index i; returns "" if malformed.
+string parse_quoted_at(string line, int i) {
+  if (i >= line.len() || line.slice(i, i + 1) != "\"") { return ""; }
+  string out = "";
+  int j = i + 1;
+  while (j < line.len()) {
+    string c = line.slice(j, j + 1);
+    if (c == "\"") { return out; }
+    if (c == "\\" && j + 1 < line.len()) {
+      out = out + line.slice(j + 1, j + 2);
+      j = j + 2;
+      continue;
+    }
+    out = out + c;
+    j = j + 1;
+  }
+  return "";
+}
+
+void push_unique(string[] arr, string val) {
+  for (int i = 0; i < arr.len(); i = i + 1) {
+    if (arr[i] == val) { return; }
+  }
+  arr.push(val);
+}
+
+void collect_quoted_strings(string line, string[] out) {
+  int i = 0;
+  while (i < line.len()) {
+    if (line.slice(i, i + 1) == "\"") {
+      string s = parse_quoted_at(line, i);
+      if (s.len() > 0) { push_unique(out, s); }
+      i = i + 1;
+      while (i < line.len() && line.slice(i, i + 1) != "\"") { i = i + 1; }
+      if (i < line.len()) { i = i + 1; }
+      continue;
+    }
+    i = i + 1;
+  }
+}
+
+pub string[] parse_prelude_imports(string toml) {
+  string[] paths = [];
+  string[] lines = toml.split("\n");
+  bool in_prelude = false;
+  bool in_array = false;
+  for (int i = 0; i < lines.len(); i = i + 1) {
+    string line = trim_line(lines[i]);
+    if (line.len() == 0) { continue; }
+    if (line_starts_with(line, "#")) { continue; }
+    if (line_starts_with(line, "[") && line != "[prelude]") {
+      if (in_prelude) { break; }
+      continue;
+    }
+    if (line == "[prelude]") {
+      in_prelude = true;
+      in_array = false;
+      continue;
+    }
+    if (!in_prelude) { continue; }
+    if (!in_array && line_starts_with(line, "import")) {
+      if (line.contains("[")) { in_array = true; }
+      collect_quoted_strings(line, paths);
+      if (line.contains("]")) { in_array = false; }
+      continue;
+    }
+    if (in_array) {
+      collect_quoted_strings(line, paths);
+      if (line.contains("]")) { in_array = false; }
+    }
+  }
+  return paths;
+}
