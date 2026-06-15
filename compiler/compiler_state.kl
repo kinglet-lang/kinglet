@@ -5,6 +5,7 @@ import {
   "bytecode.kl"
   "//parser/ast.kl"
   "//lexer/token.kl"
+  "//stdlib/native/manifest.kl"
 }
 
 using ast {
@@ -250,31 +251,11 @@ pub bool is_imported_ns(Compiler co, string ns) {
 }
 
 pub bool is_native_namespace(string ns) {
-  if (ns == "io") { return true; }
-  if (ns == "fs") { return true; }
-  if (ns == "sys") { return true; }
-  return false;
+  return manifest::is_native_namespace(ns);
 }
 
 pub bool is_native_member(string ns, string member) {
-  if (ns == "io") {
-    if (member == "out") { return true; }
-    if (member == "outln") { return true; }
-    if (member == "err") { return true; }
-    if (member == "errln") { return true; }
-    if (member == "in") { return true; }
-    return false;
-  }
-  if (ns == "fs") {
-    if (member == "__read") { return true; }
-    if (member == "__write") { return true; }
-    return false;
-  }
-  if (ns == "sys") {
-    if (member == "args") { return true; }
-    return false;
-  }
-  return false;
+  return manifest::is_native_member(ns, member);
 }
 
 pub NativeUsingAlias no_native_alias() {
@@ -295,20 +276,8 @@ pub NativeUsingAlias resolve_native_using_alias(Compiler co, string short_name) 
 }
 
 pub void open_native_namespace(Compiler co, string ns) {
-  if (ns == "io") {
-    register_native_using_alias(co, "out", "io", "out");
-    register_native_using_alias(co, "outln", "io", "outln");
-    register_native_using_alias(co, "err", "io", "err");
-    register_native_using_alias(co, "errln", "io", "errln");
-    register_native_using_alias(co, "in", "io", "in");
-    return;
-  }
-  if (ns == "fs") {
-    register_native_using_alias(co, "__read", "fs", "__read");
-    register_native_using_alias(co, "__write", "fs", "__write");
-    return;
-  }
-  if (ns == "sys") {
-    register_native_using_alias(co, "args", "sys", "args");
+  string[] members = manifest::native_members_of(ns);
+  for (int i = 0; i < members.len(); i = i + 1) {
+    register_native_using_alias(co, members[i], ns, members[i]);
   }
 }
