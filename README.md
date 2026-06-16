@@ -120,4 +120,4 @@ Detailed write-ups:
 
 ## License
 
-See repository metadata; no separate LICENSE file at this time.
+[MIT](LICENSE)
