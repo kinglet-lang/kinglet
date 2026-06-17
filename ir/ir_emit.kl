@@ -54,6 +54,8 @@ KirInstr to_kir_instr(Chunk c, Instruction ins) {
   if (ins.op == OpCode::StoreLocal) { return KirInstr { KirOpcode::StoreLocal, [ins.operand], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::LoadLocal) { return KirInstr { KirOpcode::LoadLocal, [ins.operand], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::Pop) { return KirInstr { KirOpcode::Pop, [], ins.line, ins.col, KirType::Void }; }
+  if (ins.op == OpCode::Negate) { return KirInstr { KirOpcode::INeg, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::BitNot) { return KirInstr { KirOpcode::IBNot, [], ins.line, ins.col, KirType::Int }; }
   KirOpcode a = bin_kir_op(ins.op);
   if (a != KirOpcode::Nop) {
     return KirInstr { a, [], ins.line, ins.col, KirType::Int };

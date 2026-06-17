@@ -25,6 +25,7 @@ pub enum KirOpcode {
   IShl,
   IShr,
   IEq, INe, ILt, IGt, ILe, IGe,
+  INeg, IBNot,
   Call,
   Ret,
   Br,
