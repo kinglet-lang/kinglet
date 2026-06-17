@@ -1,6 +1,5 @@
-// L1 — Native API registry (single table for checker + codegen).
-// Platform entries lower to C ABI in libkinglet_rt / VM opcodes.
-// See ADR 0003 Amendment 2026-06-17 (stdlib tree).
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
 
 export module manifest;
 

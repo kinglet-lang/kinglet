@@ -1,6 +1,3 @@
 // Map helpers — pure Kinglet over language map type.
-// Collection primitives (.has, .keys, …) lower via extern native (Phase A2).
 
 export module map;
-
-// Placeholder until Phase A2 migrates map methods from compiler whitelist.

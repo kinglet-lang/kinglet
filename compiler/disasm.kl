@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+
 // Bytecode disassembler — Kinglet mirror of kinglet-bootstrap/src/vm/chunk.cc:79
 // (Chunk::disassemble) and chunk.cc:127 (opcode_name).
 //

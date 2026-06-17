@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+
 // Compiler state: Compiler struct definition and pure state-access helpers.
 // No emit calls. Imported by both codegen.kl and compiler.kl.
 

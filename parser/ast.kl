@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+
 // AST nodes for the self-hosted Kinglet parser.
 //
 // Tagged unions are encoded as enums with payload variants (Kinglet has no

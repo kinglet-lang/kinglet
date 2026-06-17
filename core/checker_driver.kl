@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+
 // CLI entry points for `--check` mode. Wires lexer + parser + checker
 // and prints diagnostics; the type checker itself lives in
 // `../checker/checker.kl`.

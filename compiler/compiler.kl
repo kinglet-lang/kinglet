@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+
 // Kinglet self-host bytecode compiler: module loading, registration, and
 // the top-level compile pass.  Code generation (emit_*/compile_*) lives in
 // codegen.kl; the Compiler struct and pure state helpers live in
@@ -539,7 +542,7 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
 }
 
 pub int compile_program(Compiler co, Program prog, string source_path) {
-  // Pass 0: collect `using` declarations.
+  // Collect `using` declarations.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
     d match {

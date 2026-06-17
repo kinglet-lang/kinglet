@@ -1,4 +1,7 @@
-// KIR text dump — mirrors bootstrap dump_kir_module (ADR 0005 M1).
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+
+// KIR text dump — mirrors bootstrap dump_kir_module.
 
 export module ir_print;
 

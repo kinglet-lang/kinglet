@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+
 // Self-hosted Kinglet type checker.
 //
 // Walks a Program AST (parser/ast.kl) and reports type errors.

@@ -1,4 +1,7 @@
-// KIR data definitions — mirrors bootstrap src/ir/kir.h (ADR 0005 M1).
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+
+// KIR data definitions — mirrors bootstrap src/ir/kir.h.
 
 export module ir;
 

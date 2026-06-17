@@ -1,5 +1,8 @@
-// Minimal kinglet.toml reader for compiler prelude wiring.
-// Parses only [prelude] import = [ "path", ... ]; other keys are ignored here.
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+
+// Minimal project manifest reader (kinglet.toml, kinglet.nest).
+// Parses [prelude] imports and modules { } entries; other keys are ignored here.
 
 export module project_config;
 string trim_line(string s) {
