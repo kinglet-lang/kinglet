@@ -4,16 +4,13 @@
 // Expression parser: precedence-climbing expression parser for Kinglet,
 // mirroring the C++ parser in kinglet-bootstrap/src/parser/parser.cc.
 
-export module expressions;
+export module parser.expressions;
 
-import ast;
-import helpers;
-import token;
-using ast {
-  Expr, TypeExpr, BinaryOp, UnaryOp, AssignOp,
-  MatchArm, FieldInit, make_type
-};
-using token { TokenType, Token };
+import parser.ast;
+import parser.helpers;
+import lexer.token;
+using namespace parser.ast;
+using namespace lexer.token;
 
 Expr expression(Parser p) => assignment(p);
 
@@ -502,8 +499,25 @@ Expr primary(Parser p) {
   if (match_tt(p, TokenType::Identifier)) {
     Token id = previous(p);
     if (match_tt(p, TokenType::ColonColon)) {
-      Token member = consume(p, TokenType::Identifier, "Expected member name after '::'.");
-      return Expr::NsAccess(id.lexeme, member.lexeme, id.line, id.col);
+      string[] segments = [];
+      segments.push(id.lexeme);
+      Token first_part = consume(p, TokenType::Identifier, "Expected name after '::'.");
+      segments.push(first_part.lexeme);
+      while (match_tt(p, TokenType::ColonColon)) {
+        Token part = consume(p, TokenType::Identifier, "Expected name after '::'.");
+        segments.push(part.lexeme);
+      }
+      if (segments.len() < 2) {
+        return Expr::Ident(id.lexeme, id.line, id.col);
+      }
+      string qualifier = "";
+      int i = 0;
+      while (i + 1 < segments.len()) {
+        if (i > 0) { qualifier = qualifier + "::"; }
+        qualifier = qualifier + segments[i];
+        i = i + 1;
+      }
+      return Expr::NsAccess(qualifier, segments[segments.len() - 1], id.line, id.col);
     }
     if (looks_like_struct_lit(p, id.lexeme)) {
       return parse_struct_literal(p, make_type(id.lexeme), id);

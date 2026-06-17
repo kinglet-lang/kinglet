@@ -4,17 +4,12 @@
 // Parser helper primitives: Parser struct, token cursor, type expression
 // parser, and position helpers for Expr nodes.
 
-export module helpers;
+export module parser.helpers;
 
-import ast;
-import token;
-using ast {
-  Program, Decl, Stmt, Expr, TypeExpr,
-  BinaryOp, UnaryOp, AssignOp,
-  MatchArm, FieldInit, Parameter, FieldDef, EnumVariant,
-  make_type
-};
-using token { TokenType, Token };
+import parser.ast;
+import lexer.token;
+using namespace parser.ast;
+using namespace lexer.token;
 
 pub struct ParseError {
   int line;
@@ -309,3 +304,13 @@ int expr_col(Expr e) => e match {
   Expr::TryExpr(_, _, let c) => c,
   Expr::None => -1,
 };
+
+pub string parse_module_id(Parser p, string context) {
+  Token first = consume(p, TokenType::Identifier, "Expected " + context + ".");
+  string module_id = first.lexeme;
+  while (match_tt(p, TokenType::Dot)) {
+    Token part = consume(p, TokenType::Identifier, "Expected identifier after '.' in module name.");
+    module_id = module_id + "." + part.lexeme;
+  }
+  return module_id;
+}

@@ -9,17 +9,12 @@
 
 export module parser;
 
-import ast;
-import helpers;
-import expressions;
-import token;
-using ast {
-  Program, Decl, Stmt, Expr, TypeExpr,
-  MatchArm, FieldInit, Parameter, FieldDef, EnumVariant,
-  ConceptMethod, WhereClause, CatchArm,
-  make_type
-};
-using token { TokenType, Token };
+import parser.ast;
+import parser.helpers;
+import parser.expressions;
+import lexer.token;
+using namespace parser.ast;
+using namespace lexer.token;
 
 pub Program parse_program(Parser p) {
   Decl[] decls = [];
@@ -65,27 +60,30 @@ Decl parse_declaration(Parser p) {
 Decl parse_using(Parser p) {
   Token using_tok = previous(p);
   bool is_namespace = match_tt(p, TokenType::Namespace);
-  Token name = consume(p, TokenType::Identifier, "Expected namespace name after 'using'.");
-  string[] selected = [];
-  bool wildcard = false;
+  Token name = consume(p, TokenType::Identifier, "Expected name after 'using'.");
+  if (!is_namespace && match_tt(p, TokenType::Equal)) {
+    string module_id = parse_module_id(p, "module alias");
+    consume(p, TokenType::Semicolon, "Expected ';' after using alias.");
+    return Decl::UsingAliasDecl(name.lexeme, module_id, using_tok.line, using_tok.col);
+  }
   if (match_tt(p, TokenType::ColonColon)) {
-    consume(p, TokenType::Star, "Expected '*' after '::' in using wildcard.");
-    wildcard = true;
-    consume(p, TokenType::Semicolon, "Expected ';' after using declaration.");
-    return Decl::UsingDecl(name.lexeme, is_namespace, selected, wildcard, using_tok.line, using_tok.col);
+    error_at(p, previous(p),
+             "Wildcard `using module::*` is not supported; use `using namespace module` instead.");
+    return Decl::UsingDecl("", false, using_tok.line, using_tok.col);
   }
   if (match_tt(p, TokenType::LeftBrace)) {
-    while (!check(p, TokenType::RightBrace) && peek_tok(p).type != TokenType::Eof) {
-      Token sym = consume(p, TokenType::Identifier, "Expected symbol name in using list.");
-      selected.push(sym.lexeme);
-      if (!check(p, TokenType::RightBrace)) {
-        consume(p, TokenType::Comma, "Expected ',' between symbols in using list.");
-      }
-    }
-    consume(p, TokenType::RightBrace, "Expected '}' after using symbol list.");
+    error_at(p, previous(p),
+             "Selective `using module { sym }` is not supported; use qualified access, "
+             + "`using alias = module`, or `using namespace module`.");
+    return Decl::UsingDecl("", false, using_tok.line, using_tok.col);
+  }
+  string module_id = name.lexeme;
+  while (match_tt(p, TokenType::Dot)) {
+    Token part = consume(p, TokenType::Identifier, "Expected identifier after '.' in module name.");
+    module_id = module_id + "." + part.lexeme;
   }
   consume(p, TokenType::Semicolon, "Expected ';' after using declaration.");
-  return Decl::UsingDecl(name.lexeme, is_namespace, selected, wildcard, using_tok.line, using_tok.col);
+  return Decl::UsingDecl(module_id, is_namespace, using_tok.line, using_tok.col);
 }
 
 Decl parse_export_module(Parser p) {
@@ -94,18 +92,18 @@ Decl parse_export_module(Parser p) {
   if (module_kw.lexeme != "module") {
     error_at(p, module_kw, "Expected 'module' after 'export'.");
   }
-  Token name = consume(p, TokenType::Identifier, "Expected module name after 'export module'.");
+  string module_id = parse_module_id(p, "module name");
   consume(p, TokenType::Semicolon, "Expected ';' after export module.");
-  return Decl::ExportModuleDecl(name.lexeme, export_tok.line, export_tok.col);
+  return Decl::ExportModuleDecl(module_id, export_tok.line, export_tok.col);
 }
 
 Decl parse_import(Parser p) {
   Token import_tok = previous(p);
 
   if (check(p, TokenType::Identifier)) {
-    Token id = advance_tok(p);
+    string module_id = parse_module_id(p, "module name");
     consume(p, TokenType::Semicolon, "Expected ';' after import.");
-    return Decl::LogicalImportDecl(id.lexeme, import_tok.line, import_tok.col);
+    return Decl::LogicalImportDecl(module_id, import_tok.line, import_tok.col);
   }
 
   error_at(p, import_tok, "Expected module name after 'import'.");

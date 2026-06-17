@@ -10,7 +10,7 @@
 // Recursive nesting (Expr inside Expr, Stmt inside Stmt) relies on the
 // bootstrap compiler's forward-decl pre-pass.
 
-export module ast;
+export module parser.ast;
 pub enum BinaryOp {
   Add, Sub, Mul, Div, Mod,
   Eq, Neq, Lt, Gt, Le, Ge,
@@ -168,7 +168,8 @@ pub struct WhereClause {
 //   LogicalImportDecl(module_id, line, col)
 //   ExportModuleDecl(name, line, col)
 //   ImportBlockDecl(paths, aliases, line, col)  — import { "p1" as a \n "p2" }
-//   UsingDecl(namespace_name, is_namespace, selected, wildcard, line, col)
+//   UsingDecl(module_id, is_namespace, line, col)
+//   UsingAliasDecl(alias, module_id, line, col)
 pub enum Decl {
   FunctionDecl(string, TypeExpr, string[], Parameter[], WhereClause[], Stmt, bool, int, int),
   StructDecl(string, string[], FieldDef[], bool, int, int),
@@ -178,7 +179,8 @@ pub enum Decl {
   LogicalImportDecl(string, int, int),
   ExportModuleDecl(string, int, int),
   ImportBlockDecl(string[], string[], int, int),
-  UsingDecl(string, bool, string[], bool, int, int),
+  UsingDecl(string, bool, int, int),
+  UsingAliasDecl(string, string, int, int),
   TopLevelStmt(Stmt, int, int),
 }
 
