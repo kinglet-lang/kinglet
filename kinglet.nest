@@ -14,6 +14,7 @@ modules {
   compiler.project_config  = "compiler/project_config.kl"
   compiler        = "compiler/compiler.kl"
   compiler.disasm          = "compiler/disasm.kl"
+  compiler.ll_emit         = "compiler/ll_emit.kl"
   checker         = "checker/checker.kl"
   core.ast_printer     = "core/ast_printer.kl"
   core.checker_driver  = "core/checker_driver.kl"

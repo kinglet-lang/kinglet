@@ -1,0 +1,56 @@
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+
+// KIR → textual LLVM IR emitter.
+
+export module compiler.ll_emit;
+
+import ir.ir;
+using namespace ir.ir;
+
+string lower_body(KirFunction fn) {
+  string out = "";
+  string value = "0";
+  KirBasicBlock bb = fn.blocks[0];
+  for (int i = 0; i < bb.instrs.len(); i = i + 1) {
+    KirInstr ins = bb.instrs[i];
+    if (ins.op == KirOpcode::ConstInt) {
+      int lo = ins.operands[0];
+      int hi = ins.operands[1];
+      value = string((hi << 32) | lo);
+    } else if (ins.op == KirOpcode::Ret) {
+      out = out + "  ret i64 " + value + "\n";
+    }
+  }
+  return out;
+}
+
+string emit_main(KirFunction fn) {
+  string out = "define i64 @kinglet_user_main() {\n";
+  out = out + "entry:\n";
+  out = out + lower_body(fn);
+  out = out + "}\n\n";
+  return out;
+}
+
+string emit_entry_shim() {
+  string out = "define i32 @kinglet_main() {\n";
+  out = out + "entry:\n";
+  out = out + "  %0 = call i64 @kinglet_user_main()\n";
+  out = out + "  %1 = call i32 @kl_exit_code(i64 %0)\n";
+  out = out + "  ret i32 %1\n";
+  out = out + "}\n";
+  return out;
+}
+
+pub string emit_ll(KirModule m) {
+  string out = "declare i32 @kl_exit_code(i64)\n\n";
+  for (int i = 0; i < m.functions.len(); i = i + 1) {
+    KirFunction fn = m.functions[i];
+    if (fn.name == "main") {
+      out = out + emit_main(fn);
+    }
+  }
+  out = out + emit_entry_shim();
+  return out;
+}
