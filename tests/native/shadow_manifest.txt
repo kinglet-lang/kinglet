@@ -17,3 +17,9 @@ bit_or
 bit_xor
 bit_shl
 bit_shr
+cmp_lt
+cmp_gt
+cmp_eq
+cmp_ne
+cmp_le
+cmp_arith
