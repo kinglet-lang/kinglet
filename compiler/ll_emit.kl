@@ -41,72 +41,41 @@ string ll_cmp_pred(KirOpcode op) {
   return "eq";
 }
 
-string lower_body(KirFunction fn) {
-  string out = "";
-  string[] vstack = [];
-  int reg = 0;
-  KirBasicBlock bb = fn.blocks[0];
-  for (int i = 0; i < bb.instrs.len(); i = i + 1) {
-    KirInstr ins = bb.instrs[i];
-    if (ins.op == KirOpcode::ConstInt) {
-      int lo = ins.operands[0];
-      int hi = ins.operands[1];
-      vstack.push(string((hi << 32) | lo));
-    } else if (is_bin_op(ins.op)) {
-      string b = vstack[vstack.len() - 1];
-      vstack.pop();
-      string a = vstack[vstack.len() - 1];
-      vstack.pop();
-      string r = "%" + string(reg);
-      reg = reg + 1;
-      out = out + "  " + r + " = " + ll_bin_op(ins.op) + " i64 " + a + ", " + b + "\n";
-      vstack.push(r);
-    } else if (is_cmp(ins.op)) {
-      string b = vstack[vstack.len() - 1];
-      vstack.pop();
-      string a = vstack[vstack.len() - 1];
-      vstack.pop();
-      string c = "%" + string(reg);
-      reg = reg + 1;
-      out = out + "  " + c + " = icmp " + ll_cmp_pred(ins.op) + " i64 " + a + ", " + b + "\n";
-      string r = "%" + string(reg);
-      reg = reg + 1;
-      out = out + "  " + r + " = zext i1 " + c + " to i64\n";
-      vstack.push(r);
-    } else if (ins.op == KirOpcode::INeg || ins.op == KirOpcode::IBNot) {
-      string a = vstack[vstack.len() - 1];
-      vstack.pop();
-      string r = "%" + string(reg);
-      reg = reg + 1;
-      if (ins.op == KirOpcode::INeg) {
-        out = out + "  " + r + " = sub i64 0, " + a + "\n";
-      } else {
-        out = out + "  " + r + " = xor i64 " + a + ", -1\n";
-      }
-      vstack.push(r);
-    } else if (ins.op == KirOpcode::StoreLocal) {
-      int slot = ins.operands[0];
-      string v = vstack[vstack.len() - 1];
-      out = out + "  store i64 " + v + ", i64* %slot" + string(slot) + "\n";
-    } else if (ins.op == KirOpcode::LoadLocal) {
-      int slot = ins.operands[0];
-      string r = "%" + string(reg);
-      reg = reg + 1;
-      out = out + "  " + r + " = load i64, i64* %slot" + string(slot) + "\n";
-      vstack.push(r);
-    } else if (ins.op == KirOpcode::Pop) {
-      vstack.pop();
-    } else if (ins.op == KirOpcode::Ret) {
-      string v = vstack[vstack.len() - 1];
-      out = out + "  ret i64 " + v + "\n";
+int[] compute_leaders(KirInstr[] instrs) {
+  int n = instrs.len();
+  bool[] marks = [];
+  for (int i = 0; i < n; i = i + 1) { marks.push(false); }
+  if (n > 0) { marks[0] = true; }
+  for (int i = 0; i < n; i = i + 1) {
+    KirInstr ins = instrs[i];
+    if (ins.op == KirOpcode::Br || ins.op == KirOpcode::CondBr) {
+      int target = ins.operands[0];
+      if (target >= 0 && target < n) { marks[target] = true; }
+      if (i + 1 < n) { marks[i + 1] = true; }
+    }
+    if (ins.op == KirOpcode::Ret) {
+      if (i + 1 < n) { marks[i + 1] = true; }
     }
   }
-  return out;
+  int[] leaders = [];
+  for (int i = 0; i < n; i = i + 1) {
+    if (marks[i]) { leaders.push(i); }
+  }
+  return leaders;
 }
 
-int count_locals(KirFunction fn) {
+string label_for(int[] leaders, int idx) {
+  for (int k = 0; k < leaders.len(); k = k + 1) {
+    if (leaders[k] == idx) {
+      if (k == 0) { return "entry"; }
+      return "bb" + string(k);
+    }
+  }
+  return "entry";
+}
+
+int count_locals(KirInstr[] instrs) {
   int max_slot = -1;
-  KirInstr[] instrs = fn.blocks[0].instrs;
   for (int i = 0; i < instrs.len(); i = i + 1) {
     KirInstr ins = instrs[i];
     if (ins.op == KirOpcode::StoreLocal || ins.op == KirOpcode::LoadLocal) {
@@ -116,14 +85,113 @@ int count_locals(KirFunction fn) {
   return max_slot + 1;
 }
 
+string emit_function_body(KirFunction fn) {
+  KirInstr[] instrs = fn.blocks[0].instrs;
+  int n = instrs.len();
+  int[] leaders = compute_leaders(instrs);
+  int nl = leaders.len();
+  string out = "";
+  int reg = 0;
+  for (int bi = 0; bi < nl; bi = bi + 1) {
+    int lstart = leaders[bi];
+    int lend = n;
+    if (bi + 1 < nl) { lend = leaders[bi + 1]; }
+    if (bi > 0) {
+      out = out + label_for(leaders, lstart) + ":\n";
+    }
+    string[] vstack = [];
+    bool terminated = false;
+    for (int i = lstart; i < lend; i = i + 1) {
+      KirInstr ins = instrs[i];
+      if (ins.op == KirOpcode::Ret) {
+        if (vstack.len() > 0) {
+          string v = vstack[vstack.len() - 1];
+          out = out + "  ret i64 " + v + "\n";
+        } else {
+          out = out + "  ret i64 0\n";
+        }
+        terminated = true;
+      } else if (ins.op == KirOpcode::Br) {
+        out = out + "  br label %" + label_for(leaders, ins.operands[0]) + "\n";
+        terminated = true;
+      } else if (ins.op == KirOpcode::CondBr) {
+        string cond = vstack[vstack.len() - 1];
+        vstack.pop();
+        string t = "%" + string(reg);
+        reg = reg + 1;
+        out = out + "  " + t + " = icmp ne i64 " + cond + ", 0\n";
+        out = out + "  br i1 " + t + ", label %" + label_for(leaders, i + 1) + ", label %" + label_for(leaders, ins.operands[0]) + "\n";
+        terminated = true;
+      } else if (ins.op == KirOpcode::ConstInt) {
+        int lo = ins.operands[0];
+        int hi = ins.operands[1];
+        vstack.push(string((hi << 32) | lo));
+      } else if (is_bin_op(ins.op)) {
+        string b = vstack[vstack.len() - 1];
+        vstack.pop();
+        string a = vstack[vstack.len() - 1];
+        vstack.pop();
+        string r = "%" + string(reg);
+        reg = reg + 1;
+        out = out + "  " + r + " = " + ll_bin_op(ins.op) + " i64 " + a + ", " + b + "\n";
+        vstack.push(r);
+      } else if (is_cmp(ins.op)) {
+        string b = vstack[vstack.len() - 1];
+        vstack.pop();
+        string a = vstack[vstack.len() - 1];
+        vstack.pop();
+        string c = "%" + string(reg);
+        reg = reg + 1;
+        out = out + "  " + c + " = icmp " + ll_cmp_pred(ins.op) + " i64 " + a + ", " + b + "\n";
+        string r = "%" + string(reg);
+        reg = reg + 1;
+        out = out + "  " + r + " = zext i1 " + c + " to i64\n";
+        vstack.push(r);
+      } else if (ins.op == KirOpcode::INeg || ins.op == KirOpcode::IBNot) {
+        string a = vstack[vstack.len() - 1];
+        vstack.pop();
+        string r = "%" + string(reg);
+        reg = reg + 1;
+        if (ins.op == KirOpcode::INeg) {
+          out = out + "  " + r + " = sub i64 0, " + a + "\n";
+        } else {
+          out = out + "  " + r + " = xor i64 " + a + ", -1\n";
+        }
+        vstack.push(r);
+      } else if (ins.op == KirOpcode::StoreLocal) {
+        int slot = ins.operands[0];
+        string v = vstack[vstack.len() - 1];
+        out = out + "  store i64 " + v + ", i64* %slot" + string(slot) + "\n";
+      } else if (ins.op == KirOpcode::LoadLocal) {
+        int slot = ins.operands[0];
+        string r = "%" + string(reg);
+        reg = reg + 1;
+        out = out + "  " + r + " = load i64, i64* %slot" + string(slot) + "\n";
+        vstack.push(r);
+      } else if (ins.op == KirOpcode::Pop) {
+        vstack.pop();
+      }
+    }
+    if (!terminated) {
+      if (bi + 1 < nl) {
+        out = out + "  br label %" + label_for(leaders, leaders[bi + 1]) + "\n";
+      } else {
+        out = out + "  ret i64 0\n";
+      }
+    }
+  }
+  return out;
+}
+
 string emit_main(KirFunction fn) {
+  KirInstr[] instrs = fn.blocks[0].instrs;
   string out = "define i64 @kinglet_user_main() {\n";
   out = out + "entry:\n";
-  int lc = count_locals(fn);
+  int lc = count_locals(instrs);
   for (int s = 0; s < lc; s = s + 1) {
     out = out + "  %slot" + string(s) + " = alloca i64\n";
   }
-  out = out + lower_body(fn);
+  out = out + emit_function_body(fn);
   out = out + "}\n\n";
   return out;
 }

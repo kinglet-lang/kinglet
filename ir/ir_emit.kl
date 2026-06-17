@@ -39,7 +39,7 @@ KirOpcode bin_kir_op(OpCode op) {
   return KirOpcode::Nop;
 }
 
-KirInstr to_kir_instr(Chunk c, Instruction ins) {
+KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
   if (ins.op == OpCode::Constant) {
     Constant k = c.constants[ins.operand];
     if (k.kind == ConstKind::Int_) {
@@ -50,6 +50,14 @@ KirInstr to_kir_instr(Chunk c, Instruction ins) {
   }
   if (ins.op == OpCode::Return_) {
     return KirInstr { KirOpcode::Ret, [], ins.line, ins.col, KirType::Void };
+  }
+  if (ins.op == OpCode::Jmp) {
+    int target = rel_pc + 1 + ins.operand;
+    return KirInstr { KirOpcode::Br, [target], ins.line, ins.col, KirType::Void };
+  }
+  if (ins.op == OpCode::JmpFalse) {
+    int target = rel_pc + 1 + ins.operand;
+    return KirInstr { KirOpcode::CondBr, [target], ins.line, ins.col, KirType::Void };
   }
   if (ins.op == OpCode::StoreLocal) { return KirInstr { KirOpcode::StoreLocal, [ins.operand], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::LoadLocal) { return KirInstr { KirOpcode::LoadLocal, [ins.operand], ins.line, ins.col, KirType::Int }; }
@@ -98,7 +106,7 @@ pub KirModule build_kir_from_chunk(Chunk c) {
     }
     KirInstr[] instrs = [];
     for (int pc = start; pc < end; pc = pc + 1) {
-      instrs.push(to_kir_instr(c, c.instructions[pc]));
+      instrs.push(to_kir_instr(c, c.instructions[pc], pc - start));
     }
     KirBasicBlock[] blocks = [];
     blocks.push(KirBasicBlock { "bb0", instrs });
