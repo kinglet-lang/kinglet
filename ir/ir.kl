@@ -28,11 +28,17 @@ pub enum KirOpcode {
   Nop,
 }
 
+pub enum KirType {
+  Int,
+  Void,
+}
+
 pub struct KirInstr {
   KirOpcode op;
   int[] operands;
   int line;
   int col;
+  KirType result_type;
 }
 
 pub struct KirBasicBlock {
@@ -45,6 +51,7 @@ pub struct KirFunction {
   int param_count;
   string[] param_names;
   KirBasicBlock[] blocks;
+  KirType return_type;
 }
 
 pub struct KirModule {
