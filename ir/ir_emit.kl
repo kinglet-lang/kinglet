@@ -1,15 +1,72 @@
 // Copyright (c) 2026 Kinglet Language Developers
 // SPDX-License-Identifier: MIT
 
-// KIR emit stubs — self-host AST→KIR builder lands in a later milestone.
-// Data shapes and dump format match bootstrap IrBuilder.
+// Chunk → KIR post-pass; mirrors bootstrap IrBuilder data shapes.
 
 export module ir.ir_emit;
 
 import ir.ir;
+import compiler.bytecode;
 using namespace ir.ir;
+using namespace compiler.bytecode;
 
 pub KirModule empty_module() {
   KirFunction[] fs = [];
   return KirModule { fs };
+}
+
+KirInstr to_kir_instr(Chunk c, Instruction ins) {
+  if (ins.op == OpCode::Constant) {
+    Constant k = c.constants[ins.operand];
+    if (k.kind == ConstKind::Int_) {
+      int v = k.int_value;
+      return KirInstr { KirOpcode::ConstInt, [v & 0xFFFFFFFF, (v >> 32) & 0xFFFFFFFF], ins.line, ins.col, KirType::Int };
+    }
+    return KirInstr { KirOpcode::Nop, [], ins.line, ins.col, KirType::Int };
+  }
+  if (ins.op == OpCode::Return_) {
+    return KirInstr { KirOpcode::Ret, [], ins.line, ins.col, KirType::Void };
+  }
+  return KirInstr { KirOpcode::Nop, [], ins.line, ins.col, KirType::Int };
+}
+
+pub KirModule build_kir_from_chunk(Chunk c) {
+  int fn_count = c.functions.len();
+  KirFunction[] funcs = [];
+  if (fn_count == 0) {
+    return KirModule { funcs };
+  }
+  int[] order = [];
+  for (int i = 0; i < fn_count; i = i + 1) {
+    order.push(i);
+  }
+  for (int i = 0; i < fn_count; i = i + 1) {
+    int best = i;
+    for (int j = i + 1; j < fn_count; j = j + 1) {
+      if (c.functions[order[j]].entry < c.functions[order[best]].entry) {
+        best = j;
+      }
+    }
+    int tmp = order[i];
+    order[i] = order[best];
+    order[best] = tmp;
+  }
+  int instr_count = c.instructions.len();
+  for (int k = 0; k < fn_count; k = k + 1) {
+    FunctionInfo fi = c.functions[order[k]];
+    int start = fi.entry;
+    int end = instr_count;
+    if (k + 1 < fn_count) {
+      end = c.functions[order[k + 1]].entry;
+    }
+    KirInstr[] instrs = [];
+    for (int pc = start; pc < end; pc = pc + 1) {
+      instrs.push(to_kir_instr(c, c.instructions[pc]));
+    }
+    KirBasicBlock[] blocks = [];
+    blocks.push(KirBasicBlock { "bb0", instrs });
+    string[] pnames = [];
+    funcs.push(KirFunction { fi.name, fi.param_count, pnames, blocks, KirType::Int });
+  }
+  return KirModule { funcs };
 }
