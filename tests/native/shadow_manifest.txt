@@ -36,3 +36,6 @@ ctrl_if_cmp
 ctrl_if_else_t
 ctrl_if_else_f
 ctrl_local_in_if
+loop_while
+loop_count
+loop_nested
