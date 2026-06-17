@@ -44,7 +44,6 @@ string ll_cmp_pred(KirOpcode op) {
 string lower_body(KirFunction fn) {
   string out = "";
   string[] vstack = [];
-  string[] locals = [];
   int reg = 0;
   KirBasicBlock bb = fn.blocks[0];
   for (int i = 0; i < bb.instrs.len(); i = i + 1) {
@@ -88,11 +87,13 @@ string lower_body(KirFunction fn) {
     } else if (ins.op == KirOpcode::StoreLocal) {
       int slot = ins.operands[0];
       string v = vstack[vstack.len() - 1];
-      while (locals.len() <= slot) { locals.push(""); }
-      locals[slot] = v;
+      out = out + "  store i64 " + v + ", i64* %slot" + string(slot) + "\n";
     } else if (ins.op == KirOpcode::LoadLocal) {
       int slot = ins.operands[0];
-      vstack.push(locals[slot]);
+      string r = "%" + string(reg);
+      reg = reg + 1;
+      out = out + "  " + r + " = load i64, i64* %slot" + string(slot) + "\n";
+      vstack.push(r);
     } else if (ins.op == KirOpcode::Pop) {
       vstack.pop();
     } else if (ins.op == KirOpcode::Ret) {
@@ -103,9 +104,25 @@ string lower_body(KirFunction fn) {
   return out;
 }
 
+int count_locals(KirFunction fn) {
+  int max_slot = -1;
+  KirInstr[] instrs = fn.blocks[0].instrs;
+  for (int i = 0; i < instrs.len(); i = i + 1) {
+    KirInstr ins = instrs[i];
+    if (ins.op == KirOpcode::StoreLocal || ins.op == KirOpcode::LoadLocal) {
+      if (ins.operands[0] > max_slot) { max_slot = ins.operands[0]; }
+    }
+  }
+  return max_slot + 1;
+}
+
 string emit_main(KirFunction fn) {
   string out = "define i64 @kinglet_user_main() {\n";
   out = out + "entry:\n";
+  int lc = count_locals(fn);
+  for (int s = 0; s < lc; s = s + 1) {
+    out = out + "  %slot" + string(s) + " = alloca i64\n";
+  }
   out = out + lower_body(fn);
   out = out + "}\n\n";
   return out;
