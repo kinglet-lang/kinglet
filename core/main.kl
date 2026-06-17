@@ -12,6 +12,7 @@ import compiler.compiler_state;
 import compiler;
 import compiler.disasm;
 import compiler.bytecode;
+import compiler.ll_emit;
 import core.ast_printer;
 import core.checker_driver;
 using io;
@@ -76,6 +77,32 @@ int run_save_bytecode(string source, string source_path, string save_path, bool 
   return 0;
 }
 
+int run_emit_ll(string source, string source_path, string ll_path) {
+  Token[] tokens = scan(source);
+  if (emit_lexer_errors(tokens) > 0) { return 65; }
+  Parser p = parser::helpers::make_parser(tokens);
+  Program prog = parser::parse_program(p);
+  if (p.errors.len() > 0) {
+    for (int i = 0; i < p.errors.len(); i = i + 1) {
+      ParseError e = p.errors[i];
+      io::err.line("{}:{}: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  Compiler co = make_compiler();
+  int errs = compile_program(co, prog, source_path);
+  if (errs > 0) {
+    for (int i = 0; i < co.errors.len(); i = i + 1) {
+      CompileError e = co.errors[i];
+      io::err.line("{}:{}: compile error: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  string ll = compiler::ll_emit::emit_ll(co.kir);
+  fs::__write(ll_path, ll);
+  return 0;
+}
+
 int arg_start(string[] argv) {
   if (argv.len() == 0) {
     return 0;
@@ -104,6 +131,8 @@ int main() {
   bool strip_debug = false;
   string path = "";
   string save_path = "";
+  bool emit_ll = false;
+  string ll_path = "";
   for (int i = start; i < argv.len(); i = i + 1) {
     if (argv[i] == "--ast") {
       dump_ast = true;
@@ -115,6 +144,10 @@ int main() {
       save_bc = true;
       i = i + 1;
       if (i < argv.len()) { save_path = argv[i]; }
+    } else if (argv[i] == "--emit-ll") {
+      emit_ll = true;
+      i = i + 1;
+      if (i < argv.len()) { ll_path = argv[i]; }
     } else if (argv[i] == "--strip-debug") {
       strip_debug = true;
     } else {
@@ -141,6 +174,9 @@ int main() {
   }
   if (save_bc) {
     return run_save_bytecode(source, path, save_path, strip_debug);
+  }
+  if (emit_ll) {
+    return run_emit_ll(source, path, ll_path);
   }
   return core::ast_printer::run_tokens(source);
 }
