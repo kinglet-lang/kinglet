@@ -15,14 +15,17 @@ pub KirModule empty_module() {
   return KirModule { fs };
 }
 
-// i32 and i64 arithmetic both map to the same KIR op; the .ll emitter lowers
-// them as i64, which matches the VM for non-overflowing values.
-KirOpcode arith_kir_op(OpCode op) {
+KirOpcode bin_kir_op(OpCode op) {
   if (op == OpCode::Add || op == OpCode::AddI32) { return KirOpcode::IAdd; }
   if (op == OpCode::Subtract || op == OpCode::SubtractI32) { return KirOpcode::ISub; }
   if (op == OpCode::Multiply || op == OpCode::MultiplyI32) { return KirOpcode::IMul; }
   if (op == OpCode::Divide || op == OpCode::DivideI32) { return KirOpcode::IDiv; }
   if (op == OpCode::Modulo || op == OpCode::ModuloI32) { return KirOpcode::IMod; }
+  if (op == OpCode::BitAnd) { return KirOpcode::IAnd; }
+  if (op == OpCode::BitOr) { return KirOpcode::IOr; }
+  if (op == OpCode::BitXor) { return KirOpcode::IXor; }
+  if (op == OpCode::Shl) { return KirOpcode::IShl; }
+  if (op == OpCode::Shr) { return KirOpcode::IShr; }
   return KirOpcode::Nop;
 }
 
@@ -41,7 +44,7 @@ KirInstr to_kir_instr(Chunk c, Instruction ins) {
   if (ins.op == OpCode::StoreLocal) { return KirInstr { KirOpcode::StoreLocal, [ins.operand], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::LoadLocal) { return KirInstr { KirOpcode::LoadLocal, [ins.operand], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::Pop) { return KirInstr { KirOpcode::Pop, [], ins.line, ins.col, KirType::Void }; }
-  KirOpcode a = arith_kir_op(ins.op);
+  KirOpcode a = bin_kir_op(ins.op);
   if (a != KirOpcode::Nop) {
     return KirInstr { a, [], ins.line, ins.col, KirType::Int };
   }

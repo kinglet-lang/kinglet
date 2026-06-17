@@ -8,16 +8,22 @@ export module compiler.ll_emit;
 import ir.ir;
 using namespace ir.ir;
 
-bool is_arith(KirOpcode op) {
-  return op == KirOpcode::IAdd || op == KirOpcode::ISub || op == KirOpcode::IMul || op == KirOpcode::IDiv || op == KirOpcode::IMod;
+bool is_bin_op(KirOpcode op) {
+  return op == KirOpcode::IAdd || op == KirOpcode::ISub || op == KirOpcode::IMul || op == KirOpcode::IDiv || op == KirOpcode::IMod
+      || op == KirOpcode::IAnd || op == KirOpcode::IOr || op == KirOpcode::IXor || op == KirOpcode::IShl || op == KirOpcode::IShr;
 }
 
-string ll_arith_op(KirOpcode op) {
+string ll_bin_op(KirOpcode op) {
   if (op == KirOpcode::IAdd) { return "add"; }
   if (op == KirOpcode::ISub) { return "sub"; }
   if (op == KirOpcode::IMul) { return "mul"; }
   if (op == KirOpcode::IDiv) { return "sdiv"; }
   if (op == KirOpcode::IMod) { return "srem"; }
+  if (op == KirOpcode::IAnd) { return "and"; }
+  if (op == KirOpcode::IOr) { return "or"; }
+  if (op == KirOpcode::IXor) { return "xor"; }
+  if (op == KirOpcode::IShl) { return "shl"; }
+  if (op == KirOpcode::IShr) { return "lshr"; }
   return "add";
 }
 
@@ -33,14 +39,14 @@ string lower_body(KirFunction fn) {
       int lo = ins.operands[0];
       int hi = ins.operands[1];
       vstack.push(string((hi << 32) | lo));
-    } else if (is_arith(ins.op)) {
+    } else if (is_bin_op(ins.op)) {
       string b = vstack[vstack.len() - 1];
       vstack.pop();
       string a = vstack[vstack.len() - 1];
       vstack.pop();
       string r = "%" + string(reg);
       reg = reg + 1;
-      out = out + "  " + r + " = " + ll_arith_op(ins.op) + " i64 " + a + ", " + b + "\n";
+      out = out + "  " + r + " = " + ll_bin_op(ins.op) + " i64 " + a + ", " + b + "\n";
       vstack.push(r);
     } else if (ins.op == KirOpcode::StoreLocal) {
       int slot = ins.operands[0];
