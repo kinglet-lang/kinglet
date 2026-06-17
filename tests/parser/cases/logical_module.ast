@@ -1,8 +1,8 @@
 Program
   ExportModuleDecl demo
-  LogicalImportDecl math
-  LogicalImportDecl util
-  using math::*
+  LogicalImportDecl stdlib.math
+  LogicalImportDecl core.util
+  using namespace stdlib.math
   using io
   FunctionDecl int main
     Block

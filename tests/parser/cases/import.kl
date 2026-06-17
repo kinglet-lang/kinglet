@@ -1,9 +1,9 @@
 export module demo;
 
-import math;
-import util;
+import stdlib.math;
+import core.util;
 
-using math::*;
+using namespace stdlib.math;
 
 int main() {
   return 0;
