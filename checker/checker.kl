@@ -3,11 +3,10 @@
 // Walks a Program AST (parser/ast.kl) and reports type errors.
 // CLI entry points live in core/checker_driver.kl.
 
-import {
-  "//parser/ast.kl"
-  "//stdlib/native/manifest.kl"
-}
+export module checker;
 
+import ast;
+import manifest;
 using ast {
   BinaryOp, UnaryOp, AssignOp, TypeExpr,
   Expr, Parameter, Stmt, Decl, Program,
@@ -2167,9 +2166,12 @@ void register_using_aliases(Checker c, string ns, string[] selected) {
   }
 }
 
-void apply_using_decl(Checker c, string n, bool is_ns, string[] selected) {
-  if (is_native_namespace(n) && (is_ns || selected.len() == 0)) {
+void apply_using_decl(Checker c, string n, bool is_ns, string[] selected, bool wild) {
+  if (is_native_namespace(n) && (is_ns || (selected.len() == 0 && !wild))) {
     open_native_namespace(c, n);
+    return;
+  }
+  if (wild) {
     return;
   }
   if (selected.len() > 0) {
@@ -2179,8 +2181,8 @@ void apply_using_decl(Checker c, string n, bool is_ns, string[] selected) {
 
 void register_using_decl(Checker c, Decl d) {
   d match {
-    Decl::UsingDecl(let n, let is_ns, let selected, let _l, let _c) =>
-      apply_using_decl(c, n, is_ns, selected),
+    Decl::UsingDecl(let n, let is_ns, let selected, let wild, let _l, let _c) =>
+      apply_using_decl(c, n, is_ns, selected, wild),
     _ => check_void(),
   };
 }

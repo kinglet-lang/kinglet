@@ -1,6 +1,7 @@
 // Minimal kinglet.toml reader for compiler prelude wiring (ADR 0003 Phase A.3).
 // Parses only [prelude] import = [ "path", ... ]; other keys are ignored here.
 
+export module project_config;
 string trim_line(string s) {
   int start = 0;
   while (start < s.len()) {
@@ -92,4 +93,34 @@ pub string[] parse_prelude_imports(string toml) {
     }
   }
   return paths;
+}
+
+pub string nest_module_path(string nest, string module_id) {
+  string[] lines = nest.split("\n");
+  bool in_modules = false;
+  for (int i = 0; i < lines.len(); i = i + 1) {
+    string line = trim_line(lines[i]);
+    if (line.len() == 0) { continue; }
+    if (line_starts_with(line, "#")) { continue; }
+    if (line == "modules {") {
+      in_modules = true;
+      continue;
+    }
+    if (in_modules && line == "}") { break; }
+    if (!in_modules) { continue; }
+    int eq = 0;
+    while (eq < line.len()) {
+      string c = line.slice(eq, eq + 1);
+      if (c == "=") { break; }
+      eq = eq + 1;
+    }
+    if (eq == 0) { continue; }
+    string key = trim_line(line.slice(0, eq));
+    string rhs = trim_line(line.slice(eq + 1, line.len()));
+    if (key != module_id) { continue; }
+    if (rhs.len() >= 2 && rhs.slice(0, 1) == "\"" && rhs.slice(rhs.len() - 1, rhs.len()) == "\"") {
+      return rhs.slice(1, rhs.len() - 1);
+    }
+  }
+  return "";
 }

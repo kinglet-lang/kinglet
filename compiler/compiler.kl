@@ -3,18 +3,17 @@
 // codegen.kl; the Compiler struct and pure state helpers live in
 // compiler_state.kl.
 
-import {
-  "bytecode.kl"
-  "compiler_state.kl"
-  "codegen.kl"
-  "project_config.kl"
-  "//parser/ast.kl"
-  "//parser/helpers.kl"
-  "//parser/parser.kl"
-  "//lexer/scanner.kl"
-  "//lexer/token.kl"
-}
+export module compiler;
 
+import bytecode;
+import compiler_state;
+import codegen;
+import project_config;
+import ast;
+import helpers;
+import parser;
+import scanner;
+import token;
 using io;
 using fs;
 using helpers { Parser };
@@ -36,24 +35,29 @@ using codegen { compile_stmt };
 
 // path helpers
 
-// Walk up from start_dir looking for kinglet.toml. Returns the directory
-// containing it, or empty string if not found.
+// Walk up from start_dir looking for kinglet.nest / kinglet.toml.
 string find_project_root(string start_dir) {
   string dir = start_dir;
   while (dir.len() > 0) {
+    string nest = dir + "/kinglet.nest";
+    if (fs::__read(nest) != null) { return dir; }
     string candidate = dir + "/kinglet.toml";
-    string content = fs::__read(candidate);
-    if (content != null) { return dir; }
+    if (fs::__read(candidate) != null) { return dir; }
     int i = dir.len() - 1;
     while (i >= 0) {
       if (dir.slice(i, i + 1) == "/") {
-        dir = dir.slice(0, i);
+        if (i == 0) { dir = "/"; } else { dir = dir.slice(0, i); }
         break;
       }
       i = i - 1;
     }
-    if (i < 0) { break; }
+    if (i < 0) {
+      if (dir == ".") { break; }
+      dir = ".";
+    }
   }
+  if (fs::__read("kinglet.nest") != null) { return "."; }
+  if (fs::__read("kinglet.toml") != null) { return "."; }
   return "";
 }
 
@@ -88,6 +92,12 @@ string stem_of(string path) {
 }
 
 string resolve_import_path(string base_dir, string relative, string project_root) {
+  // Manifest-relative path from project root (kinglet.nest modules table).
+  bool is_abs_project = relative.len() >= 2 && relative[0] == '/' && relative[1] == '/';
+  if (!is_abs_project && project_root.len() > 0 && base_dir == project_root) {
+    if (project_root == ".") { return relative; }
+    return project_root + "/" + relative;
+  }
   // Project-root-relative path: //parser/ast.kl
   if (relative.len() >= 2 && relative[0] == '/' && relative[1] == '/') {
     if (project_root.len() == 0) {
@@ -200,39 +210,49 @@ void _reg_import_enum_if(Compiler co, string n, EnumVariant[] variants, bool is_
   _reg_import_enum(co, n, variants, is_pub, selected, is_sel);
 }
 
-void handle_import_decl(Compiler co, string path, string base_dir, string alias, string[] selected, int line, int col) {
-  string err = load_module(co, path, base_dir, alias, selected);
+void note_export_name(string[] found, string n) {
+  found.push(n);
+}
+
+string export_name_from_decl(Decl d) {
+  string[] found = [];
+  d match {
+    Decl::ExportModuleDecl(let n, let _l, let _c) => note_export_name(found, n),
+    _ => {},
+  };
+  if (found.len() > 0) { return found[0]; }
+  return "";
+}
+
+string export_module_name(Program prog) {
+  for (int i = 0; i < prog.declarations.len(); i = i + 1) {
+    string name = export_name_from_decl(prog.declarations[i]);
+    if (name.len() > 0) { return name; }
+  }
+  return "";
+}
+
+void handle_logical_import(Compiler co, string module_id, int line, int col) {
+  if (co.imports.project_root.len() == 0) {
+    compile_error(co, line, col, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
+    return;
+  }
+  string nest_path = co.imports.project_root + "/kinglet.nest";
+  string nest = fs::__read(nest_path);
+  if (nest == null) {
+    compile_error(co, line, col, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
+    return;
+  }
+  string rel = project_config::nest_module_path(nest, module_id);
+  if (rel.len() == 0) {
+    compile_error(co, line, col, "Unknown module '" + module_id + "' in project manifest");
+    return;
+  }
+  string err = load_module(co, rel, co.imports.project_root, module_id, [], true);
   if (err.len() > 0) { compile_error(co, line, col, err); }
 }
 
-void handle_import_block(Compiler co, string[] paths, string[] aliases, string base_dir, int line, int col) {
-  for (int i = 0; i < paths.len(); i = i + 1) {
-    string alias = "";
-    if (i < aliases.len()) { alias = aliases[i]; }
-    string[] selected = [];
-    string err = load_module(co, paths[i], base_dir, alias, selected);
-    if (err.len() > 0) { compile_error(co, line, col, err); return; }
-  }
-}
-
-void load_prelude_modules(Compiler co) {
-  if (co.imports.project_root.len() == 0) { return; }
-  string toml_path = co.imports.project_root + "/kinglet.toml";
-  string toml = fs::__read(toml_path);
-  if (toml == null) { return; }
-  string[] paths = project_config::parse_prelude_imports(toml);
-  string base_dir = co.imports.project_root;
-  for (int i = 0; i < paths.len(); i = i + 1) {
-    string[] selected = [];
-    string err = load_module(co, paths[i], base_dir, "", selected);
-    if (err.len() > 0) {
-      compile_error(co, 0, 0, "prelude import '" + paths[i] + "': " + err);
-      return;
-    }
-  }
-}
-
-string load_module(Compiler co, string import_path, string importing_dir, string alias, string[] selected) {
+string load_module(Compiler co, string import_path, string importing_dir, string alias, string[] selected, bool export_must_match) {
   string resolved = resolve_import_path(importing_dir, import_path, co.imports.project_root);
   if (resolved.len() == 0 && import_path.len() >= 2 && import_path[0] == '/' && import_path[1] == '/') {
     return "Cannot resolve '//' path: no kinglet.toml found";
@@ -248,18 +268,22 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   Parser p = helpers::make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) { return "Parse error in " + import_path + ": " + p.errors[0].message; }
+  string exported = export_module_name(prog);
+  if (export_must_match) {
+    if (exported.len() == 0 || exported != alias) {
+      return "export module '" + exported + "' does not match manifest key '" + alias + "'";
+    }
+  }
   string ns = alias;
-  if (ns.len() == 0) { ns = stem_of(import_path); }
+  if (ns.len() == 0) {
+    ns = exported.len() > 0 ? exported : stem_of(import_path);
+  }
   co.imports.loading_paths.push(resolved);
-  // Transitive imports — single pass in declaration order (matching bootstrap's
-  // compiler.cc:42-53) so imported function indices are byte-identical.
-  string mod_dir = dir_of(resolved);
+  // Transitive logical imports — single pass in declaration order.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
-      Decl::ImportDecl(let ip, let ia, let isel, let _l, let _c) =>
-        _handle_transitive(co, ip, mod_dir, ia, isel),
-      Decl::ImportBlockDecl(let paths, let aliases, let _l, let _c) =>
-        _handle_transitive_block(co, paths, aliases, mod_dir),
+      Decl::LogicalImportDecl(let mid, let _l, let _c) =>
+        _handle_transitive_logical(co, mid),
       _ => {},
     };
     if (co.errors.len() > 0) { co.imports.loading_paths.pop(); return "transitive error"; }
@@ -319,8 +343,8 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   // in the bootstrap.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
-      Decl::UsingDecl(let un, let _is_ns, let usel, let _l, let _c) =>
-        register_using_aliases(co, un, usel),
+      Decl::UsingDecl(let un, let _is_ns, let usel, let wild, let _l, let _c) =>
+        _apply_imported_using(co, un, usel, wild),
       _ => {},
     };
   }
@@ -330,36 +354,65 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   return "";
 }
 
-void _handle_transitive(Compiler co, string ip, string mod_dir, string ia, string[] isel) {
-  string err = load_module(co, ip, mod_dir, ia, isel);
+void _handle_transitive_logical(Compiler co, string module_id) {
+  if (co.imports.project_root.len() == 0) {
+    compile_error(co, 0, 0, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
+    return;
+  }
+  string nest = fs::__read(co.imports.project_root + "/kinglet.nest");
+  if (nest == null) {
+    compile_error(co, 0, 0, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
+    return;
+  }
+  string rel = project_config::nest_module_path(nest, module_id);
+  if (rel.len() == 0) {
+    compile_error(co, 0, 0, "Unknown module '" + module_id + "' in project manifest");
+    return;
+  }
+  string err = load_module(co, rel, co.imports.project_root, module_id, [], true);
   if (err.len() > 0) { compile_error(co, 0, 0, err); }
 }
 
-void _handle_transitive_block(Compiler co, string[] paths, string[] aliases, string mod_dir) {
-  for (int i = 0; i < paths.len(); i = i + 1) {
-    string alias = "";
-    if (i < aliases.len()) { alias = aliases[i]; }
-    string[] selected = [];
-    string err = load_module(co, paths[i], mod_dir, alias, selected);
-    if (err.len() > 0) { compile_error(co, 0, 0, err); return; }
+void _apply_imported_using(Compiler co, string un, string[] usel, bool wild) {
+  if (wild) {
+    register_using_wildcard(co, un);
+    return;
+  }
+  if (usel.len() > 0) {
+    register_using_aliases(co, un, usel);
   }
 }
 
 void process_using_decl(Compiler co, Decl d) {
   d match {
-    Decl::UsingDecl(let n, let is_ns, let selected, let _l, let _c) =>
-      apply_using_decl(co, n, is_ns, selected),
+    Decl::UsingDecl(let n, let is_ns, let selected, let wild, let _l, let _c) =>
+      apply_using_decl(co, n, is_ns, selected, wild),
     _ => skip_decl(co),
   };
 }
 
-void apply_using_decl(Compiler co, string n, bool is_ns, string[] selected) {
+void apply_using_decl(Compiler co, string n, bool is_ns, string[] selected, bool wild) {
   if (is_ns && is_native_namespace(n)) {
     open_native_namespace(co, n);
     return;
   }
+  if (wild) {
+    register_using_wildcard(co, n);
+    return;
+  }
   if (selected.len() > 0) {
     register_using_aliases(co, n, selected);
+  }
+}
+
+void register_using_wildcard(Compiler co, string ns) {
+  string prefix = ns + "::";
+  for (int i = 0; i < co.funcs.len(); i = i + 1) {
+    string name = co.funcs[i].name;
+    if (name.len() <= prefix.len()) { continue; }
+    if (name.slice(0, prefix.len()) != prefix) { continue; }
+    string bare = name.slice(prefix.len(), name.len());
+    register_func_alias(co, bare, co.funcs[i].func_index, co.funcs[i].const_index, co.funcs[i].param_count, co.funcs[i].first_param_type);
   }
 }
 
@@ -472,29 +525,21 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
     d match {
-      Decl::UsingDecl(let n, let _is_ns, let _selected, let _l, let _c) =>
+      Decl::UsingDecl(let n, let _is_ns, let _selected, let _wild, let _l, let _c) =>
         co.usings.push(n),
       _ => skip_decl(co),
     };
   }
-  // Discover project root from kinglet.toml for // path resolution.
+  // Discover project root from kinglet.nest / kinglet.toml.
   if (source_path.len() > 0) {
     co.imports.project_root = find_project_root(dir_of(source_path));
   }
-  // Pass 0a-prelude: implicit imports from [prelude] in kinglet.toml.
+  // Pass 0a: process logical imports.
   if (source_path.len() > 0) {
-    load_prelude_modules(co);
-    if (co.errors.len() > 0) { return co.errors.len(); }
-  }
-  // Pass 0a: process imports.
-  if (source_path.len() > 0) {
-    string base_dir = dir_of(source_path);
     for (int i = 0; i < prog.declarations.len(); i = i + 1) {
       prog.declarations[i] match {
-        Decl::ImportDecl(let path, let alias, let selected, let line, let col) =>
-          handle_import_decl(co, path, base_dir, alias, selected, line, col),
-        Decl::ImportBlockDecl(let paths, let aliases, let line, let col) =>
-          handle_import_block(co, paths, aliases, base_dir, line, col),
+        Decl::LogicalImportDecl(let module_id, let line, let col) =>
+          handle_logical_import(co, module_id, line, col),
         _ => {},
       };
       if (co.errors.len() > 0) { return co.errors.len(); }
