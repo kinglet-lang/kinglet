@@ -24,6 +24,7 @@ string ll_arith_op(KirOpcode op) {
 string lower_body(KirFunction fn) {
   string out = "";
   string[] vstack = [];
+  string[] locals = [];
   int reg = 0;
   KirBasicBlock bb = fn.blocks[0];
   for (int i = 0; i < bb.instrs.len(); i = i + 1) {
@@ -41,6 +42,16 @@ string lower_body(KirFunction fn) {
       reg = reg + 1;
       out = out + "  " + r + " = " + ll_arith_op(ins.op) + " i64 " + a + ", " + b + "\n";
       vstack.push(r);
+    } else if (ins.op == KirOpcode::StoreLocal) {
+      int slot = ins.operands[0];
+      string v = vstack[vstack.len() - 1];
+      while (locals.len() <= slot) { locals.push(""); }
+      locals[slot] = v;
+    } else if (ins.op == KirOpcode::LoadLocal) {
+      int slot = ins.operands[0];
+      vstack.push(locals[slot]);
+    } else if (ins.op == KirOpcode::Pop) {
+      vstack.pop();
     } else if (ins.op == KirOpcode::Ret) {
       string v = vstack[vstack.len() - 1];
       out = out + "  ret i64 " + v + "\n";
