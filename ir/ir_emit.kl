@@ -106,12 +106,25 @@ pub KirModule build_kir_from_chunk(Chunk c) {
     }
     KirInstr[] instrs = [];
     for (int pc = start; pc < end; pc = pc + 1) {
-      instrs.push(to_kir_instr(c, c.instructions[pc], pc - start));
+      Instruction raw = c.instructions[pc];
+      if (raw.op == OpCode::Call) {
+        int fn_idx = -1;
+        if (pc > start) {
+          Instruction prev = c.instructions[pc - 1];
+          if (prev.op == OpCode::Constant) {
+            Constant pk = c.constants[prev.operand];
+            if (pk.kind == ConstKind::Function_) { fn_idx = pk.aux1; }
+          }
+        }
+        instrs.push(KirInstr { KirOpcode::Call, [raw.operand, fn_idx], raw.line, raw.col, KirType::Int });
+      } else {
+        instrs.push(to_kir_instr(c, raw, pc - start));
+      }
     }
     KirBasicBlock[] blocks = [];
     blocks.push(KirBasicBlock { "bb0", instrs });
     string[] pnames = [];
-    funcs.push(KirFunction { fi.name, fi.param_count, pnames, blocks, KirType::Int });
+    funcs.push(KirFunction { fi.name, fi.param_count, pnames, blocks, KirType::Int, order[k] });
   }
   return KirModule { funcs };
 }

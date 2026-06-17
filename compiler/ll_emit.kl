@@ -85,7 +85,19 @@ int count_locals(KirInstr[] instrs) {
   return max_slot + 1;
 }
 
-string emit_function_body(KirFunction fn) {
+string mangle(string name) {
+  if (name == "main") { return "kinglet_user_main"; }
+  return "kinglet_fn_" + name;
+}
+
+string resolve_target(KirModule m, int fn_idx) {
+  for (int i = 0; i < m.functions.len(); i = i + 1) {
+    if (m.functions[i].fn_index == fn_idx) { return mangle(m.functions[i].name); }
+  }
+  return "kinglet_fn_unknown";
+}
+
+string emit_function_body(KirFunction fn, KirModule m) {
   KirInstr[] instrs = fn.blocks[0].instrs;
   int n = instrs.len();
   int[] leaders = compute_leaders(instrs);
@@ -170,6 +182,23 @@ string emit_function_body(KirFunction fn) {
         vstack.push(r);
       } else if (ins.op == KirOpcode::Pop) {
         vstack.pop();
+      } else if (ins.op == KirOpcode::Call) {
+        int argc = ins.operands[0];
+        int fn_idx = ins.operands[1];
+        string[] args = [];
+        for (int a = 0; a < argc; a = a + 1) {
+          args.push(vstack[vstack.len() - 1]);
+          vstack.pop();
+        }
+        string callstr = "";
+        for (int a = argc - 1; a >= 0; a = a - 1) {
+          if (a < argc - 1) { callstr = callstr + ", "; }
+          callstr = callstr + "i64 " + args[a];
+        }
+        string r = "%" + string(reg);
+        reg = reg + 1;
+        out = out + "  " + r + " = call i64 @" + resolve_target(m, fn_idx) + "(" + callstr + ")\n";
+        vstack.push(r);
       }
     }
     if (!terminated) {
@@ -183,15 +212,23 @@ string emit_function_body(KirFunction fn) {
   return out;
 }
 
-string emit_main(KirFunction fn) {
+string emit_function(KirFunction fn, KirModule m) {
   KirInstr[] instrs = fn.blocks[0].instrs;
-  string out = "define i64 @kinglet_user_main() {\n";
+  string out = "define i64 @" + mangle(fn.name) + "(";
+  for (int p = 0; p < fn.param_count; p = p + 1) {
+    if (p > 0) { out = out + ", "; }
+    out = out + "i64 %arg" + string(p);
+  }
+  out = out + ") {\n";
   out = out + "entry:\n";
   int lc = count_locals(instrs);
   for (int s = 0; s < lc; s = s + 1) {
     out = out + "  %slot" + string(s) + " = alloca i64\n";
   }
-  out = out + emit_function_body(fn);
+  for (int p = 0; p < fn.param_count; p = p + 1) {
+    out = out + "  store i64 %arg" + string(p) + ", i64* %slot" + string(p) + "\n";
+  }
+  out = out + emit_function_body(fn, m);
   out = out + "}\n\n";
   return out;
 }
@@ -209,10 +246,7 @@ string emit_entry_shim() {
 pub string emit_ll(KirModule m) {
   string out = "declare i32 @kl_exit_code(i64)\n\n";
   for (int i = 0; i < m.functions.len(); i = i + 1) {
-    KirFunction fn = m.functions[i];
-    if (fn.name == "main") {
-      out = out + emit_main(fn);
-    }
+    out = out + emit_function(m.functions[i], m);
   }
   out = out + emit_entry_shim();
   return out;

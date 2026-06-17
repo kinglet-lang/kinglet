@@ -59,6 +59,7 @@ pub struct KirFunction {
   string[] param_names;
   KirBasicBlock[] blocks;
   KirType return_type;
+  int fn_index;
 }
 
 pub struct KirModule {
