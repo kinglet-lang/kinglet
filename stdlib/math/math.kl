@@ -1,6 +1,6 @@
 // Pure Kinglet math utilities (no C ABI required).
 
-export module math;
+export module stdlib.math;
 
 pub int abs(int n) {
   if (n < 0) { return -n; }

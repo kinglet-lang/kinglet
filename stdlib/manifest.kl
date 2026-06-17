@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Kinglet Language Developers
 // SPDX-License-Identifier: MIT
 
-export module manifest;
+export module stdlib.manifest;
 
 pub bool is_native_namespace(string ns) {
   return ns == "io" || ns == "fs" || ns == "sys";
