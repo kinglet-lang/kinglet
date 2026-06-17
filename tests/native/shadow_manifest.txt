@@ -12,3 +12,8 @@ local_basic
 local_two
 local_reassign
 local_arith
+bit_and
+bit_or
+bit_xor
+bit_shl
+bit_shr
