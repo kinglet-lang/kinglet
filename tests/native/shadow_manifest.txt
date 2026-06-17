@@ -23,3 +23,7 @@ cmp_eq
 cmp_ne
 cmp_le
 cmp_arith
+neg_lit
+neg_add
+neg_var
+bnot_zero
