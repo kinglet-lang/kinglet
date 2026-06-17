@@ -27,3 +27,6 @@ neg_lit
 neg_add
 neg_var
 bnot_zero
+composite_expr
+composite_local
+composite_mixed
