@@ -10,6 +10,7 @@ import compiler.bytecode;
 import parser.ast;
 import lexer.token;
 import stdlib.manifest;
+import ir.ir;
 using namespace parser.ast;
 
 pub struct Local {
@@ -100,13 +101,14 @@ pub struct Compiler {
   bool in_try;
   bool fn_tail_return;
   string compiling_ns;
+  KirModule kir;
 }
 
 pub Compiler make_compiler() {
   Chunk c = compiler::bytecode::make_chunk();
   compiler::bytecode::register_builtin_enums(c);
   return Compiler { c, [], [], 0, [], [], [], [], [], 0, [], [], [], [], [], [],
-    ImportState { [], [], [], [], [], "" }, false, false, "" };
+    ImportState { [], [], [], [], [], "" }, false, false, "", KirModule { [] } };
 }
 
 pub string module_id_to_qualifier(string module_id) {
