@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Kinglet Language Developers
 // SPDX-License-Identifier: MIT
 
-export module scanner;
+export module lexer.scanner;
 
-import token;
-import keywords;
+import lexer.token;
+import lexer.keywords;
 using io;
-using token { Token, TokenType };
-using keywords { KeywordEntry, all_keywords };
+using namespace lexer.token;
+using namespace lexer.keywords;
 
 struct Scanner {
   string source;

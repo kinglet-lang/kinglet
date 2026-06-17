@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Kinglet Language Developers
 // SPDX-License-Identifier: MIT
 
-export module keywords;
+export module lexer.keywords;
 
-import token;
-using token { TokenType };
+import lexer.token;
+using namespace lexer.token;
 
 pub struct KeywordEntry {
   string spelling;
