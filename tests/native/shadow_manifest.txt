@@ -45,3 +45,6 @@ call_recurse
 call_reassign
 call_fib
 dir_import
+match_literal
+match_wild
+match_default
