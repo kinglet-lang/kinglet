@@ -27,6 +27,20 @@ string ll_bin_op(KirOpcode op) {
   return "add";
 }
 
+bool is_cmp(KirOpcode op) {
+  return op == KirOpcode::IEq || op == KirOpcode::INe || op == KirOpcode::ILt || op == KirOpcode::IGt || op == KirOpcode::ILe || op == KirOpcode::IGe;
+}
+
+string ll_cmp_pred(KirOpcode op) {
+  if (op == KirOpcode::IEq) { return "eq"; }
+  if (op == KirOpcode::INe) { return "ne"; }
+  if (op == KirOpcode::ILt) { return "slt"; }
+  if (op == KirOpcode::IGt) { return "sgt"; }
+  if (op == KirOpcode::ILe) { return "sle"; }
+  if (op == KirOpcode::IGe) { return "sge"; }
+  return "eq";
+}
+
 string lower_body(KirFunction fn) {
   string out = "";
   string[] vstack = [];
@@ -47,6 +61,18 @@ string lower_body(KirFunction fn) {
       string r = "%" + string(reg);
       reg = reg + 1;
       out = out + "  " + r + " = " + ll_bin_op(ins.op) + " i64 " + a + ", " + b + "\n";
+      vstack.push(r);
+    } else if (is_cmp(ins.op)) {
+      string b = vstack[vstack.len() - 1];
+      vstack.pop();
+      string a = vstack[vstack.len() - 1];
+      vstack.pop();
+      string c = "%" + string(reg);
+      reg = reg + 1;
+      out = out + "  " + c + " = icmp " + ll_cmp_pred(ins.op) + " i64 " + a + ", " + b + "\n";
+      string r = "%" + string(reg);
+      reg = reg + 1;
+      out = out + "  " + r + " = zext i1 " + c + " to i64\n";
       vstack.push(r);
     } else if (ins.op == KirOpcode::StoreLocal) {
       int slot = ins.operands[0];

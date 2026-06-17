@@ -15,6 +15,16 @@ pub KirModule empty_module() {
   return KirModule { fs };
 }
 
+KirOpcode cmp_kir_op(OpCode op) {
+  if (op == OpCode::Eq) { return KirOpcode::IEq; }
+  if (op == OpCode::Neq) { return KirOpcode::INe; }
+  if (op == OpCode::Lt) { return KirOpcode::ILt; }
+  if (op == OpCode::Gt) { return KirOpcode::IGt; }
+  if (op == OpCode::Le) { return KirOpcode::ILe; }
+  if (op == OpCode::Ge) { return KirOpcode::IGe; }
+  return KirOpcode::Nop;
+}
+
 KirOpcode bin_kir_op(OpCode op) {
   if (op == OpCode::Add || op == OpCode::AddI32) { return KirOpcode::IAdd; }
   if (op == OpCode::Subtract || op == OpCode::SubtractI32) { return KirOpcode::ISub; }
@@ -47,6 +57,10 @@ KirInstr to_kir_instr(Chunk c, Instruction ins) {
   KirOpcode a = bin_kir_op(ins.op);
   if (a != KirOpcode::Nop) {
     return KirInstr { a, [], ins.line, ins.col, KirType::Int };
+  }
+  KirOpcode cmp = cmp_kir_op(ins.op);
+  if (cmp != KirOpcode::Nop) {
+    return KirInstr { cmp, [], ins.line, ins.col, KirType::Int };
   }
   return KirInstr { KirOpcode::Nop, [], ins.line, ins.col, KirType::Int };
 }
