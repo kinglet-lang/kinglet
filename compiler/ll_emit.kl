@@ -8,18 +8,42 @@ export module compiler.ll_emit;
 import ir.ir;
 using namespace ir.ir;
 
+bool is_arith(KirOpcode op) {
+  return op == KirOpcode::IAdd || op == KirOpcode::ISub || op == KirOpcode::IMul || op == KirOpcode::IDiv || op == KirOpcode::IMod;
+}
+
+string ll_arith_op(KirOpcode op) {
+  if (op == KirOpcode::IAdd) { return "add"; }
+  if (op == KirOpcode::ISub) { return "sub"; }
+  if (op == KirOpcode::IMul) { return "mul"; }
+  if (op == KirOpcode::IDiv) { return "sdiv"; }
+  if (op == KirOpcode::IMod) { return "srem"; }
+  return "add";
+}
+
 string lower_body(KirFunction fn) {
   string out = "";
-  string value = "0";
+  string[] vstack = [];
+  int reg = 0;
   KirBasicBlock bb = fn.blocks[0];
   for (int i = 0; i < bb.instrs.len(); i = i + 1) {
     KirInstr ins = bb.instrs[i];
     if (ins.op == KirOpcode::ConstInt) {
       int lo = ins.operands[0];
       int hi = ins.operands[1];
-      value = string((hi << 32) | lo);
+      vstack.push(string((hi << 32) | lo));
+    } else if (is_arith(ins.op)) {
+      string b = vstack[vstack.len() - 1];
+      vstack.pop();
+      string a = vstack[vstack.len() - 1];
+      vstack.pop();
+      string r = "%" + string(reg);
+      reg = reg + 1;
+      out = out + "  " + r + " = " + ll_arith_op(ins.op) + " i64 " + a + ", " + b + "\n";
+      vstack.push(r);
     } else if (ins.op == KirOpcode::Ret) {
-      out = out + "  ret i64 " + value + "\n";
+      string v = vstack[vstack.len() - 1];
+      out = out + "  ret i64 " + v + "\n";
     }
   }
   return out;
