@@ -2,3 +2,9 @@
 # Each stem has tests/native/cases/<stem>.kl plus a <stem>.exit sidecar;
 # add <stem>.stdout to also assert stdout parity with the bootstrap VM.
 just42
+arith_add
+arith_sub
+arith_mul
+arith_div
+arith_mod
+arith_mixed
