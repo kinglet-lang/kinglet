@@ -4,15 +4,13 @@
 // Compiler state: Compiler struct definition and pure state-access helpers.
 // No emit calls. Imported by both codegen.kl and compiler.kl.
 
-export module compiler_state;
+export module compiler.compiler_state;
 
-import bytecode;
-import ast;
-import token;
-import manifest;
-using ast {
-  Parameter, Stmt, FieldDef, EnumVariant, TypeExpr, Expr
-};
+import compiler.bytecode;
+import parser.ast;
+import lexer.token;
+import stdlib.manifest;
+using namespace parser.ast;
 
 pub struct Local {
   string name;
@@ -60,10 +58,11 @@ pub struct ImportState {
   string[] loading_paths;
   ImportedFunc[] pending;
   string[] namespaces;
+  string[] qualifiers;
   string project_root;
 }
 
-// Short name from `using io { out };` → native io::out for method dispatch.
+// Short name from `using namespace io;` → native io::out for method dispatch.
 pub struct NativeUsingAlias {
   string short_name;
   string ns;
@@ -93,6 +92,8 @@ pub struct Compiler {
   int loop_depth;
   string[] usings;
   NativeUsingAlias[] native_usings;
+  string[] module_alias_keys;
+  string[] module_alias_values;
   EnumEntry[] enums;
   StructEntry[] structs;
   ImportState imports;
@@ -102,10 +103,114 @@ pub struct Compiler {
 }
 
 pub Compiler make_compiler() {
-  Chunk c = bytecode::make_chunk();
-  bytecode::register_builtin_enums(c);
-  return Compiler { c, [], [], 0, [], [], [], [], [], 0, [], [], [], [],
-    ImportState { [], [], [], [], "" }, false, false, "" };
+  Chunk c = compiler::bytecode::make_chunk();
+  compiler::bytecode::register_builtin_enums(c);
+  return Compiler { c, [], [], 0, [], [], [], [], [], 0, [], [], [], [], [], [],
+    ImportState { [], [], [], [], [], "" }, false, false, "" };
+}
+
+pub string module_id_to_qualifier(string module_id) {
+  string out = "";
+  int i = 0;
+  while (i < module_id.len()) {
+    string ch = module_id.slice(i, i + 1);
+    if (ch == ".") {
+      out = out + "::";
+    } else {
+      out = out + ch;
+    }
+    i = i + 1;
+  }
+  return out;
+}
+
+pub string qualify_module_symbol(string module_id, string symbol) {
+  return module_id_to_qualifier(module_id) + "::" + symbol;
+}
+
+pub string lookup_module_alias(Compiler co, string alias) {
+  for (int i = 0; i < co.module_alias_keys.len(); i = i + 1) {
+    if (co.module_alias_keys[i] == alias) {
+      return co.module_alias_values[i];
+    }
+  }
+  return "";
+}
+
+pub void register_module_alias(Compiler co, string alias, string qualifier) {
+  co.module_alias_keys.push(alias);
+  co.module_alias_values.push(qualifier);
+}
+
+pub string resolve_module_qualified(Compiler co, string ns, string member) {
+  string prefix = lookup_module_alias(co, ns);
+  if (prefix.len() == 0) { prefix = ns; }
+  return prefix + "::" + member;
+}
+
+pub string qualifier_prefix_of(string qualified) {
+  int last = -1;
+  int i = 0;
+  while (i + 1 < qualified.len()) {
+    if (qualified.slice(i, i + 2) == "::") { last = i; }
+    i = i + 1;
+  }
+  if (last < 0) { return qualified; }
+  return qualified.slice(0, last);
+}
+
+pub bool is_imported_qualified_name(Compiler co, string qualified) {
+  return qualifier_prefix_imported(co, qualifier_prefix_of(qualified));
+}
+
+pub bool qualifier_prefix_imported(Compiler co, string prefix) {
+  for (int i = 0; i < co.imports.qualifiers.len(); i = i + 1) {
+    if (co.imports.qualifiers[i] == prefix) { return true; }
+  }
+  return false;
+}
+
+pub bool str_contains(string haystack, string needle) {
+  int i = 0;
+  while (i + needle.len() <= haystack.len()) {
+    if (haystack.slice(i, i + needle.len()) == needle) { return true; }
+    i = i + 1;
+  }
+  return false;
+}
+
+pub void open_imported_namespace(Compiler co, string module_id) {
+  string prefix = module_id_to_qualifier(module_id) + "::";
+  string[] qualified = [];
+  int[] indices = [];
+  for (int i = 0; i < co.funcs.len(); i = i + 1) {
+    string name = co.funcs[i].name;
+    if (name.len() <= prefix.len()) { continue; }
+    if (name.slice(0, prefix.len()) != prefix) { continue; }
+    string bare = name.slice(prefix.len(), name.len());
+    if (bare.len() == 0) { continue; }
+    if (str_contains(bare, "::")) { continue; }
+    qualified.push(name);
+    indices.push(i);
+  }
+  for (int i = 1; i < qualified.len(); i = i + 1) {
+    string key = qualified[i];
+    int key_i = indices[i];
+    int j = i - 1;
+    while (j >= 0 && str_less(key, qualified[j])) {
+      qualified[j + 1] = qualified[j];
+      indices[j + 1] = indices[j];
+      j = j - 1;
+    }
+    qualified[j + 1] = key;
+    indices[j + 1] = key_i;
+  }
+  for (int i = 0; i < qualified.len(); i = i + 1) {
+    int fi = indices[i];
+    string bare = qualified[i].slice(prefix.len(), qualified[i].len());
+    co.funcs.push(FuncEntry { bare, co.funcs[fi].func_index, co.funcs[fi].const_index,
+                                co.funcs[fi].param_count, co.funcs[fi].first_param_type });
+  }
 }
 
 pub int declare_local_typed(Compiler co, string name, string type_name) {
@@ -144,7 +249,7 @@ pub int castError_variant_NotANumber() => 1;
 // jump backpatching
 
 pub int emit_jump(Compiler co, OpCode op, int line, int col) {
-  bytecode::write_operand(co.chunk, op, 0, line, col);
+  compiler::bytecode::write_operand(co.chunk, op, 0, line, col);
   return co.chunk.instructions.len() - 1;
 }
 
@@ -248,7 +353,7 @@ pub int resolve_call_target(Compiler co, string callee_name) {
   if (fi >= 0) { return fi; }
   string[] sorted = sorted_import_namespaces(co);
   for (int i = 0; i < sorted.len(); i = i + 1) {
-    int qfi = resolve_function(co, sorted[i] + "::" + callee_name);
+    int qfi = resolve_function(co, module_id_to_qualifier(sorted[i]) + "::" + callee_name);
     if (qfi >= 0) { return qfi; }
   }
   return -1;
@@ -294,18 +399,20 @@ pub int callee_ident_col(Expr callee, int fallback) {
 }
 
 pub bool is_imported_ns(Compiler co, string ns) {
+  if (qualifier_prefix_imported(co, ns)) { return true; }
   for (int i = 0; i < co.imports.namespaces.len(); i = i + 1) {
     if (co.imports.namespaces[i] == ns) { return true; }
+    if (module_id_to_qualifier(co.imports.namespaces[i]) == ns) { return true; }
   }
   return false;
 }
 
 pub bool is_native_namespace(string ns) {
-  return manifest::is_native_namespace(ns);
+  return stdlib::manifest::is_native_namespace(ns);
 }
 
 pub bool is_native_member(string ns, string member) {
-  return manifest::is_native_member(ns, member);
+  return stdlib::manifest::is_native_member(ns, member);
 }
 
 pub NativeUsingAlias no_native_alias() {
@@ -326,7 +433,7 @@ pub NativeUsingAlias resolve_native_using_alias(Compiler co, string short_name) 
 }
 
 pub void open_native_namespace(Compiler co, string ns) {
-  string[] members = manifest::native_members_of(ns);
+  string[] members = stdlib::manifest::native_members_of(ns);
   for (int i = 0; i < members.len(); i = i + 1) {
     register_native_using_alias(co, members[i], ns, members[i]);
   }

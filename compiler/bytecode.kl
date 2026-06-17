@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Kinglet Language Developers
 // SPDX-License-Identifier: MIT
 
-export module bytecode;
+export module compiler.bytecode;
 using fs;
 
 // Bytecode data definitions — Kinglet mirror of kinglet-bootstrap/src/vm/chunk.h.

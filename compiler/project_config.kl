@@ -4,7 +4,7 @@
 // Minimal project manifest reader (kinglet.toml, kinglet.nest).
 // Parses [prelude] imports and modules { } entries; other keys are ignored here.
 
-export module project_config;
+export module compiler.project_config;
 string trim_line(string s) {
   int start = 0;
   while (start < s.len()) {

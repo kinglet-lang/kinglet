@@ -8,33 +8,22 @@
 
 export module compiler;
 
-import bytecode;
-import compiler_state;
-import codegen;
-import project_config;
-import ast;
-import helpers;
+import compiler.bytecode;
+import compiler.compiler_state;
+import compiler.codegen;
+import compiler.project_config;
+import parser.ast;
+import parser.helpers;
 import parser;
-import scanner;
-import token;
+import lexer.scanner;
+import lexer.token;
 using io;
 using fs;
-using helpers { Parser };
-using ast {
-  Program, Decl, Stmt, Parameter, FieldDef, EnumVariant, TypeExpr, Expr
-};
-using compiler_state {
-  Compiler, CompileError, ImportState, ImportedFunc,
-  FuncEntry, EnumEntry, StructEntry, GlobalConst,
-  make_compiler, compile_error,
-  compiler_push_scope, compiler_pop_scope,
-  declare_local, declare_local_typed, resolve_local, resolve_global_const, resolve_function,
-  emit_jump, patch_jump, patch_jump_to,
-  is_native_namespace, is_native_member, register_native_using_alias,
-  open_native_namespace, str_less, module_ns_of_qualified
-};
-using scanner { scan, emit_lexer_errors };
-using codegen { compile_stmt };
+using namespace parser.helpers;
+using namespace parser.ast;
+using namespace compiler.compiler_state;
+using namespace lexer.scanner;
+using namespace compiler.codegen;
 
 // path helpers
 
@@ -168,7 +157,7 @@ void register_func_alias(Compiler co, string alias_name, int func_index, int con
 
 void _reg_import_func(Compiler co, string ns, string n, string return_type, Parameter[] params, Stmt body, bool is_pub, int dl, int dc, string[] selected, bool is_sel) {
   if (is_pub && is_sel && !str_arr_contains(selected, n)) { return; }
-  string qualified = ns + "::" + n;
+  string qualified = qualify_module_symbol(ns, n);
   if (!func_exists(co, qualified)) {
     register_compiler_function(co, n, qualified, params.len(), first_param_type_name(params));
     co.imports.pending.push(ImportedFunc { ns, qualified, return_type, params, body, dl, dc });
@@ -241,7 +230,7 @@ void handle_logical_import(Compiler co, string module_id, int line, int col) {
     compile_error(co, line, col, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
     return;
   }
-  string rel = project_config::nest_module_path(nest, module_id);
+  string rel = compiler::project_config::nest_module_path(nest, module_id);
   if (rel.len() == 0) {
     compile_error(co, line, col, "Unknown module '" + module_id + "' in project manifest");
     return;
@@ -263,7 +252,7 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   if (source == null) { return "Cannot read: " + import_path; }
   Token[] tokens = scan(source);
   if (emit_lexer_errors(tokens) > 0) { return "Lexer error in " + import_path; }
-  Parser p = helpers::make_parser(tokens);
+  Parser p = parser::helpers::make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) { return "Parse error in " + import_path + ": " + p.errors[0].message; }
   string exported = export_module_name(prog);
@@ -335,20 +324,21 @@ string load_module(Compiler co, string import_path, string importing_dir, string
       _ => {},
     };
   }
-  // Apply this module's own `using mod { sym };` selections so unqualified
+  // Apply this module's own `using namespace mod;` selections so unqualified
   // calls inside its function bodies (compiled later in Pass 2b) resolve to
   // the dependency's qualified function index. Mirrors compiler.cc:1904-1915
   // in the bootstrap.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
-      Decl::UsingDecl(let un, let _is_ns, let usel, let wild, let _l, let _c) =>
-        _apply_imported_using(co, un, usel, wild),
+      Decl::UsingDecl(let un, let is_ns, let _l, let _c) =>
+        _apply_imported_using(co, un, is_ns),
       _ => {},
     };
   }
   co.imports.loading_paths.pop();
   co.imports.loaded_paths.push(resolved);
   co.imports.namespaces.push(ns);
+  co.imports.qualifiers.push(module_id_to_qualifier(ns));
   return "";
 }
 
@@ -362,7 +352,7 @@ void _handle_transitive_logical(Compiler co, string module_id) {
     compile_error(co, 0, 0, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
     return;
   }
-  string rel = project_config::nest_module_path(nest, module_id);
+  string rel = compiler::project_config::nest_module_path(nest, module_id);
   if (rel.len() == 0) {
     compile_error(co, 0, 0, "Unknown module '" + module_id + "' in project manifest");
     return;
@@ -371,80 +361,29 @@ void _handle_transitive_logical(Compiler co, string module_id) {
   if (err.len() > 0) { compile_error(co, 0, 0, err); }
 }
 
-void _apply_imported_using(Compiler co, string un, string[] usel, bool wild) {
-  if (wild) {
-    register_using_wildcard(co, un);
-    return;
-  }
-  if (usel.len() > 0) {
-    register_using_aliases(co, un, usel);
+void _apply_imported_using(Compiler co, string module_id, bool is_ns) {
+  if (is_ns) {
+    open_imported_namespace(co, module_id);
   }
 }
 
 void process_using_decl(Compiler co, Decl d) {
   d match {
-    Decl::UsingDecl(let n, let is_ns, let selected, let wild, let _l, let _c) =>
-      apply_using_decl(co, n, is_ns, selected, wild),
+    Decl::UsingDecl(let n, let is_ns, let _l, let _c) =>
+      apply_using_decl(co, n, is_ns),
+    Decl::UsingAliasDecl(let alias, let module_id, let _l, let _c) =>
+      register_module_alias(co, alias, module_id_to_qualifier(module_id)),
     _ => skip_decl(co),
   };
 }
 
-void apply_using_decl(Compiler co, string n, bool is_ns, string[] selected, bool wild) {
-  if (is_ns && is_native_namespace(n)) {
-    open_native_namespace(co, n);
+void apply_using_decl(Compiler co, string module_id, bool is_ns) {
+  if (is_ns && is_native_namespace(module_id)) {
+    open_native_namespace(co, module_id);
     return;
   }
-  if (wild) {
-    register_using_wildcard(co, n);
-    return;
-  }
-  if (selected.len() > 0) {
-    register_using_aliases(co, n, selected);
-  }
-}
-
-void register_using_wildcard(Compiler co, string ns) {
-  string prefix = ns + "::";
-  string[] qualified = [];
-  int[] indices = [];
-  for (int i = 0; i < co.funcs.len(); i = i + 1) {
-    string name = co.funcs[i].name;
-    if (name.len() <= prefix.len()) { continue; }
-    if (name.slice(0, prefix.len()) != prefix) { continue; }
-    qualified.push(name);
-    indices.push(i);
-  }
-  for (int i = 1; i < qualified.len(); i = i + 1) {
-    string key = qualified[i];
-    int key_i = indices[i];
-    int j = i - 1;
-    while (j >= 0 && str_less(key, qualified[j])) {
-      qualified[j + 1] = qualified[j];
-      indices[j + 1] = indices[j];
-      j = j - 1;
-    }
-    qualified[j + 1] = key;
-    indices[j + 1] = key_i;
-  }
-  for (int i = 0; i < qualified.len(); i = i + 1) {
-    int fi = indices[i];
-    string bare = qualified[i].slice(prefix.len(), qualified[i].len());
-    register_func_alias(co, bare, co.funcs[fi].func_index, co.funcs[fi].const_index, co.funcs[fi].param_count, co.funcs[fi].first_param_type);
-  }
-}
-
-void register_using_aliases(Compiler co, string ns, string[] selected) {
-  for (int i = 0; i < selected.len(); i = i + 1) {
-    string sym = selected[i];
-    string qualified = ns + "::" + sym;
-    int fi = resolve_function(co, qualified);
-    if (fi >= 0 && !func_exists(co, sym)) {
-      register_func_alias(co, sym, co.funcs[fi].func_index, co.funcs[fi].const_index, co.funcs[fi].param_count, co.funcs[fi].first_param_type);
-      continue;
-    }
-    if (is_native_namespace(ns) && is_native_member(ns, sym)) {
-      register_native_using_alias(co, sym, ns, sym);
-    }
+  if (is_ns) {
+    open_imported_namespace(co, module_id);
   }
 }
 
@@ -534,8 +473,8 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
   compile_stmt(co, body);
   // Fallthrough safety: implicit null return when the body does not end with return.
   if (co.errors.len() == 0 && !body_has_explicit_return(body)) {
-    bytecode::write_op(co.chunk, OpCode::Null_, line, col);
-    bytecode::write_op(co.chunk, OpCode::Return_, line, col);
+    compiler::bytecode::write_op(co.chunk, OpCode::Null_, line, col);
+    compiler::bytecode::write_op(co.chunk, OpCode::Return_, line, col);
   }
   compiler_pop_scope(co);
   co.compiling_ns = prev_ns;
@@ -546,8 +485,10 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
     d match {
-      Decl::UsingDecl(let n, let _is_ns, let _selected, let _wild, let _l, let _c) =>
+      Decl::UsingDecl(let n, let _is_ns, let _l, let _c) =>
         co.usings.push(n),
+      Decl::UsingAliasDecl(let alias, let _mid, let _l, let _c) =>
+        co.usings.push(alias),
       _ => skip_decl(co),
     };
   }
@@ -607,9 +548,9 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
     0, 0.0, false, "",
     co.funcs[main_fi].func_index, 0,
   };
-  bytecode::write_constant(co.chunk, main_fc, 1, 0);
-  bytecode::write_operand(co.chunk, OpCode::Call, 0, 1, 0);
-  bytecode::write_op(co.chunk, OpCode::Return_, 1, 0);
+  compiler::bytecode::write_constant(co.chunk, main_fc, 1, 0);
+  compiler::bytecode::write_operand(co.chunk, OpCode::Call, 0, 1, 0);
+  compiler::bytecode::write_op(co.chunk, OpCode::Return_, 1, 0);
   // Pass 2: compile each function body, in source order.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
@@ -678,7 +619,7 @@ void _register_struct_decl(Compiler co, string name, FieldDef[] fields) {
     field_names.push(fields[i].name);
   }
   StructMeta meta = StructMeta { name, field_names };
-  int idx = bytecode::add_struct_meta(co.chunk, meta);
+  int idx = compiler::bytecode::add_struct_meta(co.chunk, meta);
   co.structs.push(StructEntry { name, idx });
 }
 
@@ -690,7 +631,7 @@ void _register_enum_decl(Compiler co, string name, EnumVariant[] variants) {
     param_counts.push(variants[i].param_types.len());
   }
   EnumMeta meta = EnumMeta { name, variant_names, param_counts };
-  int idx = bytecode::add_enum_meta(co.chunk, meta);
+  int idx = compiler::bytecode::add_enum_meta(co.chunk, meta);
   co.enums.push(EnumEntry { name, idx });
 }
 

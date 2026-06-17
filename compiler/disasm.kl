@@ -19,10 +19,10 @@
 // print without quotes, doubles use C++ default precision (6 significant
 // digits, no trailing zero), bools as "true"/"false", null as "null".
 
-export module disasm;
+export module compiler.disasm;
 
-import bytecode;
-using bytecode { OpCode, Instruction, Constant, ConstKind, Chunk };
+import compiler.bytecode;
+using namespace compiler.bytecode;
 
 string opcode_name(OpCode op) {
   if (op == OpCode::Constant) { return "Constant"; }
