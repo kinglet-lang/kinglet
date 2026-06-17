@@ -3,7 +3,7 @@
 
 // KIR data definitions — mirrors bootstrap src/ir/kir.h.
 
-export module ir;
+export module ir.ir;
 
 pub enum KirOpcode {
   ConstInt,

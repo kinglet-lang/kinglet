@@ -4,10 +4,10 @@
 // KIR emit stubs — self-host AST→KIR builder lands in a later milestone.
 // Data shapes and dump format match bootstrap IrBuilder.
 
-export module ir_emit;
+export module ir.ir_emit;
 
-import ir;
-using ir { KirOpcode, KirInstr, KirBasicBlock, KirFunction, KirModule };
+import ir.ir;
+using namespace ir.ir;
 
 pub KirModule empty_module() {
   KirFunction[] fs = [];

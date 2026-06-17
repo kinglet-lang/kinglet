@@ -3,10 +3,10 @@
 
 // KIR text dump — mirrors bootstrap dump_kir_module.
 
-export module ir_print;
+export module ir.ir_print;
 
-import ir;
-using ir { KirOpcode, KirInstr, KirBasicBlock, KirFunction, KirModule };
+import ir.ir;
+using namespace ir.ir;
 
 string kir_opcode_name(KirOpcode op) {
   if (op == KirOpcode::ConstInt) { return "const_int"; }
