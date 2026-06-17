@@ -4,13 +4,12 @@
 // Expression parsing is in expressions.kl; token cursor helpers and
 // type-expression parsing are in helpers.kl.
 
-import {
-  "ast.kl"
-  "helpers.kl"
-  "expressions.kl"
-  "//lexer/token.kl"
-}
+export module parser;
 
+import ast;
+import helpers;
+import expressions;
+import token;
 using ast {
   Program, Decl, Stmt, Expr, TypeExpr,
   MatchArm, FieldInit, Parameter, FieldDef, EnumVariant,
@@ -32,6 +31,7 @@ pub Program parse_program(Parser p) {
 
 Decl parse_declaration(Parser p) {
   if (match_tt(p, TokenType::Using))  { return parse_using(p); }
+  if (match_tt(p, TokenType::Export)) { return parse_export_module(p); }
   if (match_tt(p, TokenType::Import)) { return parse_import(p); }
 
   bool is_pub = match_tt(p, TokenType::Pub);
@@ -64,6 +64,13 @@ Decl parse_using(Parser p) {
   bool is_namespace = match_tt(p, TokenType::Namespace);
   Token name = consume(p, TokenType::Identifier, "Expected namespace name after 'using'.");
   string[] selected = [];
+  bool wildcard = false;
+  if (match_tt(p, TokenType::ColonColon)) {
+    consume(p, TokenType::Star, "Expected '*' after '::' in using wildcard.");
+    wildcard = true;
+    consume(p, TokenType::Semicolon, "Expected ';' after using declaration.");
+    return Decl::UsingDecl(name.lexeme, is_namespace, selected, wildcard, using_tok.line, using_tok.col);
+  }
   if (match_tt(p, TokenType::LeftBrace)) {
     while (!check(p, TokenType::RightBrace) && peek_tok(p).type != TokenType::Eof) {
       Token sym = consume(p, TokenType::Identifier, "Expected symbol name in using list.");
@@ -75,36 +82,31 @@ Decl parse_using(Parser p) {
     consume(p, TokenType::RightBrace, "Expected '}' after using symbol list.");
   }
   consume(p, TokenType::Semicolon, "Expected ';' after using declaration.");
-  return Decl::UsingDecl(name.lexeme, is_namespace, selected, using_tok.line, using_tok.col);
+  return Decl::UsingDecl(name.lexeme, is_namespace, selected, wildcard, using_tok.line, using_tok.col);
+}
+
+Decl parse_export_module(Parser p) {
+  Token export_tok = previous(p);
+  Token module_kw = consume(p, TokenType::Identifier, "Expected 'module' after 'export'.");
+  if (module_kw.lexeme != "module") {
+    error_at(p, module_kw, "Expected 'module' after 'export'.");
+  }
+  Token name = consume(p, TokenType::Identifier, "Expected module name after 'export module'.");
+  consume(p, TokenType::Semicolon, "Expected ';' after export module.");
+  return Decl::ExportModuleDecl(name.lexeme, export_tok.line, export_tok.col);
 }
 
 Decl parse_import(Parser p) {
   Token import_tok = previous(p);
 
-  // New block form: import { "path1" \n "path2" as alias }
-  if (match_tt(p, TokenType::LeftBrace)) {
-    string[] paths = [];
-    string[] aliases = [];
-    while (!check(p, TokenType::RightBrace) && peek_tok(p).type != TokenType::Eof) {
-      Token path_tok = consume(p, TokenType::StringLit, "Expected file path string in import block.");
-      paths.push(strip_string_quotes(path_tok.lexeme));
-      string alias = "";
-      if (check(p, TokenType::Identifier) && peek_tok(p).lexeme == "as") {
-        advance_tok(p);
-        Token a = consume(p, TokenType::Identifier, "Expected alias name after 'as'.");
-        alias = a.lexeme;
-      }
-      aliases.push(alias);
-    }
-    consume(p, TokenType::RightBrace, "Expected '}' after import block.");
-    if (paths.len() == 1) {
-      return Decl::ImportDecl(paths[0], aliases[0], [], import_tok.line, import_tok.col);
-    }
-    return Decl::ImportBlockDecl(paths, aliases, import_tok.line, import_tok.col);
+  if (check(p, TokenType::Identifier)) {
+    Token id = advance_tok(p);
+    consume(p, TokenType::Semicolon, "Expected ';' after import.");
+    return Decl::LogicalImportDecl(id.lexeme, import_tok.line, import_tok.col);
   }
 
-  error_at(p, import_tok, "Expected '{' after 'import'. Use: import { \"path\" }");
-  return Decl::ImportDecl("", "", [], import_tok.line, import_tok.col);
+  error_at(p, import_tok, "Expected module name after 'import'.");
+  return Decl::LogicalImportDecl("", import_tok.line, import_tok.col);
 }
 
 Decl parse_concept_decl(Parser p, bool is_pub) {

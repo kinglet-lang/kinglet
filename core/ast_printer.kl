@@ -1,15 +1,14 @@
 // AST printer for the Kinglet self-host CLI.
 // Implements --tokens and --ast output modes.
 
-import {
-  "//lexer/token.kl"
-  "//lexer/scanner.kl"
-  "//lexer/keywords.kl"
-  "//parser/ast.kl"
-  "//parser/helpers.kl"
-  "//parser/parser.kl"
-}
+export module ast_printer;
 
+import token;
+import scanner;
+import keywords;
+import ast;
+import helpers;
+import parser;
 using io;
 using scanner { scan };
 using token { Token, TokenType };
@@ -483,8 +482,12 @@ void print_decl(Decl d, int depth) {
       print_import_decl(path, alias, selected, depth),
     Decl::ImportBlockDecl(let paths, let aliases, let _l, let _c) =>
       print_import_block(paths, aliases, depth),
-    Decl::UsingDecl(let n, let is_ns, let selected, let _l, let _c) =>
-      print_using_decl(n, is_ns, selected, depth),
+    Decl::ExportModuleDecl(let n, let _l, let _c) =>
+      io::out.line("{}ExportModuleDecl {}", indent_str(depth), n),
+    Decl::LogicalImportDecl(let n, let _l, let _c) =>
+      io::out.line("{}LogicalImportDecl {}", indent_str(depth), n),
+    Decl::UsingDecl(let n, let is_ns, let selected, let wild, let _l, let _c) =>
+      print_using_decl(n, is_ns, selected, wild, depth),
     Decl::ConceptDecl(let n, let tps, let methods, let is_pub, let _l, let _c) =>
       print_concept_decl(n, tps, methods, is_pub, depth),
     Decl::TopLevelStmt(let s, let _l, let _c) =>
@@ -576,7 +579,11 @@ void print_import_block(string[] paths, string[] aliases, int depth) {
   }
 }
 
-void print_using_decl(string n, bool is_ns, string[] selected, int depth) {
+void print_using_decl(string n, bool is_ns, string[] selected, bool wild, int depth) {
+  if (wild) {
+    io::out.line("{}using {}::*", indent_str(depth), n);
+    return;
+  }
   if (selected.len() > 0) {
     string body = "";
     for (int i = 0; i < selected.len(); i = i + 1) {

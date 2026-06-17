@@ -7,6 +7,7 @@
 // Recursive nesting (Expr inside Expr, Stmt inside Stmt) relies on the
 // bootstrap compiler's forward-decl pre-pass.
 
+export module ast;
 pub enum BinaryOp {
   Add, Sub, Mul, Div, Mod,
   Eq, Neq, Lt, Gt, Le, Ge,
@@ -161,19 +162,20 @@ pub struct WhereClause {
 //   EnumDecl(name, variants, is_public, line, col)
 //   ConceptDecl(name, type_params, methods, is_public, line, col)
 //   ImportDecl(path, alias, selected, line, col)
+//   LogicalImportDecl(module_id, line, col)
+//   ExportModuleDecl(name, line, col)
 //   ImportBlockDecl(paths, aliases, line, col)  — import { "p1" as a \n "p2" }
-//   UsingDecl(namespace_name, is_namespace, selected, line, col)
-//     selected is empty for `using ns;` and `using namespace ns;`,
-//     populated for `using mod { sym1, sym2 };`.
-//   TopLevelStmt(stmt, line, col)
+//   UsingDecl(namespace_name, is_namespace, selected, wildcard, line, col)
 pub enum Decl {
   FunctionDecl(string, TypeExpr, string[], Parameter[], WhereClause[], Stmt, bool, int, int),
   StructDecl(string, string[], FieldDef[], bool, int, int),
   EnumDecl(string, EnumVariant[], bool, int, int),
   ConceptDecl(string, string[], ConceptMethod[], bool, int, int),
   ImportDecl(string, string, string[], int, int),
+  LogicalImportDecl(string, int, int),
+  ExportModuleDecl(string, int, int),
   ImportBlockDecl(string[], string[], int, int),
-  UsingDecl(string, bool, string[], int, int),
+  UsingDecl(string, bool, string[], bool, int, int),
   TopLevelStmt(Stmt, int, int),
 }
 

@@ -1,0 +1,11 @@
+export module demo;
+
+import math;
+import util;
+
+using math::*;
+using io;
+
+int main() {
+  return 0;
+}

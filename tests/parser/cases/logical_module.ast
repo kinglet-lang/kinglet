@@ -1,0 +1,10 @@
+Program
+  ExportModuleDecl demo
+  LogicalImportDecl math
+  LogicalImportDecl util
+  using math::*
+  using io
+  FunctionDecl int main
+    Block
+      Return
+        IntLit 0
