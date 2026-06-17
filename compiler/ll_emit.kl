@@ -97,21 +97,83 @@ string resolve_target(KirModule m, int fn_idx) {
   return "kinglet_fn_unknown";
 }
 
+int leader_pos(int[] leaders, int idx) {
+  for (int k = 0; k < leaders.len(); k = k + 1) {
+    if (leaders[k] == idx) { return k; }
+  }
+  return 0;
+}
+
 string emit_function_body(KirFunction fn, KirModule m) {
   KirInstr[] instrs = fn.blocks[0].instrs;
   int n = instrs.len();
   int[] leaders = compute_leaders(instrs);
   int nl = leaders.len();
+  int[] edge_pred = [];
+  int[] edge_succ = [];
+  for (int k = 0; k < nl; k = k + 1) {
+    int lend = n;
+    if (k + 1 < nl) { lend = leaders[k + 1]; }
+    KirInstr last = instrs[lend - 1];
+    if (last.op == KirOpcode::Br) {
+      edge_pred.push(k);
+      edge_succ.push(leader_pos(leaders, last.operands[0]));
+    } else if (last.op == KirOpcode::CondBr) {
+      edge_pred.push(k);
+      edge_succ.push(k + 1);
+      edge_pred.push(k);
+      edge_succ.push(leader_pos(leaders, last.operands[0]));
+    } else if (last.op != KirOpcode::Ret) {
+      if (k + 1 < nl) {
+        edge_pred.push(k);
+        edge_succ.push(k + 1);
+      }
+    }
+  }
+  string[][] exit_stacks = [];
+  for (int k = 0; k < nl; k = k + 1) { exit_stacks.push([]); }
   string out = "";
   int reg = 0;
   for (int bi = 0; bi < nl; bi = bi + 1) {
     int lstart = leaders[bi];
     int lend = n;
     if (bi + 1 < nl) { lend = leaders[bi + 1]; }
+    int[] pp = [];
+    for (int e = 0; e < edge_pred.len(); e = e + 1) {
+      if (edge_succ[e] == bi && edge_pred[e] < bi) { pp.push(edge_pred[e]); }
+    }
+    string[] vstack = [];
+    string phis = "";
+    if (pp.len() == 1) {
+      string[] src = exit_stacks[pp[0]];
+      for (int q = 0; q < src.len(); q = q + 1) { vstack.push(src[q]); }
+    } else if (pp.len() > 1) {
+      int d = exit_stacks[pp[0]].len();
+      for (int j = 0; j < d; j = j + 1) {
+        string v = exit_stacks[pp[0]][j];
+        bool same = true;
+        for (int p = 1; p < pp.len(); p = p + 1) {
+          if (exit_stacks[pp[p]][j] != v) { same = false; }
+        }
+        if (same) {
+          vstack.push(v);
+        } else {
+          string r = "%" + string(reg);
+          reg = reg + 1;
+          string ph = "  " + r + " = phi i64 ";
+          for (int p = 0; p < pp.len(); p = p + 1) {
+            if (p > 0) { ph = ph + ", "; }
+            ph = ph + "[ " + exit_stacks[pp[p]][j] + ", %" + label_for(leaders, leaders[pp[p]]) + " ]";
+          }
+          phis = phis + ph + "\n";
+          vstack.push(r);
+        }
+      }
+    }
     if (bi > 0) {
       out = out + label_for(leaders, lstart) + ":\n";
     }
-    string[] vstack = [];
+    out = out + phis;
     bool terminated = false;
     for (int i = lstart; i < lend; i = i + 1) {
       KirInstr ins = instrs[i];
@@ -208,6 +270,7 @@ string emit_function_body(KirFunction fn, KirModule m) {
         out = out + "  ret i64 0\n";
       }
     }
+    exit_stacks[bi] = vstack;
   }
   return out;
 }
