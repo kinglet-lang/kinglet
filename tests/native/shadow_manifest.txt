@@ -39,3 +39,7 @@ ctrl_local_in_if
 loop_while
 loop_count
 loop_nested
+call_basic
+call_chain
+call_recurse
+call_reassign
