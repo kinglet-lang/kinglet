@@ -8,3 +8,7 @@ arith_mul
 arith_div
 arith_mod
 arith_mixed
+local_basic
+local_two
+local_reassign
+local_arith
