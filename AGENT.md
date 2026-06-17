@@ -42,9 +42,10 @@ Source (.kl)
   ([ADR 0019](decisions/0019-self-host-llvm-backend.md), Route B: no C++ on the
   path); `clang++` assembles and links `libkinglet_rt.a` into a native binary.
   Driven by `bash tests/native/run_smoke_shadow.sh` (cases in
-  `tests/native/shadow_manifest.txt`). Straight-line integer code (constants,
-  arithmetic, locals, bitwise, comparisons, unary) and control flow (`if`/`else`,
-  `while` loops) are lowered; function calls, aggregates, and errors are not yet.
+  `tests/native/shadow_manifest.txt`). Lowered so far: integer constants,
+  arithmetic, local variables, bitwise/shift, comparisons, unary, control flow
+  (`if`/`else`, `while` loops), and function calls (incl. recursion). Aggregates
+  (structs/arrays/strings) and errors are not yet.
 
 ### Key Properties
 
