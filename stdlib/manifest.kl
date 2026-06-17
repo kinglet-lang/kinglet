@@ -1,0 +1,39 @@
+// L1 — Native API registry (single table for checker + codegen).
+// Platform entries lower to C ABI in libkinglet_rt / VM opcodes.
+// See ADR 0003 Amendment 2026-06-17 (stdlib tree).
+
+export module manifest;
+
+pub bool is_native_namespace(string ns) {
+  return ns == "io" || ns == "fs" || ns == "sys";
+}
+
+pub bool is_native_member(string ns, string member) {
+  if (ns == "io") {
+    return member == "out" || member == "err" || member == "in";
+  }
+  if (ns == "fs") {
+    return member == "__read" || member == "__write" || member == "__exists";
+  }
+  if (ns == "sys") {
+    return member == "args" || member == "exit";
+  }
+  return false;
+}
+
+pub string[] native_members_of(string ns) {
+  if (ns == "io") {
+    string[] m = ["out", "err", "in"];
+    return m;
+  }
+  if (ns == "fs") {
+    string[] m = ["__read", "__write", "__exists"];
+    return m;
+  }
+  if (ns == "sys") {
+    string[] m = ["args", "exit"];
+    return m;
+  }
+  string[] empty = [];
+  return empty;
+}

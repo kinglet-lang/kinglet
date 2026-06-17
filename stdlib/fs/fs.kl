@@ -1,0 +1,6 @@
+// Platform filesystem — implementation: C ABI (libkinglet_rt).
+// User-facing members: fs::__read, fs::__write, fs::__exists, ...
+
+export module fs;
+
+// extern native { ... }

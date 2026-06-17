@@ -1,12 +1,11 @@
 // Expression parser: precedence-climbing expression parser for Kinglet,
 // mirroring the C++ parser in kinglet-bootstrap/src/parser/parser.cc.
 
-import {
-  "ast.kl"
-  "helpers.kl"
-  "//lexer/token.kl"
-}
+export module expressions;
 
+import ast;
+import helpers;
+import token;
 using ast {
   Expr, TypeExpr, BinaryOp, UnaryOp, AssignOp,
   MatchArm, FieldInit, make_type

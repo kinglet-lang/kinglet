@@ -1,0 +1,6 @@
+// Platform process / environment — implementation: C ABI (libkinglet_rt).
+// Members: sys::args, sys::exit, ...
+
+export module sys;
+
+// extern native { ... }

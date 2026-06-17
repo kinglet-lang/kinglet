@@ -1,9 +1,8 @@
 // KIR text dump — mirrors bootstrap dump_kir_module (ADR 0005 M1).
 
-import {
-  "ir.kl"
-}
+export module ir_print;
 
+import ir;
 using ir { KirOpcode, KirInstr, KirBasicBlock, KirFunction, KirModule };
 
 string kir_opcode_name(KirOpcode op) {

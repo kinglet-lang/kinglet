@@ -1,13 +1,12 @@
 // Compiler state: Compiler struct definition and pure state-access helpers.
 // No emit calls. Imported by both codegen.kl and compiler.kl.
 
-import {
-  "bytecode.kl"
-  "//parser/ast.kl"
-  "//lexer/token.kl"
-  "//stdlib/native/manifest.kl"
-}
+export module compiler_state;
 
+import bytecode;
+import ast;
+import token;
+import manifest;
 using ast {
   Parameter, Stmt, FieldDef, EnumVariant, TypeExpr, Expr
 };

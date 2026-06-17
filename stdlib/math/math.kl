@@ -1,0 +1,14 @@
+// Pure Kinglet math utilities (no C ABI required).
+// Phase B — implemented in KL, compiled like user modules.
+
+export module math;
+
+pub int abs(int n) {
+  if (n < 0) { return -n; }
+  return n;
+}
+
+pub int max(int a, int b) {
+  if (a > b) { return a; }
+  return b;
+}

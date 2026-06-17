@@ -1,3 +1,4 @@
+export module bytecode;
 using fs;
 
 // Bytecode data definitions — Kinglet mirror of kinglet-bootstrap/src/vm/chunk.h.

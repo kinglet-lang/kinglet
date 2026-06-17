@@ -1,8 +1,7 @@
-import {
-  "token.kl"
-  "keywords.kl"
-}
+export module scanner;
 
+import token;
+import keywords;
 using io;
 using token { Token, TokenType };
 using keywords { KeywordEntry, all_keywords };

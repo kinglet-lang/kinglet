@@ -1,0 +1,37 @@
+project "kinglet" version "0.1.0"
+
+modules {
+  token           = "lexer/token.kl"
+  keywords        = "lexer/keywords.kl"
+  scanner         = "lexer/scanner.kl"
+  ast             = "parser/ast.kl"
+  helpers         = "parser/helpers.kl"
+  expressions     = "parser/expressions.kl"
+  parser          = "parser/parser.kl"
+  bytecode        = "compiler/bytecode.kl"
+  compiler_state  = "compiler/compiler_state.kl"
+  codegen         = "compiler/codegen.kl"
+  project_config  = "compiler/project_config.kl"
+  compiler        = "compiler/compiler.kl"
+  disasm          = "compiler/disasm.kl"
+  checker         = "checker/checker.kl"
+  ast_printer     = "core/ast_printer.kl"
+  checker_driver  = "core/checker_driver.kl"
+  main            = "core/main.kl"
+  manifest        = "stdlib/manifest.kl"
+  io              = "stdlib/io/io.kl"
+  fs              = "stdlib/fs/fs.kl"
+  sys             = "stdlib/sys/sys.kl"
+  math            = "stdlib/math/math.kl"
+  map             = "stdlib/map/map.kl"
+  algorithms      = "stdlib/algorithms/algorithms.kl"
+  ir              = "ir/ir.kl"
+  ir_print        = "ir/ir_print.kl"
+  ir_emit         = "ir/ir_emit.kl"
+}
+
+build {
+  default = "main"
+  backend = native
+  out     = ".kinglet/out"
+}

@@ -2,15 +2,14 @@
 // and prints diagnostics; the type checker itself lives in
 // `../checker/checker.kl`.
 
-import {
-  "//lexer/token.kl"
-  "//lexer/scanner.kl"
-  "//parser/ast.kl"
-  "//parser/helpers.kl"
-  "//parser/parser.kl"
-  "//checker/checker.kl"
-}
+export module checker_driver;
 
+import token;
+import scanner;
+import ast;
+import helpers;
+import parser;
+import checker;
 using io;
 using scanner { scan, emit_lexer_errors };
 using token { Token };

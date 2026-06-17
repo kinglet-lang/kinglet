@@ -1,12 +1,11 @@
 // Bytecode code generation: expression and statement compilation.
 // Also includes native intrinsic dispatch (handle_ns_call etc.).
 
-import {
-  "bytecode.kl"
-  "compiler_state.kl"
-  "//parser/ast.kl"
-}
+export module codegen;
 
+import bytecode;
+import compiler_state;
+import ast;
 using ast {
   Expr, Stmt, TypeExpr, BinaryOp, UnaryOp, AssignOp,
   MatchArm, FieldInit, CatchArm, Parameter

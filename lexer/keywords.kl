@@ -1,7 +1,6 @@
-import {
-  "token.kl"
-}
+export module keywords;
 
+import token;
 using token { TokenType };
 
 pub struct KeywordEntry {

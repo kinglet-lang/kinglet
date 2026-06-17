@@ -1,0 +1,8 @@
+// Pure Kinglet algorithms (no C ABI required).
+
+export module algorithms;
+
+pub int min(int a, int b) {
+  if (a < b) { return a; }
+  return b;
+}

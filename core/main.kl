@@ -1,20 +1,19 @@
+export module main;
+
+import token;
+import scanner;
+import ast;
+import helpers;
+import parser;
+import compiler_state;
+import compiler;
+import disasm;
+import bytecode;
+import ast_printer;
+import checker_driver;
 using io;
 using fs;
 using sys;
-
-import {
-  "//lexer/token.kl"
-  "//lexer/scanner.kl"
-  "//parser/ast.kl"
-  "//parser/helpers.kl"
-  "//parser/parser.kl"
-  "//compiler/compiler_state.kl"
-  "//compiler/compiler.kl"
-  "//compiler/disasm.kl"
-  "//compiler/bytecode.kl"
-  "ast_printer.kl"
-  "checker_driver.kl"
-}
 
 using scanner { scan, emit_lexer_errors };
 using token { Token };

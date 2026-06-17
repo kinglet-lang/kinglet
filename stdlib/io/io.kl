@@ -1,0 +1,10 @@
+// Platform I/O — implementation: C ABI (libkinglet_rt).
+// Checker reads this stub; codegen lowers to kl_io_* / VM NativeOut.
+//
+// Ergonomics (both retained long-term):
+//   using io;              → qualified io::out.line(...)
+//   using namespace io;    → unqualified out.line(...)
+
+export module io;
+
+// extern native { ... }  — surface syntax TBD (ADR 0003)

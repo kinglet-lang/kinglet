@@ -1,11 +1,10 @@
 // Parser helper primitives: Parser struct, token cursor, type expression
 // parser, and position helpers for Expr nodes.
 
-import {
-  "ast.kl"
-  "//lexer/token.kl"
-}
+export module helpers;
 
+import ast;
+import token;
 using ast {
   Program, Decl, Stmt, Expr, TypeExpr,
   BinaryOp, UnaryOp, AssignOp,

@@ -4,11 +4,11 @@
 
 set -euo pipefail
 
-# Locate project root (directory containing kinglet.toml).
+# Locate project root (directory containing kinglet.nest or kinglet.toml).
 find_project_root() {
   local dir="${1:-$(pwd)}"
   while [[ "$dir" != "/" ]]; do
-    if [[ -f "$dir/kinglet.toml" ]]; then
+    if [[ -f "$dir/kinglet.nest" || -f "$dir/kinglet.toml" ]]; then
       printf '%s' "$(cd "$dir" && pwd)"
       return 0
     fi
