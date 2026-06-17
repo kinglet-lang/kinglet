@@ -1,0 +1,4 @@
+# Cases the shadow LLVM backend (ADR 0019) lowers end-to-end via .ll.
+# Each stem has tests/native/cases/<stem>.kl plus a <stem>.exit sidecar;
+# add <stem>.stdout to also assert stdout parity with the bootstrap VM.
+just42
