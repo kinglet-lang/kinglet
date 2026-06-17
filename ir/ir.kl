@@ -36,8 +36,29 @@ pub enum KirOpcode {
 }
 
 pub enum KirType {
-  Int,
   Void,
+  Any,
+  Int,
+  Float,
+  Int8,
+  Int16,
+  Int32,
+  Int64,
+  UInt8,
+  UInt16,
+  UInt32,
+  UInt64,
+  Float32,
+  Float64,
+  Bool,
+  Null,
+  Char,
+  String,
+  Array,
+  Map,
+  Struct,
+  Enum,
+  Fn,
 }
 
 pub struct KirInstr {
