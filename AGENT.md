@@ -43,8 +43,8 @@ Source (.kl)
   path); `clang++` assembles and links `libkinglet_rt.a` into a native binary.
   Driven by `bash tests/native/run_smoke_shadow.sh` (cases in
   `tests/native/shadow_manifest.txt`). Straight-line integer code (constants,
-  arithmetic, locals, bitwise, comparisons, unary) is lowered; control flow and
-  calls are not yet (S2).
+  arithmetic, locals, bitwise, comparisons, unary) and control flow (`if`/`else`,
+  `while` loops) are lowered; function calls, aggregates, and errors are not yet.
 
 ### Key Properties
 
