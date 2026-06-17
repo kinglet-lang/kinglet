@@ -30,3 +30,9 @@ bnot_zero
 composite_expr
 composite_local
 composite_mixed
+ctrl_if_true
+ctrl_if_false
+ctrl_if_cmp
+ctrl_if_else_t
+ctrl_if_else_f
+ctrl_local_in_if
