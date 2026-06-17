@@ -1,34 +1,34 @@
 // Copyright (c) 2026 Kinglet Language Developers
 // SPDX-License-Identifier: MIT
 
-export module main;
+export module core.main;
 
-import token;
-import scanner;
-import ast;
-import helpers;
+import lexer.token;
+import lexer.scanner;
+import parser.ast;
+import parser.helpers;
 import parser;
-import compiler_state;
+import compiler.compiler_state;
 import compiler;
-import disasm;
-import bytecode;
-import ast_printer;
-import checker_driver;
+import compiler.disasm;
+import compiler.bytecode;
+import core.ast_printer;
+import core.checker_driver;
 using io;
 using fs;
 using sys;
 
-using scanner { scan, emit_lexer_errors };
-using token { Token };
-using ast { Program };
-using helpers { Parser, ParseError };
-using compiler_state { Compiler, CompileError, make_compiler };
-using compiler { compile_program };
+using namespace lexer.scanner;
+using namespace lexer.token;
+using namespace parser.ast;
+using namespace parser.helpers;
+using namespace compiler.compiler_state;
+using namespace compiler;
 
 int run_bytecode(string source, string path) {
   Token[] tokens = scan(source);
   if (emit_lexer_errors(tokens) > 0) { return 65; }
-  Parser p = helpers::make_parser(tokens);
+  Parser p = parser::helpers::make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) {
     for (int i = 0; i < p.errors.len(); i = i + 1) {
@@ -46,7 +46,7 @@ int run_bytecode(string source, string path) {
     }
     return 65;
   }
-  string out = disasm::disassemble(co.chunk);
+  string out = compiler::disasm::disassemble(co.chunk);
   io::out(out);
   return 0;
 }
@@ -54,7 +54,7 @@ int run_bytecode(string source, string path) {
 int run_save_bytecode(string source, string source_path, string save_path, bool strip_debug) {
   Token[] tokens = scan(source);
   if (emit_lexer_errors(tokens) > 0) { return 65; }
-  Parser p = helpers::make_parser(tokens);
+  Parser p = parser::helpers::make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) {
     for (int i = 0; i < p.errors.len(); i = i + 1) {
@@ -72,7 +72,7 @@ int run_save_bytecode(string source, string source_path, string save_path, bool 
     }
     return 65;
   }
-  bytecode::serialize_chunk(co.chunk, save_path, strip_debug);
+  compiler::bytecode::serialize_chunk(co.chunk, save_path, strip_debug);
   return 0;
 }
 
@@ -131,10 +131,10 @@ int main() {
     return 66;
   }
   if (dump_ast) {
-    return ast_printer::run_ast(source);
+    return core::ast_printer::run_ast(source);
   }
   if (do_check) {
-    return checker_driver::run_check(source);
+    return core::checker_driver::run_check(source);
   }
   if (dump_bc) {
     return run_bytecode(source, path);
@@ -142,5 +142,5 @@ int main() {
   if (save_bc) {
     return run_save_bytecode(source, path, save_path, strip_debug);
   }
-  return ast_printer::run_tokens(source);
+  return core::ast_printer::run_tokens(source);
 }

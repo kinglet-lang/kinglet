@@ -4,25 +4,20 @@
 // AST printer for the Kinglet self-host CLI.
 // Implements --tokens and --ast output modes.
 
-export module ast_printer;
+export module core.ast_printer;
 
-import token;
-import scanner;
-import keywords;
-import ast;
-import helpers;
+import lexer.token;
+import lexer.scanner;
+import lexer.keywords;
+import parser.ast;
+import parser.helpers;
 import parser;
 using io;
-using scanner { scan };
-using token { Token, TokenType };
-using keywords { KeywordEntry };
-using ast {
-  BinaryOp, UnaryOp, AssignOp, TypeExpr,
-  Expr, MatchArm, FieldInit, Parameter, CatchArm,
-  Stmt, FieldDef, EnumVariant, ConceptMethod, WhereClause,
-  Decl, Program, make_type
-};
-using helpers { Parser, ParseError, type_to_string };
+using namespace lexer.scanner;
+using namespace lexer.token;
+using namespace lexer.keywords;
+using namespace parser.ast;
+using namespace parser.helpers;
 
 // token printer (--tokens mode)
 
@@ -489,8 +484,10 @@ void print_decl(Decl d, int depth) {
       io::out.line("{}ExportModuleDecl {}", indent_str(depth), n),
     Decl::LogicalImportDecl(let n, let _l, let _c) =>
       io::out.line("{}LogicalImportDecl {}", indent_str(depth), n),
-    Decl::UsingDecl(let n, let is_ns, let selected, let wild, let _l, let _c) =>
-      print_using_decl(n, is_ns, selected, wild, depth),
+    Decl::UsingDecl(let n, let is_ns, let _l, let _c) =>
+      print_using_decl(n, is_ns, depth),
+    Decl::UsingAliasDecl(let alias, let module_id, let _l, let _c) =>
+      io::out.line("{}UsingAliasDecl {} = {}", indent_str(depth), alias, module_id),
     Decl::ConceptDecl(let n, let tps, let methods, let is_pub, let _l, let _c) =>
       print_concept_decl(n, tps, methods, is_pub, depth),
     Decl::TopLevelStmt(let s, let _l, let _c) =>
@@ -582,20 +579,7 @@ void print_import_block(string[] paths, string[] aliases, int depth) {
   }
 }
 
-void print_using_decl(string n, bool is_ns, string[] selected, bool wild, int depth) {
-  if (wild) {
-    io::out.line("{}using {}::*", indent_str(depth), n);
-    return;
-  }
-  if (selected.len() > 0) {
-    string body = "";
-    for (int i = 0; i < selected.len(); i = i + 1) {
-      if (i > 0) { body = body + ", "; }
-      body = body + selected[i];
-    }
-    io::out.line("{}(using {} {" + body + "})", indent_str(depth), n);
-    return;
-  }
+void print_using_decl(string n, bool is_ns, int depth) {
   string kind = "using";
   if (is_ns) { kind = "using namespace"; }
   io::out.line("{}{} {}", indent_str(depth), kind, n);
@@ -603,7 +587,7 @@ void print_using_decl(string n, bool is_ns, string[] selected, bool wild, int de
 
 pub int run_ast(string source) {
   Token[] tokens = scan(source);
-  Parser p = helpers::make_parser(tokens);
+  Parser p = parser::helpers::make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) {
     for (int i = 0; i < p.errors.len(); i = i + 1) {

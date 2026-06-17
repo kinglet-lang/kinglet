@@ -5,20 +5,20 @@
 // and prints diagnostics; the type checker itself lives in
 // `../checker/checker.kl`.
 
-export module checker_driver;
+export module core.checker_driver;
 
-import token;
-import scanner;
-import ast;
-import helpers;
+import lexer.token;
+import lexer.scanner;
+import parser.ast;
+import parser.helpers;
 import parser;
 import checker;
 using io;
-using scanner { scan, emit_lexer_errors };
-using token { Token };
-using ast { Program };
-using helpers { Parser, ParseError };
-using checker { Checker, CheckError, make_checker, check_program };
+using namespace lexer.scanner;
+using namespace lexer.token;
+using namespace parser.ast;
+using namespace parser.helpers;
+using namespace checker;
 
 pub int run_checker(Program prog) {
   Checker c = make_checker("check");
@@ -37,7 +37,7 @@ pub int run_checker(Program prog) {
 pub int run_check(string source) {
   Token[] tokens = scan(source);
   if (emit_lexer_errors(tokens) > 0) { return 65; }
-  Parser p = helpers::make_parser(tokens);
+  Parser p = parser::helpers::make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) {
     for (int i = 0; i < p.errors.len(); i = i + 1) {
