@@ -2,12 +2,10 @@ using io;
 using fs;
 using sys;
 
-import {
-  "../parser/ast.kl"
-  "../parser/parser.kl"
-  "../compiler/compiler.kl"
-  "../compiler/disasm.kl"
-}
+import ast;
+import parser;
+import compiler;
+import disasm;
 
 int main() {
   string[] args = sys::args();

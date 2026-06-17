@@ -1,11 +1,9 @@
-using io;
-using fs;
+export module demo;
 
-import {
-  "../lib/util.kl"
-  "../lib/math.kl" as m
-  "../lib/text.kl"
-}
+import math;
+import util;
+
+using math::*;
 
 int main() {
   return 0;

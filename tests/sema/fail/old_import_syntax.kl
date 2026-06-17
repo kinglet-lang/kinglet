@@ -1,7 +1,7 @@
 // RUN: check
 // COMPILE-FAIL
-// CHECK-ERR: Expected '{' after 'import'
-import "../lexer/token.kl" { scan };
+// CHECK-ERR: Expected module name after 'import'
+import { "token.kl" };
 
 int main() {
   return 0;

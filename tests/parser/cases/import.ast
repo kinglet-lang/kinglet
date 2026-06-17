@@ -1,10 +1,8 @@
 Program
-  using io
-  using fs
-  ImportBlockDecl
-    ImportDecl "../lib/util.kl"
-    ImportDecl "../lib/math.kl" as m
-    ImportDecl "../lib/text.kl"
+  ExportModuleDecl demo
+  LogicalImportDecl math
+  LogicalImportDecl util
+  using math::*
   FunctionDecl int main
     Block
       Return

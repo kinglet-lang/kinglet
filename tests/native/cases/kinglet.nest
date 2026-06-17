@@ -1,0 +1,5 @@
+project "native-import" version "0.1.0"
+
+modules {
+  import_add_lib = "import_add_lib.kl"
+}

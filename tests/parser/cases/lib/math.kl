@@ -1,4 +1,4 @@
-export module import_add_lib;
+export module math;
 
 pub int add(int a, int b) {
   return a + b;

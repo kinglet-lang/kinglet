@@ -1,0 +1,6 @@
+project "parser-import" version "0.1.0"
+
+modules {
+  math = "../lib/math.kl"
+  util = "../lib/util.kl"
+}

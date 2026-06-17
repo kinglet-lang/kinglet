@@ -1,0 +1,5 @@
+export module util;
+
+pub string join(string[] parts) {
+  return "";
+}
