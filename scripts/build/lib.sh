@@ -114,6 +114,7 @@ compiler_source_manifest() {
       "$root"/core/*.kl \
       "$root"/parser/*.kl \
       "$root"/compiler/*.kl \
+      "$root"/ir/*.kl \
       "$root"/checker/*.kl \
       "$root"/lexer/*.kl; do
       [[ -f "$f" ]] || continue
