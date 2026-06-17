@@ -17,6 +17,7 @@ import parser.helpers;
 import parser;
 import lexer.scanner;
 import lexer.token;
+import ir.ir_emit;
 using io;
 using fs;
 using namespace parser.helpers;
@@ -575,6 +576,9 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
     ImportedFunc ifn = co.imports.pending[i];
     compile_function_body(co, ifn.qualified_name, ifn.return_type, ifn.params, ifn.body, ifn.line, ifn.col);
     if (co.errors.len() > 0) { return co.errors.len(); }
+  }
+  if (co.errors.len() == 0) {
+    co.kir = ir::ir_emit::build_kir_from_chunk(co.chunk);
   }
   return 0;
 }
