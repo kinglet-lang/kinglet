@@ -1,4 +1,4 @@
-// Minimal kinglet.toml reader for compiler prelude wiring (ADR 0003 Phase A.3).
+// Minimal kinglet.toml reader for compiler prelude wiring.
 // Parses only [prelude] import = [ "path", ... ]; other keys are ignored here.
 
 export module project_config;

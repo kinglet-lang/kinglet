@@ -28,7 +28,7 @@ using compiler_state {
   declare_local, declare_local_typed, resolve_local, resolve_global_const, resolve_function,
   emit_jump, patch_jump, patch_jump_to,
   is_native_namespace, is_native_member, register_native_using_alias,
-  open_native_namespace
+  open_native_namespace, str_less, module_ns_of_qualified
 };
 using scanner { scan, emit_lexer_errors };
 using codegen { compile_stmt };
@@ -172,11 +172,6 @@ void _reg_import_func(Compiler co, string ns, string n, string return_type, Para
   }
   int fi = resolve_function(co, qualified);
   if (is_pub && is_sel && !func_exists(co, n)) {
-    register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len(), co.funcs[fi].first_param_type);
-  }
-  // Bootstrap always overwrites the bare-name alias for private imports
-  // (compiler.cc:1930); last module wins via resolve_function reverse scan.
-  if (!is_pub) {
     register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len(), co.funcs[fi].first_param_type);
   }
 }
@@ -407,12 +402,31 @@ void apply_using_decl(Compiler co, string n, bool is_ns, string[] selected, bool
 
 void register_using_wildcard(Compiler co, string ns) {
   string prefix = ns + "::";
+  string[] qualified = [];
+  int[] indices = [];
   for (int i = 0; i < co.funcs.len(); i = i + 1) {
     string name = co.funcs[i].name;
     if (name.len() <= prefix.len()) { continue; }
     if (name.slice(0, prefix.len()) != prefix) { continue; }
-    string bare = name.slice(prefix.len(), name.len());
-    register_func_alias(co, bare, co.funcs[i].func_index, co.funcs[i].const_index, co.funcs[i].param_count, co.funcs[i].first_param_type);
+    qualified.push(name);
+    indices.push(i);
+  }
+  for (int i = 1; i < qualified.len(); i = i + 1) {
+    string key = qualified[i];
+    int key_i = indices[i];
+    int j = i - 1;
+    while (j >= 0 && str_less(key, qualified[j])) {
+      qualified[j + 1] = qualified[j];
+      indices[j + 1] = indices[j];
+      j = j - 1;
+    }
+    qualified[j + 1] = key;
+    indices[j + 1] = key_i;
+  }
+  for (int i = 0; i < qualified.len(); i = i + 1) {
+    int fi = indices[i];
+    string bare = qualified[i].slice(prefix.len(), qualified[i].len());
+    register_func_alias(co, bare, co.funcs[fi].func_index, co.funcs[fi].const_index, co.funcs[fi].param_count, co.funcs[fi].first_param_type);
   }
 }
 
@@ -489,9 +503,12 @@ bool body_has_explicit_return(Stmt body) {
 }
 
 void compile_function_body(Compiler co, string name, string ret_type, Parameter[] params, Stmt body, int line, int col) {
+  string prev_ns = co.compiling_ns;
+  co.compiling_ns = module_ns_of_qualified(name);
   int fi = resolve_function(co, name);
   if (fi < 0) {
     compile_error(co, line, col, "Internal: function '" + name + "' not registered.");
+    co.compiling_ns = prev_ns;
     return;
   }
   // Patch entry to current instruction count, mirroring compile_function in
@@ -518,6 +535,7 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
     bytecode::write_op(co.chunk, OpCode::Return_, line, col);
   }
   compiler_pop_scope(co);
+  co.compiling_ns = prev_ns;
 }
 
 pub int compile_program(Compiler co, Program prog, string source_path) {
@@ -534,7 +552,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   if (source_path.len() > 0) {
     co.imports.project_root = find_project_root(dir_of(source_path));
   }
-  // Pass 0a: process logical imports.
+  // Load logical imports from kinglet.nest.
   if (source_path.len() > 0) {
     for (int i = 0; i < prog.declarations.len(); i = i + 1) {
       prog.declarations[i] match {
@@ -545,12 +563,11 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
       if (co.errors.len() > 0) { return co.errors.len(); }
     }
   }
-  // Pass 0c: `using namespace io;` opens native members; `using mod { sym };`
-  // lowers imported or native symbols to short-name aliases.
+  // Apply using declarations (native namespaces and imported aliases).
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     process_using_decl(co, prog.declarations[i]);
   }
-  // Pass 0b: register struct and enum declarations.
+  // Register struct and enum declarations.
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
     d match {
@@ -600,13 +617,11 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
     };
     if (co.errors.len() > 0) { return co.errors.len(); }
   }
-  // Pass 2b: compile imported function bodies.
-  // Stable-sort by namespace rank to match bootstrap compiler.cc pass 2b
-  // (unordered_map iteration on libc++ / macOS for this module set).
+  // Compile imported module bodies (namespaces sorted lexicographically).
   for (int i = 1; i < co.imports.pending.len(); i = i + 1) {
     ImportedFunc key = co.imports.pending[i];
     int j = i - 1;
-    while (j >= 0 && pass2b_ns_rank(co.imports.pending[j].ns) > pass2b_ns_rank(key.ns)) {
+    while (j >= 0 && str_less(key.ns, co.imports.pending[j].ns)) {
       co.imports.pending[j + 1] = co.imports.pending[j];
       j = j - 1;
     }
@@ -677,25 +692,3 @@ void _register_enum_decl(Compiler co, string name, EnumVariant[] variants) {
 }
 
 void skip_decl(Compiler co) { return; }
-
-// libc++ unordered_map iteration order observed when compiling core/main.kl
-// with the bootstrap compiler (clang / macOS). Keep in sync if bootstrap
-// toolchain changes.
-int pass2b_ns_rank(string ns) {
-  if (ns == "checker") { return 0; }
-  if (ns == "ast_printer") { return 1; }
-  if (ns == "scanner") { return 2; }
-  if (ns == "disasm") { return 3; }
-  if (ns == "ast") { return 4; }
-  if (ns == "bytecode") { return 5; }
-  if (ns == "codegen") { return 6; }
-  if (ns == "compiler") { return 7; }
-  if (ns == "checker_driver") { return 8; }
-  if (ns == "parser") { return 9; }
-  if (ns == "compiler_state") { return 10; }
-  if (ns == "helpers") { return 11; }
-  if (ns == "expressions") { return 12; }
-  if (ns == "keywords") { return 13; }
-  return 14;
-}
-

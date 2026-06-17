@@ -95,13 +95,14 @@ pub struct Compiler {
   ImportState imports;
   bool in_try;
   bool fn_tail_return;
+  string compiling_ns;
 }
 
 pub Compiler make_compiler() {
   Chunk c = bytecode::make_chunk();
   bytecode::register_builtin_enums(c);
   return Compiler { c, [], [], 0, [], [], [], [], [], 0, [], [], [], [],
-    ImportState { [], [], [], [], "" }, false, false };
+    ImportState { [], [], [], [], "" }, false, false, "" };
 }
 
 pub int declare_local_typed(Compiler co, string name, string type_name) {
@@ -199,6 +200,53 @@ pub int resolve_function(Compiler co, string name) {
   while (i >= 0) {
     if (co.funcs[i].name == name) { return i; }
     i = i - 1;
+  }
+  return -1;
+}
+
+pub bool str_less(string a, string b) {
+  return a < b;
+}
+
+pub string module_ns_of_qualified(string qualified) {
+  int i = 0;
+  while (i + 1 < qualified.len()) {
+    if (qualified.slice(i, i + 1) == ":" && qualified.slice(i + 1, i + 2) == ":") {
+      return qualified.slice(0, i);
+    }
+    i = i + 1;
+  }
+  return "";
+}
+
+string[] sorted_import_namespaces(Compiler co) {
+  string[] sorted = [];
+  for (int i = 0; i < co.imports.namespaces.len(); i = i + 1) {
+    sorted.push(co.imports.namespaces[i]);
+  }
+  for (int i = 1; i < sorted.len(); i = i + 1) {
+    string key = sorted[i];
+    int j = i - 1;
+    while (j >= 0 && str_less(key, sorted[j])) {
+      sorted[j + 1] = sorted[j];
+      j = j - 1;
+    }
+    sorted[j + 1] = key;
+  }
+  return sorted;
+}
+
+pub int resolve_call_target(Compiler co, string callee_name) {
+  if (co.compiling_ns.len() > 0) {
+    int fi = resolve_function(co, co.compiling_ns + "::" + callee_name);
+    if (fi >= 0) { return fi; }
+  }
+  int fi = resolve_function(co, callee_name);
+  if (fi >= 0) { return fi; }
+  string[] sorted = sorted_import_namespaces(co);
+  for (int i = 0; i < sorted.len(); i = i + 1) {
+    int qfi = resolve_function(co, sorted[i] + "::" + callee_name);
+    if (qfi >= 0) { return qfi; }
   }
   return -1;
 }

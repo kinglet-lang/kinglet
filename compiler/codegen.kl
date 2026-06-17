@@ -18,6 +18,7 @@ using compiler_state {
   declare_local, declare_local_typed, resolve_local, resolve_global_const,
   lookup_local_type, is_concept_ns,
   resolve_function, resolve_struct, resolve_variant, resolve_enum,
+  resolve_call_target,
   callee_ident_line, callee_ident_col,
   castError_type_idx, castError_variant_NotANumber,
   is_imported_ns, resolve_native_using_alias
@@ -1025,16 +1026,7 @@ void emit_call(Compiler co, Expr callee, Expr[] args, int line, int col) {
     compile_error(co, cl, cc, "Only direct function calls supported in VM compiler.");
     return;
   }
-  int fi = resolve_function(co, callee_name);
-  // Fallback: search imported namespaces for ns::callee_name. Mirrors
-  // compiler.cc:1130-1139 — intra-module calls inside non-selectively
-  // imported modules only have the qualified name registered.
-  if (fi < 0) {
-    for (int ni = 0; ni < co.imports.namespaces.len(); ni = ni + 1) {
-      int qfi = resolve_function(co, co.imports.namespaces[ni] + "::" + callee_name);
-      if (qfi >= 0) { fi = qfi; break; }
-    }
-  }
+  int fi = resolve_call_target(co, callee_name);
   if (fi < 0) {
     compile_error(co, cl, cc, "Use of undeclared variable '" + callee_name + "'.");
     return;
