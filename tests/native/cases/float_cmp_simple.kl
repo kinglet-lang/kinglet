@@ -1,0 +1,12 @@
+int main() {
+  float a = 1.5;
+  float b = 2.5;
+  int r = 0;
+  if (a < b) { r = r + 1; }
+  if (b > a) { r = r + 2; }
+  if (a <= 1.5) { r = r + 4; }
+  if (b >= 2.5) { r = r + 8; }
+  if (a == 1.5) { r = r + 16; }
+  if (a != b) { r = r + 32; }
+  return r;
+}

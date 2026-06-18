@@ -59,3 +59,7 @@ array_inline
 array_len
 string_len
 string_len2
+float_const
+float_simple
+float_neg
+float_cmp_simple

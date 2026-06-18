@@ -1,0 +1,6 @@
+int main() {
+  float a = 1.5;
+  float b = 2.25;
+  float s = a + b;
+  return 0;
+}
