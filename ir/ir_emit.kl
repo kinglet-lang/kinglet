@@ -50,6 +50,9 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
       int v = k.int_value;
       return KirInstr { KirOpcode::ConstInt, [v & 0xFFFFFFFF, (v >> 32) & 0xFFFFFFFF], ins.line, ins.col, KirType::Int };
     }
+    if (k.kind == ConstKind::String_) {
+      return KirInstr { KirOpcode::ConstString, [k.string_value.len()], ins.line, ins.col, KirType::String };
+    }
     return KirInstr { KirOpcode::Nop, [], ins.line, ins.col, KirType::Int };
   }
   if (ins.op == OpCode::Return_) {
@@ -163,7 +166,7 @@ pub KirModule build_kir_from_chunk(Chunk c) {
         KirInstr ki = to_kir_instr(c, raw, pc - start);
         instrs.push(ki);
         KirOpcode kop = ki.op;
-        if (kop == KirOpcode::ConstInt || kop == KirOpcode::LoadLocal) {
+        if (kop == KirOpcode::ConstInt || kop == KirOpcode::LoadLocal || kop == KirOpcode::ConstString) {
           tstack.push(-1);
         } else if (kop == KirOpcode::Pop || kop == KirOpcode::CondBr) {
           if (tstack.len() > 0) { tstack.pop(); }

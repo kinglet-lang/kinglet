@@ -200,6 +200,8 @@ string emit_function_body(KirFunction fn, KirModule m) {
         int lo = ins.operands[0];
         int hi = ins.operands[1];
         vstack.push(string((hi << 32) | lo));
+      } else if (ins.op == KirOpcode::ConstString) {
+        vstack.push("str#" + string(ins.operands[0]));
       } else if (is_bin_op(ins.op)) {
         string b = vstack[vstack.len() - 1];
         vstack.pop();
