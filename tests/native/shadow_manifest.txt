@@ -63,3 +63,6 @@ float_const
 float_simple
 float_neg
 float_cmp_simple
+enum_payload
+match_option_payload
+enum_guard

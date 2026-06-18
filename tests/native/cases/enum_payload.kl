@@ -1,0 +1,26 @@
+enum Opt {
+  None,
+  Some(int),
+}
+
+enum Pair {
+  P(int, int),
+}
+
+int main() {
+  Opt a = Opt::Some(7);
+  int av = a match {
+    Opt::None => 0,
+    Opt::Some(let n) => n,
+  };
+  Pair b = Pair::P(3, 4);
+  int bv = b match {
+    Pair::P(let x, let y) => x + y,
+  };
+  Opt c = Opt::None;
+  int cv = c match {
+    Opt::None => 99,
+    Opt::Some(_) => 0,
+  };
+  return av + bv + cv;
+}
