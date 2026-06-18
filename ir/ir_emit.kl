@@ -40,6 +40,10 @@ KirOpcode bin_kir_op(OpCode op) {
 }
 
 KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
+  if (ins.op == OpCode::EnumVariant_) {
+    int v = ins.operand;
+    return KirInstr { KirOpcode::ConstInt, [v & 0xFFFFFFFF, (v >> 32) & 0xFFFFFFFF], ins.line, ins.col, KirType::Int };
+  }
   if (ins.op == OpCode::Constant) {
     Constant k = c.constants[ins.operand];
     if (k.kind == ConstKind::Int_) {
