@@ -1,0 +1,6 @@
+int main() {
+  int[] a = [1];
+  a.push(2);
+  a.push(3);
+  return a[0] + a[1] + a[2];
+}

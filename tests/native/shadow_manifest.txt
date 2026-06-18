@@ -69,6 +69,9 @@ enum_guard
 null_basic
 arr_index
 arr_local
+arr_push
+arr_index_set
+arr_pop
 struct_local
 str_concat
 generic_fn
