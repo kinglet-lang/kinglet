@@ -70,3 +70,8 @@ null_basic
 arr_index
 arr_local
 struct_local
+str_concat
+generic_fn
+if_chain
+if_nested
+if_in_loop

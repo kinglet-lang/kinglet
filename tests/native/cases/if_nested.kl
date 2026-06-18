@@ -1,0 +1,5 @@
+int main() {
+  int x = 5; int y = 10; int r = 0;
+  if (x > 3) { if (y > 5) { r = 1; } else { r = 2; } } else { r = 3; }
+  return r;
+}
