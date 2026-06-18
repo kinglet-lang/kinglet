@@ -1,0 +1,7 @@
+int main() {
+  int[] a = [3, 7, 11];
+  int r = 0;
+  if (a.contains(7)) { r = r + 1; }
+  if (a.contains(99)) { r = r + 10; }
+  return r;
+}

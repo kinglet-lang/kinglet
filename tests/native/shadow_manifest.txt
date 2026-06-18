@@ -93,3 +93,6 @@ try_propagate
 cast_catch
 native_io
 fs_roundtrip
+arr_slice
+str_slice
+arr_contains

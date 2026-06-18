@@ -1,0 +1,5 @@
+int main() {
+  int[] a = [10, 20, 30, 40, 50];
+  int[] s = a.slice(1, 4);
+  return s.len() * 10 + s[0] / 10 + s[2] / 10;
+}
