@@ -57,3 +57,5 @@ bool_lit
 bool_not
 array_inline
 array_len
+string_len
+string_len2
