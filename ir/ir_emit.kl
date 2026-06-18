@@ -75,6 +75,7 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
   if (ins.op == OpCode::ArrayNew) { return KirInstr { KirOpcode::ArrayNew, [ins.operand], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::IndexGet) { return KirInstr { KirOpcode::IndexGet, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::ArrayLen) { return KirInstr { KirOpcode::ArrayLen, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::EnumPayloadGet) { return KirInstr { KirOpcode::EnumPayloadGet, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::True_) { return KirInstr { KirOpcode::ConstInt, [1, 0], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::False_) { return KirInstr { KirOpcode::ConstInt, [0, 0], ins.line, ins.col, KirType::Int }; }
   KirOpcode a = bin_kir_op(ins.op);
