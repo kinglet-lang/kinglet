@@ -60,7 +60,9 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
       return KirInstr { KirOpcode::ConstFloat, [ins.operand, 0], ins.line, ins.col, KirType::Float };
     }
     if (k.kind == ConstKind::String_) {
-      return KirInstr { KirOpcode::ConstString, [k.string_value.len()], ins.line, ins.col, KirType::String };
+      // Operand is the constant pool index; ll_emit reads the bytes from the
+      // Chunk to emit an LLVM string global (via int(s[i]) byte access).
+      return KirInstr { KirOpcode::ConstString, [ins.operand], ins.line, ins.col, KirType::String };
     }
     return KirInstr { KirOpcode::Nop, [], ins.line, ins.col, KirType::Int };
   }
@@ -274,22 +276,22 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
           tstack.push(0);
           rtype = KirType::Int;
         } else if (ins.op == KirOpcode::ConstString) {
-          tstack.push(0);
+          tstack.push(2);
           rtype = KirType::String;
         } else if (ins.op == KirOpcode::LoadLocal) {
           int slot = ins.operands[0];
           int ty = 0;
           if (slot >= 0 && slot < local_types.len()) { ty = local_types[slot]; }
           tstack.push(ty);
-          rtype = ty == 1 ? KirType::Float : KirType::Int;
+          rtype = ty == 1 ? KirType::Float : (ty == 2 ? KirType::String : KirType::Int);
         } else if (ins.op == KirOpcode::StoreLocal) {
           int slot = ins.operands[0];
           int ty = 0;
           if (tstack.len() > 0) { ty = tstack[tstack.len() - 1]; }
           if (slot >= 0 && slot < local_types.len()) {
-            if (ty == 1) { local_types[slot] = 1; }
+            local_types[slot] = ty;
           }
-          rtype = ty == 1 ? KirType::Float : KirType::Int;
+          rtype = ty == 1 ? KirType::Float : (ty == 2 ? KirType::String : KirType::Int);
         } else if (ins.op == KirOpcode::Pop) {
           if (tstack.len() > 0) { tstack.pop(); }
         } else if (ins.op == KirOpcode::Dup) {
@@ -314,8 +316,10 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
           if (tstack.len() > 0) { ty_l = tstack[tstack.len() - 1]; tstack.pop(); }
           int result_ty = 0;
           if (ty_l == 1 || ty_r == 1) { result_ty = 1; }
+          // String + String (concat): either operand string -> string result.
+          if (ins.op == KirOpcode::IAdd && (ty_l == 2 || ty_r == 2)) { result_ty = 2; }
           tstack.push(result_ty);
-          rtype = result_ty == 1 ? KirType::Float : KirType::Int;
+          rtype = result_ty == 1 ? KirType::Float : (result_ty == 2 ? KirType::String : KirType::Int);
         } else if (ins.op == KirOpcode::IEq || ins.op == KirOpcode::INe || ins.op == KirOpcode::ILt || ins.op == KirOpcode::IGt || ins.op == KirOpcode::ILe || ins.op == KirOpcode::IGe) {
           int ty_r = 0;
           int ty_l = 0;
