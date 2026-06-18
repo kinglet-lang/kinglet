@@ -32,6 +32,8 @@ pub enum KirOpcode {
   StrStartsWith, StrEndsWith, StrReplace, StrSplit, StrTrim, StrToUpper, StrToLower,
   EnumPayloadNew, EnumPayloadGet,
   CastTo,
+  NativeOut, NativeOutLn, NativeErr, NativeErrLn, NativeIn, NativeInSecret,
+  NativeFsRead, NativeFsWrite, NativeFsListdir, NativeSysArgs,
   Call,
   Ret,
   Br,

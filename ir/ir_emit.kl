@@ -104,6 +104,16 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
   if (ins.op == OpCode::PopHandler) { return KirInstr { KirOpcode::PopHandler, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::PropagateErr) { return KirInstr { KirOpcode::PropagateErr, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::JmpIfErr) { return KirInstr { KirOpcode::JmpIfErr, [ins.operand], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::NativeOut) { return KirInstr { KirOpcode::NativeOut, [ins.operand], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::NativeOutLn) { return KirInstr { KirOpcode::NativeOutLn, [ins.operand], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::NativeErr) { return KirInstr { KirOpcode::NativeErr, [ins.operand], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::NativeErrLn) { return KirInstr { KirOpcode::NativeErrLn, [ins.operand], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::NativeIn) { return KirInstr { KirOpcode::NativeIn, [ins.operand], ins.line, ins.col, KirType::String }; }
+  if (ins.op == OpCode::NativeInSecret) { return KirInstr { KirOpcode::NativeInSecret, [ins.operand], ins.line, ins.col, KirType::String }; }
+  if (ins.op == OpCode::NativeFsRead) { return KirInstr { KirOpcode::NativeFsRead, [ins.operand], ins.line, ins.col, KirType::String }; }
+  if (ins.op == OpCode::NativeFsWrite) { return KirInstr { KirOpcode::NativeFsWrite, [ins.operand], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::NativeFsListdir) { return KirInstr { KirOpcode::NativeFsListdir, [ins.operand], ins.line, ins.col, KirType::Array }; }
+  if (ins.op == OpCode::NativeSysArgs) { return KirInstr { KirOpcode::NativeSysArgs, [], ins.line, ins.col, KirType::Array }; }
   if (ins.op == OpCode::CastTo) {
     // operand: 0=int, 1=float, 2=string, 3=char/byte
     KirType ct = ins.operand == 1 ? KirType::Float : (ins.operand == 2 ? KirType::String : (ins.operand == 3 ? KirType::Char : KirType::Int));
@@ -385,6 +395,25 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
         } else if (ins.op == KirOpcode::Call) {
           int argc = ins.operands[0];
           for (int a = 0; a < argc; a = a + 1) { if (tstack.len() > 0) { tstack.pop(); } }
+          tstack.push(0);
+          rtype = KirType::Int;
+        } else if (ins.op == KirOpcode::NativeOut || ins.op == KirOpcode::NativeOutLn ||
+                   ins.op == KirOpcode::NativeErr || ins.op == KirOpcode::NativeErrLn ||
+                   ins.op == KirOpcode::NativeIn || ins.op == KirOpcode::NativeInSecret) {
+          int argc = ins.operands[0];
+          for (int a = 0; a < argc; a = a + 1) { if (tstack.len() > 0) { tstack.pop(); } }
+          tstack.push(0);
+          rtype = KirType::Int;
+        } else if (ins.op == KirOpcode::NativeFsRead || ins.op == KirOpcode::NativeFsListdir) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(0);
+          rtype = KirType::Int;
+        } else if (ins.op == KirOpcode::NativeFsWrite) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(0);
+          rtype = KirType::Int;
+        } else if (ins.op == KirOpcode::NativeSysArgs) {
           tstack.push(0);
           rtype = KirType::Int;
         } else if (ins.op == KirOpcode::Ret) {

@@ -723,6 +723,75 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out = out + "  " + tr_r + " = call i64 " + tr_fn + "(i64 " + tr_s + ")\n";
         vstack.push(tr_r);
         tstack.push(0);
+      } else if (ins.op == KirOpcode::NativeOut || ins.op == KirOpcode::NativeOutLn || ins.op == KirOpcode::NativeErr || ins.op == KirOpcode::NativeErrLn) {
+        int io_n = ins.operands[0];
+        string[] io_flds = [];
+        for (int io_p = 0; io_p < io_n; io_p = io_p + 1) { io_flds.push(vstack[vstack.len() - 1]); vstack.pop(); if (tstack.len() > 0) { tstack.pop(); } }
+        string io_ptr = "null";
+        if (io_n > 0) {
+          string io_buf = "%" + string(reg); reg = reg + 1;
+          out = out + "  " + io_buf + " = alloca i64, i32 " + string(io_n) + "\n";
+          for (int io_j = 0; io_j < io_n; io_j = io_j + 1) {
+            int io_slot = io_n - 1 - io_j;
+            string io_gp = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + io_gp + " = getelementptr i64, i64* " + io_buf + ", i32 " + string(io_slot) + "\n";
+            out = out + "  store i64 " + io_flds[io_j] + ", i64* " + io_gp + "\n";
+          }
+          io_ptr = io_buf;
+        }
+        string io_fn = "@kl_native_out";
+        if (ins.op == KirOpcode::NativeOutLn) { io_fn = "@kl_native_out_ln"; }
+        if (ins.op == KirOpcode::NativeErr) { io_fn = "@kl_native_err"; }
+        if (ins.op == KirOpcode::NativeErrLn) { io_fn = "@kl_native_err_ln"; }
+        string io_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + io_r + " = call i64 " + io_fn + "(i32 " + string(io_n) + ", i64* " + io_ptr + ")\n";
+        vstack.push(io_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::NativeIn || ins.op == KirOpcode::NativeInSecret) {
+        int ni_n = ins.operands[0];
+        string[] ni_flds = [];
+        for (int ni_p = 0; ni_p < ni_n; ni_p = ni_p + 1) { ni_flds.push(vstack[vstack.len() - 1]); vstack.pop(); if (tstack.len() > 0) { tstack.pop(); } }
+        string ni_ptr = "null";
+        if (ni_n > 0) {
+          string ni_buf = "%" + string(reg); reg = reg + 1;
+          out = out + "  " + ni_buf + " = alloca i64, i32 " + string(ni_n) + "\n";
+          for (int ni_j = 0; ni_j < ni_n; ni_j = ni_j + 1) {
+            int ni_slot = ni_n - 1 - ni_j;
+            string ni_gp = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + ni_gp + " = getelementptr i64, i64* " + ni_buf + ", i32 " + string(ni_slot) + "\n";
+            out = out + "  store i64 " + ni_flds[ni_j] + ", i64* " + ni_gp + "\n";
+          }
+          ni_ptr = ni_buf;
+        }
+        int ni_secret = ins.op == KirOpcode::NativeInSecret ? 1 : 0;
+        string ni_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + ni_r + " = call i64 @kl_native_in(i32 " + string(ni_n) + ", i64* " + ni_ptr + ", i32 " + string(ni_secret) + ")\n";
+        vstack.push(ni_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::NativeFsRead) {
+        string fr_p = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string fr_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + fr_r + " = call i64 @kl_native_fs_read(i64 " + fr_p + ")\n";
+        vstack.push(fr_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::NativeFsWrite) {
+        string fw_c = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string fw_p = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string fw_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + fw_r + " = call i64 @kl_native_fs_write(i64 " + fw_p + ", i64 " + fw_c + ")\n";
+        vstack.push(fw_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::NativeFsListdir) {
+        string fl_p = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string fl_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + fl_r + " = call i64 @kl_native_fs_listdir(i64 " + fl_p + ")\n";
+        vstack.push(fl_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::NativeSysArgs) {
+        string sa_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + sa_r + " = call i64 @kl_native_sys_args()\n";
+        vstack.push(sa_r);
+        tstack.push(0);
       }
     }
     if (!terminated) {
@@ -799,7 +868,16 @@ pub string emit_ll(KirModule m, Chunk ch) {
   out = out + "declare i64 @kl_cast_to_int(i64)\n";
   out = out + "declare i64 @kl_cast_to_float(i64)\n";
   out = out + "declare i64 @kl_cast_to_string(i64)\n";
-  out = out + "declare i64 @kl_cast_to_char(i64)\n\n";
+  out = out + "declare i64 @kl_cast_to_char(i64)\n";
+  out = out + "declare i64 @kl_native_out(i32, i64*)\n";
+  out = out + "declare i64 @kl_native_out_ln(i32, i64*)\n";
+  out = out + "declare i64 @kl_native_err(i32, i64*)\n";
+  out = out + "declare i64 @kl_native_err_ln(i32, i64*)\n";
+  out = out + "declare i64 @kl_native_in(i32, i64*, i32)\n";
+  out = out + "declare i64 @kl_native_fs_read(i64)\n";
+  out = out + "declare i64 @kl_native_fs_write(i64, i64)\n";
+  out = out + "declare i64 @kl_native_fs_listdir(i64)\n";
+  out = out + "declare i64 @kl_native_sys_args()\n\n";
   // String literal globals: one per string constant in the pool, escaped as
   // LLVM c"\HH" bytes. Byte access uses int(s[i]) (char -> code) per the
   // kinglet design (no `as int` on values).
