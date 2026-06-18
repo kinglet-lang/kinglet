@@ -68,6 +68,9 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
   if (ins.op == OpCode::Pop) { return KirInstr { KirOpcode::Pop, [], ins.line, ins.col, KirType::Void }; }
   if (ins.op == OpCode::Negate) { return KirInstr { KirOpcode::INeg, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::BitNot) { return KirInstr { KirOpcode::IBNot, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::Not_) { return KirInstr { KirOpcode::LNot, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::True_) { return KirInstr { KirOpcode::ConstInt, [1, 0], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::False_) { return KirInstr { KirOpcode::ConstInt, [0, 0], ins.line, ins.col, KirType::Int }; }
   KirOpcode a = bin_kir_op(ins.op);
   if (a != KirOpcode::Nop) {
     return KirInstr { a, [], ins.line, ins.col, KirType::Int };
@@ -161,7 +164,7 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           tstack.push(-1);
         } else if (kop == KirOpcode::Pop || kop == KirOpcode::CondBr) {
           if (tstack.len() > 0) { tstack.pop(); }
-        } else if (kop == KirOpcode::INeg || kop == KirOpcode::IBNot) {
+        } else if (kop == KirOpcode::INeg || kop == KirOpcode::IBNot || kop == KirOpcode::LNot) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
         } else if (kop == KirOpcode::IAdd || kop == KirOpcode::ISub || kop == KirOpcode::IMul || kop == KirOpcode::IDiv || kop == KirOpcode::IMod || kop == KirOpcode::IAnd || kop == KirOpcode::IOr || kop == KirOpcode::IXor || kop == KirOpcode::IShl || kop == KirOpcode::IShr || kop == KirOpcode::IEq || kop == KirOpcode::INe || kop == KirOpcode::ILt || kop == KirOpcode::IGt || kop == KirOpcode::ILe || kop == KirOpcode::IGe) {

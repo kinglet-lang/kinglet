@@ -25,7 +25,7 @@ pub enum KirOpcode {
   IShl,
   IShr,
   IEq, INe, ILt, IGt, ILe, IGe,
-  INeg, IBNot,
+  INeg, IBNot, LNot,
   StructNew, FieldGet, FieldSet,
   Call,
   Ret,

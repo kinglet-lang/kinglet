@@ -232,6 +232,13 @@ string emit_function_body(KirFunction fn, KirModule m) {
           out = out + "  " + r + " = xor i64 " + a + ", -1\n";
         }
         vstack.push(r);
+      } else if (ins.op == KirOpcode::LNot) {
+        string lna = vstack[vstack.len() - 1]; vstack.pop();
+        string lnc = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + lnc + " = icmp eq i64 " + lna + ", 0\n";
+        string lnr = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + lnr + " = zext i1 " + lnc + " to i64\n";
+        vstack.push(lnr);
       } else if (ins.op == KirOpcode::StoreLocal) {
         int slot = ins.operands[0];
         string v = vstack[vstack.len() - 1];
