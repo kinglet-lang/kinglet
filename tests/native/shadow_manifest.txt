@@ -48,3 +48,6 @@ dir_import
 match_literal
 match_wild
 match_default
+enum_match
+enum_match2
+enum_default

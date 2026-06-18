@@ -1,0 +1,1 @@
+enum Color { Red, Green, Blue } int main() { Color c = Color::Red; return c match { Color::Red => 10, Color::Green => 20, _ => 30, }; }
