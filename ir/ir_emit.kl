@@ -42,7 +42,11 @@ KirOpcode bin_kir_op(OpCode op) {
 KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
   if (ins.op == OpCode::EnumVariant_) {
     int v = ins.operand;
-    return KirInstr { KirOpcode::ConstInt, [v & 0xFFFFFFFF, (v >> 32) & 0xFFFFFFFF], ins.line, ins.col, KirType::Int };
+    // Tag-only enums use the canonical inline wire format: the 0xFFFD mark in
+    // bits 48..63 (kinglet_rt_value.h KL_INLINE_ENUM_MARK) so the runtime
+    // (kl_value_eq, kl_value_cmp, printing) treats them as enums, not ints.
+    // Low 32 bits carry (type<<16)|variant.
+    return KirInstr { KirOpcode::ConstInt, [v & 0xFFFFFFFF, 0xFFFD0000], ins.line, ins.col, KirType::Int };
   }
   if (ins.op == OpCode::Constant) {
     Constant k = c.constants[ins.operand];
