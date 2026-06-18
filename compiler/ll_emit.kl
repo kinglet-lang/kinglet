@@ -516,6 +516,42 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out = out + "  " + sr + " = insertvalue " + sty + " " + snm + ", i64 " + sval + ", " + string(sidx) + "\n";
         vstack.push(sr + "|" + string(sfc));
         tstack.push(0);
+      } else if (ins.op == KirOpcode::EnumPayloadNew) {
+        int ep_packed = ins.operands[0];
+        int ep_pc = ins.operands[1];
+        int ep_type = ep_packed >> 16;
+        int ep_var = ep_packed & 0xFFFF;
+        // Pop payload values; ep_vals[0] is the topmost (last arg).
+        string[] ep_vals = [];
+        for (int ep_i = 0; ep_i < ep_pc; ep_i = ep_i + 1) {
+          ep_vals.push(vstack[vstack.len() - 1]); vstack.pop();
+          if (tstack.len() > 0) { tstack.pop(); }
+        }
+        string ep_ptr = "null";
+        if (ep_pc > 0) {
+          string ep_buf = "%" + string(reg); reg = reg + 1;
+          out = out + "  " + ep_buf + " = alloca i64, i32 " + string(ep_pc) + "\n";
+          // ep_vals[j] = arg(pc-1-j) -> store at slot (pc-1-j).
+          for (int ep_j = 0; ep_j < ep_pc; ep_j = ep_j + 1) {
+            int ep_slot = ep_pc - 1 - ep_j;
+            string ep_gp = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + ep_gp + " = getelementptr i64, i64* " + ep_buf + ", i32 " + string(ep_slot) + "\n";
+            out = out + "  store i64 " + ep_vals[ep_j] + ", i64* " + ep_gp + "\n";
+          }
+          ep_ptr = ep_buf;
+        }
+        string ep_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + ep_r + " = call i64 @kl_enum_new_payload(i32 " + string(ep_type) + ", i32 " + string(ep_var) + ", i32 " + string(ep_pc) + ", i64* " + ep_ptr + ")\n";
+        vstack.push(ep_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::EnumPayloadGet) {
+        int ep_idx = ins.operands[0];
+        string ep_ev = vstack[vstack.len() - 1]; vstack.pop();
+        if (tstack.len() > 0) { tstack.pop(); }
+        string ep_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + ep_r + " = call i64 @kl_enum_payload_at(i64 " + ep_ev + ", i32 " + string(ep_idx) + ")\n";
+        vstack.push(ep_r);
+        tstack.push(0);
       } else if (ins.op == KirOpcode::ArrayNew) {
         int na_n = ins.operands[0];
         string na_ty = "[" + string(na_n) + " x i64]";
@@ -600,7 +636,9 @@ pub string emit_ll(KirModule m, Chunk ch) {
   out = out + "declare i64 @kl_float_new(double)\n";
   out = out + "declare double @kl_float_get(i64)\n";
   out = out + "declare i32 @kl_value_eq(i64, i64)\n";
-  out = out + "declare i32 @kl_value_cmp(i64, i64)\n\n";
+  out = out + "declare i32 @kl_value_cmp(i64, i64)\n";
+  out = out + "declare i64 @kl_enum_new_payload(i32, i32, i32, i64*)\n";
+  out = out + "declare i64 @kl_enum_payload_at(i64, i32)\n\n";
   for (int i = 0; i < m.functions.len(); i = i + 1) {
     out = out + emit_function(m.functions[i], m, ch);
   }

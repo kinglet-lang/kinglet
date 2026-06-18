@@ -84,7 +84,22 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
   if (ins.op == OpCode::ArrayNew) { return KirInstr { KirOpcode::ArrayNew, [ins.operand], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::IndexGet) { return KirInstr { KirOpcode::IndexGet, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::ArrayLen) { return KirInstr { KirOpcode::ArrayLen, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::EnumPayloadGet) { return KirInstr { KirOpcode::EnumPayloadGet, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::EnumPayloadGet) { return KirInstr { KirOpcode::EnumPayloadGet, [ins.operand], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::EnumVariantPayload) {
+    int packed = ins.operand;
+    int type_idx = packed >> 16;
+    int variant_idx = packed & 0xFFFF;
+    int param_count = 0;
+    if (type_idx >= 0 && type_idx < c.enum_metas.len()) {
+      EnumMeta em = c.enum_metas[type_idx];
+      if (variant_idx >= 0 && variant_idx < em.variant_param_counts.len()) {
+        param_count = em.variant_param_counts[variant_idx];
+      }
+    }
+    // Payload values are already on the stack (pushed before this instruction);
+    // EnumPayloadNew pops param_count of them.
+    return KirInstr { KirOpcode::EnumPayloadNew, [packed, param_count], ins.line, ins.col, KirType::Enum };
+  }
   if (ins.op == OpCode::True_) { return KirInstr { KirOpcode::ConstInt, [1, 0], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::False_) { return KirInstr { KirOpcode::ConstInt, [0, 0], ins.line, ins.col, KirType::Int }; }
   KirOpcode a = bin_kir_op(ins.op);
@@ -324,10 +339,13 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
           rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::EnumPayloadNew || ins.op == KirOpcode::EnumPayloadGet) {
-          if (ins.op == KirOpcode::EnumPayloadNew) {
-            if (tstack.len() > 0) { tstack.pop(); }
-          }
+        } else if (ins.op == KirOpcode::EnumPayloadNew) {
+          int epc = ins.operands.len() > 1 ? ins.operands[1] : 0;
+          for (int p = 0; p < epc; p = p + 1) { if (tstack.len() > 0) { tstack.pop(); } }
+          tstack.push(0);
+          rtype = KirType::Enum;
+        } else if (ins.op == KirOpcode::EnumPayloadGet) {
+          if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
           rtype = KirType::Int;
         }
