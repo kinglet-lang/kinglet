@@ -81,3 +81,6 @@ if_in_loop
 cast_f2i
 cast_i2f
 cast_char_code
+try_ok
+try_propagate
+cast_catch
