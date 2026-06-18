@@ -310,6 +310,36 @@ string emit_function_body(KirFunction fn, KirModule m) {
         string sr = "%" + string(reg); reg = reg + 1;
         out = out + "  " + sr + " = insertvalue " + sty + " " + snm + ", i64 " + sval + ", " + string(sidx) + "\n";
         vstack.push(sr + "|" + string(sfc));
+      } else if (ins.op == KirOpcode::ArrayNew) {
+        int na_n = ins.operands[0];
+        string na_ty = "[" + string(na_n) + " x i64]";
+        string[] na_flds = [];
+        for (int na_p = 0; na_p < na_n; na_p = na_p + 1) { na_flds.push(vstack[vstack.len() - 1]); vstack.pop(); }
+        string na_cur = "undef";
+        for (int na_i = 0; na_i < na_n; na_i = na_i + 1) {
+          string na_fld = na_flds[na_n - 1 - na_i];
+          string na_r = "%" + string(reg); reg = reg + 1;
+          out = out + "  " + na_r + " = insertvalue " + na_ty + " " + na_cur + ", i64 " + na_fld + ", " + string(na_i) + "\n";
+          na_cur = na_r;
+        }
+        vstack.push(na_cur + "#" + string(na_n));
+      } else if (ins.op == KirOpcode::IndexGet) {
+        string ni_idx = vstack[vstack.len() - 1]; vstack.pop();
+        string ni_s = vstack[vstack.len() - 1]; vstack.pop();
+        int ni_h = 0;
+        for (int ni_b = 0; ni_b < ni_s.len(); ni_b = ni_b + 1) { if (ni_s.slice(ni_b, ni_b + 1) == "#") { ni_h = ni_b; } }
+        string ni_nm = ni_s.slice(0, ni_h);
+        int ni_n = int(ni_s.slice(ni_h + 1, ni_s.len()));
+        string ni_ty = "[" + string(ni_n) + " x i64]";
+        string ni_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + ni_r + " = extractvalue " + ni_ty + " " + ni_nm + ", " + ni_idx + "\n";
+        vstack.push(ni_r);
+      } else if (ins.op == KirOpcode::ArrayLen) {
+        string nl_s = vstack[vstack.len() - 1]; vstack.pop();
+        int nl_h = 0;
+        for (int nl_b = 0; nl_b < nl_s.len(); nl_b = nl_b + 1) { if (nl_s.slice(nl_b, nl_b + 1) == "#") { nl_h = nl_b; } }
+        int nl_n = int(nl_s.slice(nl_h + 1, nl_s.len()));
+        vstack.push(string(nl_n));
       }
     }
     if (!terminated) {
