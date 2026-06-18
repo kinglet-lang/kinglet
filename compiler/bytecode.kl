@@ -125,11 +125,14 @@ pub struct FunctionInfo {
   string name;
   int entry;
   int param_count;
+  string return_type_name;
+  string[] param_type_names;
 }
 
 pub struct StructMeta {
   string name;
   string[] field_names;
+  string[] field_type_names;
 }
 
 pub struct EnumMeta {

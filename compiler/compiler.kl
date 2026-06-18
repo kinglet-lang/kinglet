@@ -458,7 +458,7 @@ void register_compiler_function(Compiler co, string chunk_name, string lookup_na
   // Allocate function table slot (entry to be patched once body emits).
   // chunk_name is the bare name stored in the chunk (bootstrap uses bare names;
   // qualified names only go in the lookup table so serialized output matches).
-  FunctionInfo info = FunctionInfo { chunk_name, 0, param_count };
+  FunctionInfo info = FunctionInfo { chunk_name, 0, param_count, "", [] };
   co.chunk.functions.push(info);
   int func_index = co.chunk.functions.len() - 1;
   // Every function gets a Function_ constant, even at decl time. Mirrors
@@ -523,6 +523,10 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
   // Patch entry to current instruction count, mirroring compile_function in
   // compiler.cc:393.
   co.chunk.functions[co.funcs[fi].func_index].entry = co.chunk.instructions.len();
+  co.chunk.functions[co.funcs[fi].func_index].return_type_name = ret_type;
+  string[] fn_ptypes = [];
+  for (int fn_pi = 0; fn_pi < params.len(); fn_pi = fn_pi + 1) { fn_ptypes.push(params[fn_pi].type.name); }
+  co.chunk.functions[co.funcs[fi].func_index].param_type_names = fn_ptypes;
   // Reset locals; params take slots 0..N-1 at depth 1.
   while (co.locals.len() > 0) { co.locals.pop(); }
   while (co.scope_starts.len() > 0) { co.scope_starts.pop(); }
@@ -685,10 +689,12 @@ void register_top_function(Compiler co, string name, Parameter[] params) {
 
 void _register_struct_decl(Compiler co, string name, FieldDef[] fields) {
   string[] field_names = [];
+  string[] field_types = [];
   for (int i = 0; i < fields.len(); i = i + 1) {
     field_names.push(fields[i].name);
+    field_types.push(fields[i].type.name);
   }
-  StructMeta meta = StructMeta { name, field_names };
+  StructMeta meta = StructMeta { name, field_names, field_types };
   int idx = compiler::bytecode::add_struct_meta(co.chunk, meta);
   co.structs.push(StructEntry { name, idx });
 }
