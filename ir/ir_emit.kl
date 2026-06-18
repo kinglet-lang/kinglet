@@ -92,6 +92,8 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
   if (ins.op == OpCode::IndexSet) { return KirInstr { KirOpcode::IndexSet, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::ArrayPush) { return KirInstr { KirOpcode::ArrayPush, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::ArrayPop) { return KirInstr { KirOpcode::ArrayPop, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::ArraySlice) { return KirInstr { KirOpcode::ArraySlice, [], ins.line, ins.col, KirType::Array }; }
+  if (ins.op == OpCode::ArrayContains) { return KirInstr { KirOpcode::ArrayContains, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::StringStartsWith) { return KirInstr { KirOpcode::StrStartsWith, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::StringEndsWith) { return KirInstr { KirOpcode::StrEndsWith, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::StringReplace) { return KirInstr { KirOpcode::StrReplace, [], ins.line, ins.col, KirType::String }; }
@@ -275,6 +277,15 @@ pub KirModule build_kir_from_chunk(Chunk c) {
         } else if (kop == KirOpcode::ArrayPop) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
+        } else if (kop == KirOpcode::ArraySlice) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        } else if (kop == KirOpcode::ArrayContains) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
         } else if (kop == KirOpcode::StrStartsWith || kop == KirOpcode::StrEndsWith || kop == KirOpcode::StrSplit) {
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
@@ -444,6 +455,17 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
           tstack.push(0);
           rtype = KirType::Int;
         } else if (ins.op == KirOpcode::ArrayLen) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(0);
+          rtype = KirType::Int;
+        } else if (ins.op == KirOpcode::ArraySlice) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(0);
+          rtype = KirType::Array;
+        } else if (ins.op == KirOpcode::ArrayContains) {
+          if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
           rtype = KirType::Int;

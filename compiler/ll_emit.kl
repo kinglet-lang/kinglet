@@ -688,6 +688,23 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out = out + "  " + po_r + " = call i64 @kl_array_pop(i64 " + po_arr + ")\n";
         vstack.push(po_r);
         tstack.push(0);
+      } else if (ins.op == KirOpcode::ArraySlice) {
+        string sl_end = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string sl_start = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string sl_obj = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string sl_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + sl_r + " = call i64 @kl_slice(i64 " + sl_obj + ", i64 " + sl_start + ", i64 " + sl_end + ")\n";
+        vstack.push(sl_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::ArrayContains) {
+        string ct_n = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string ct_o = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string ct_f = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + ct_f + " = call i32 @kl_contains(i64 " + ct_o + ", i64 " + ct_n + ")\n";
+        string ct_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + ct_r + " = zext i32 " + ct_f + " to i64\n";
+        vstack.push(ct_r);
+        tstack.push(0);
       } else if (ins.op == KirOpcode::StrStartsWith || ins.op == KirOpcode::StrEndsWith) {
         string ss_needle = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ss_str = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
@@ -859,6 +876,8 @@ pub string emit_ll(KirModule m, Chunk ch) {
   out = out + "declare i64 @kl_index_set(i64, i64, i64)\n";
   out = out + "declare i64 @kl_array_push(i64, i64)\n";
   out = out + "declare i64 @kl_array_pop(i64)\n";
+  out = out + "declare i64 @kl_slice(i64, i64, i64)\n";
+  out = out + "declare i32 @kl_contains(i64, i64)\n";
   out = out + "declare i32 @kl_value_len(i64)\n";
   out = out + "declare i64 @kl_struct_new(i32, i32, i64*)\n";
   out = out + "declare i64 @kl_struct_field_at(i64, i32)\n";
