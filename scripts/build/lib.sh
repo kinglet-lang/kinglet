@@ -89,10 +89,27 @@ bootstrap_compiler_id() {
   fi
 }
 
+# Build (incrementally) and print the path to kinglet_cruntime/libkinglet_rt.a —
+# the permanent C substrate. Preferred over bootstrap's obj/runtime copy.
+ensure_cruntime_rt() {
+  local root="${1:-$(pwd)}"
+  local crt="$root/kinglet_cruntime"
+  [[ -d "$crt" ]] || { echo "ensure_cruntime_rt: $crt not found" >&2; return 1; }
+  make -C "$crt" >/dev/null 2>&1 || { echo "ensure_cruntime_rt: build failed" >&2; return 1; }
+  printf '%s\n' "$crt/libkinglet_rt.a"
+}
+
 # Hash of libkinglet_rt linked by native builds (ABI / runtime changes invalidate stamp).
 bootstrap_rt_id() {
-  local bootstrap="$1"
-  local dir rt
+  local root="$1"
+  local bootstrap="$2"
+  local rt
+  rt="$(ensure_cruntime_rt "$root" 2>/dev/null)" || rt=""
+  if [[ -n "$rt" ]]; then
+    shasum -a 256 "$rt" | awk '{print $1}'
+    return 0
+  fi
+  local dir
   dir=$(cd "$(dirname "$bootstrap")" && pwd)
   for rt in \
     "$dir/obj/runtime/libkinglet_rt.a" \
@@ -144,7 +161,7 @@ compute_compiler_stamp() {
     printf 'backend:%s\n' "$backend"
     printf 'strip_debug:%s\n' "$strip_debug"
     printf 'bootstrap:%s\n' "$(bootstrap_compiler_id "$bootstrap")"
-    printf 'rt_version:%s\n' "$(bootstrap_rt_id "$bootstrap")"
+    printf 'rt_version:%s\n' "$(bootstrap_rt_id "$root" "$bootstrap")"
     if [[ -f "$root/kinglet.toml" ]]; then
       printf 'kinglet.toml:%s\n' "$(shasum -a 256 "$root/kinglet.toml" | awk '{print $1}')"
     fi

@@ -21,7 +21,7 @@ cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
 
 command -v clang++ >/dev/null 2>&1 || { echo "SKIP shadow smoke: clang++ not found" >&2; exit 0; }
-RT_LIB="$(dirname "$BOOTSTRAP")/obj/runtime/libkinglet_rt.a"
+RT_LIB="$(ensure_cruntime_rt "$ROOT" 2>/dev/null)" || RT_LIB="$(dirname "$BOOTSTRAP")/obj/runtime/libkinglet_rt.a"
 [[ -f "$RT_LIB" ]] || { echo "SKIP shadow smoke: $RT_LIB not found (build bootstrap with LLVM)" >&2; exit 0; }
 
 SHADOW_KBC="$(ensure_build_stamp "$ROOT")" || exit 2
