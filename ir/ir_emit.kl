@@ -147,6 +147,11 @@ pub KirModule build_kir_from_chunk(Chunk c) {
     }
     KirInstr[] instrs = [];
     int[] tstack = [];
+    // Per-local struct type index (for FieldGet/FieldSet name resolution),
+    // or -1 when the slot holds a non-struct value. Threaded through
+    // StoreLocal/LoadLocal so field access works after a store/load round-trip.
+    int[] local_types = [];
+    for (int lt = 0; lt < 64; lt = lt + 1) { local_types.push(-1); }
     for (int pc = start; pc < end; pc = pc + 1) {
       Instruction raw = c.instructions[pc];
       if (raw.op == OpCode::Call) {
@@ -165,7 +170,7 @@ pub KirModule build_kir_from_chunk(Chunk c) {
       } else if (raw.op == OpCode::StructNew) {
         int field_count = raw.operand & 0xFFFF;
         for (int f = 0; f < field_count; f = f + 1) { if (tstack.len() > 0) { tstack.pop(); } }
-        instrs.push(KirInstr { KirOpcode::StructNew, [field_count], raw.line, raw.col, KirType::Struct });
+        instrs.push(KirInstr { KirOpcode::StructNew, [raw.operand], raw.line, raw.col, KirType::Struct });
         tstack.push(raw.operand >> 16);
       } else if (raw.op == OpCode::FieldGet || raw.op == OpCode::FieldSet) {
         bool is_set = raw.op == OpCode::FieldSet;
@@ -194,8 +199,19 @@ pub KirModule build_kir_from_chunk(Chunk c) {
         KirInstr ki = to_kir_instr(c, raw, pc - start);
         instrs.push(ki);
         KirOpcode kop = ki.op;
-        if (kop == KirOpcode::ConstInt || kop == KirOpcode::LoadLocal || kop == KirOpcode::ConstString || kop == KirOpcode::ConstFloat) {
+        if (kop == KirOpcode::ConstInt || kop == KirOpcode::ConstString || kop == KirOpcode::ConstFloat || kop == KirOpcode::ConstNull) {
           tstack.push(-1);
+        } else if (kop == KirOpcode::LoadLocal) {
+          int lslot = ki.operands[0];
+          int lty = -1;
+          if (lslot >= 0 && lslot < local_types.len()) { lty = local_types[lslot]; }
+          tstack.push(lty);
+        } else if (kop == KirOpcode::StoreLocal) {
+          // StoreLocal copies (peek); record the value's type into its slot.
+          int slslot = ki.operands[0];
+          int slty = -1;
+          if (tstack.len() > 0) { slty = tstack[tstack.len() - 1]; }
+          if (slslot >= 0 && slslot < local_types.len()) { local_types[slslot] = slty; }
         } else if (kop == KirOpcode::Pop || kop == KirOpcode::CondBr) {
           if (tstack.len() > 0) { tstack.pop(); }
         } else if (kop == KirOpcode::INeg || kop == KirOpcode::IBNot || kop == KirOpcode::LNot) {
@@ -322,7 +338,7 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
         } else if (ins.op == KirOpcode::Br || ins.op == KirOpcode::CondBr) {
           if (ins.op == KirOpcode::CondBr) { if (tstack.len() > 0) { tstack.pop(); } }
         } else if (ins.op == KirOpcode::StructNew) {
-          int fc = ins.operands[0];
+          int fc = ins.operands[0] & 0xFFFF;
           for (int f = 0; f < fc; f = f + 1) { if (tstack.len() > 0) { tstack.pop(); } }
           tstack.push(0);
           rtype = KirType::Struct;

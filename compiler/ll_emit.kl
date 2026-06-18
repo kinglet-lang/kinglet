@@ -488,49 +488,44 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         vstack.push(r);
         tstack.push(0);
       } else if (ins.op == KirOpcode::StructNew) {
-        int sn_fc = ins.operands[0];
-        string sn_ty = "{i64";
-        for (int sn_a = 1; sn_a < sn_fc; sn_a = sn_a + 1) { sn_ty = sn_ty + ",i64"; }
-        sn_ty = sn_ty + "}";
+        // Operand packs (type_idx << 16) | field_count. Heap-allocate via
+        // kl_struct_new so structs fit i64 locals/params/fields.
+        int sn_packed = ins.operands[0];
+        int sn_type = sn_packed >> 16;
+        int sn_fc = sn_packed & 0xFFFF;
         string[] sn_fields = [];
         for (int sn_b = 0; sn_b < sn_fc; sn_b = sn_b + 1) { sn_fields.push(vstack[vstack.len() - 1]); vstack.pop(); if (tstack.len() > 0) { tstack.pop(); } }
-        string sn_cur = "undef";
-        for (int sn_c = 0; sn_c < sn_fc; sn_c = sn_c + 1) {
-          string sn_fld = sn_fields[sn_fc - 1 - sn_c];
-          string sn_r = "%" + string(reg); reg = reg + 1;
-          out = out + "  " + sn_r + " = insertvalue " + sn_ty + " " + sn_cur + ", i64 " + sn_fld + ", " + string(sn_c) + "\n";
-          sn_cur = sn_r;
+        string sn_ptr = "null";
+        if (sn_fc > 0) {
+          string sn_buf = "%" + string(reg); reg = reg + 1;
+          out = out + "  " + sn_buf + " = alloca i64, i32 " + string(sn_fc) + "\n";
+          // sn_fields[0] is the topmost (last) field -> store at slot fc-1.
+          for (int sn_j = 0; sn_j < sn_fc; sn_j = sn_j + 1) {
+            int sn_slot = sn_fc - 1 - sn_j;
+            string sn_gp = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + sn_gp + " = getelementptr i64, i64* " + sn_buf + ", i32 " + string(sn_slot) + "\n";
+            out = out + "  store i64 " + sn_fields[sn_j] + ", i64* " + sn_gp + "\n";
+          }
+          sn_ptr = sn_buf;
         }
-        vstack.push(sn_cur + "|" + string(sn_fc));
+        string sn_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + sn_r + " = call i64 @kl_struct_new(i32 " + string(sn_type) + ", i32 " + string(sn_fc) + ", i64* " + sn_ptr + ")\n";
+        vstack.push(sn_r);
         tstack.push(0);
       } else if (ins.op == KirOpcode::FieldGet) {
         int gidx = ins.operands[0];
         string gs = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
-        int gbar = 0;
-        for (int gb = 0; gb < gs.len(); gb = gb + 1) { if (gs.slice(gb, gb + 1) == "|") { gbar = gb; } }
-        string gnm = gs.slice(0, gbar);
-        int gfc = int(gs.slice(gbar + 1, gs.len()));
-        string gty = "{i64";
-        for (int gf = 1; gf < gfc; gf = gf + 1) { gty = gty + ",i64"; }
-        gty = gty + "}";
         string gr = "%" + string(reg); reg = reg + 1;
-        out = out + "  " + gr + " = extractvalue " + gty + " " + gnm + ", " + string(gidx) + "\n";
+        out = out + "  " + gr + " = call i64 @kl_struct_field_at(i64 " + gs + ", i32 " + string(gidx) + ")\n";
         vstack.push(gr);
         tstack.push(0);
       } else if (ins.op == KirOpcode::FieldSet) {
         int sidx = ins.operands[0];
         string sval = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ss = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
-        int sbar = 0;
-        for (int sb = 0; sb < ss.len(); sb = sb + 1) { if (ss.slice(sb, sb + 1) == "|") { sbar = sb; } }
-        string snm = ss.slice(0, sbar);
-        int sfc = int(ss.slice(sbar + 1, ss.len()));
-        string sty = "{i64";
-        for (int sf = 1; sf < sfc; sf = sf + 1) { sty = sty + ",i64"; }
-        sty = sty + "}";
         string sr = "%" + string(reg); reg = reg + 1;
-        out = out + "  " + sr + " = insertvalue " + sty + " " + snm + ", i64 " + sval + ", " + string(sidx) + "\n";
-        vstack.push(sr + "|" + string(sfc));
+        out = out + "  " + sr + " = call i64 @kl_struct_field_set(i64 " + ss + ", i32 " + string(sidx) + ", i64 " + sval + ")\n";
+        vstack.push(sr);
         tstack.push(0);
       } else if (ins.op == KirOpcode::EnumPayloadNew) {
         int ep_packed = ins.operands[0];
@@ -669,7 +664,10 @@ pub string emit_ll(KirModule m, Chunk ch) {
   out = out + "declare i64 @kl_enum_payload_at(i64, i32)\n";
   out = out + "declare i64 @kl_array_new(i32, i64*)\n";
   out = out + "declare i64 @kl_index_get(i64, i64)\n";
-  out = out + "declare i32 @kl_value_len(i64)\n\n";
+  out = out + "declare i32 @kl_value_len(i64)\n";
+  out = out + "declare i64 @kl_struct_new(i32, i32, i64*)\n";
+  out = out + "declare i64 @kl_struct_field_at(i64, i32)\n";
+  out = out + "declare i64 @kl_struct_field_set(i64, i32, i64)\n\n";
   for (int i = 0; i < m.functions.len(); i = i + 1) {
     out = out + emit_function(m.functions[i], m, ch);
   }
