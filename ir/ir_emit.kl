@@ -92,6 +92,13 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
   if (ins.op == OpCode::IndexSet) { return KirInstr { KirOpcode::IndexSet, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::ArrayPush) { return KirInstr { KirOpcode::ArrayPush, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::ArrayPop) { return KirInstr { KirOpcode::ArrayPop, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::StringStartsWith) { return KirInstr { KirOpcode::StrStartsWith, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::StringEndsWith) { return KirInstr { KirOpcode::StrEndsWith, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::StringReplace) { return KirInstr { KirOpcode::StrReplace, [], ins.line, ins.col, KirType::String }; }
+  if (ins.op == OpCode::StringSplit) { return KirInstr { KirOpcode::StrSplit, [], ins.line, ins.col, KirType::Array }; }
+  if (ins.op == OpCode::StringTrim) { return KirInstr { KirOpcode::StrTrim, [], ins.line, ins.col, KirType::String }; }
+  if (ins.op == OpCode::StringToUpper) { return KirInstr { KirOpcode::StrToUpper, [], ins.line, ins.col, KirType::String }; }
+  if (ins.op == OpCode::StringToLower) { return KirInstr { KirOpcode::StrToLower, [], ins.line, ins.col, KirType::String }; }
   if (ins.op == OpCode::EnumPayloadGet) { return KirInstr { KirOpcode::EnumPayloadGet, [ins.operand], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::PushHandler) { return KirInstr { KirOpcode::PushHandler, [ins.operand], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::PopHandler) { return KirInstr { KirOpcode::PopHandler, [], ins.line, ins.col, KirType::Int }; }
@@ -256,6 +263,18 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
         } else if (kop == KirOpcode::ArrayPop) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        } else if (kop == KirOpcode::StrStartsWith || kop == KirOpcode::StrEndsWith || kop == KirOpcode::StrSplit) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        } else if (kop == KirOpcode::StrReplace) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        } else if (kop == KirOpcode::StrTrim || kop == KirOpcode::StrToUpper || kop == KirOpcode::StrToLower) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
         }

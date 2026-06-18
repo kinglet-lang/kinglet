@@ -688,6 +688,41 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out = out + "  " + po_r + " = call i64 @kl_array_pop(i64 " + po_arr + ")\n";
         vstack.push(po_r);
         tstack.push(0);
+      } else if (ins.op == KirOpcode::StrStartsWith || ins.op == KirOpcode::StrEndsWith) {
+        string ss_needle = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string ss_str = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string ss_fn = "@kl_str_starts_with";
+        if (ins.op == KirOpcode::StrEndsWith) { ss_fn = "@kl_str_ends_with"; }
+        string ss_f = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + ss_f + " = call i32 " + ss_fn + "(i64 " + ss_str + ", i64 " + ss_needle + ")\n";
+        string ss_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + ss_r + " = zext i32 " + ss_f + " to i64\n";
+        vstack.push(ss_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::StrReplace) {
+        string rp_new = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string rp_old = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string rp_str = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string rp_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + rp_r + " = call i64 @kl_str_replace(i64 " + rp_str + ", i64 " + rp_old + ", i64 " + rp_new + ")\n";
+        vstack.push(rp_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::StrSplit) {
+        string sp_delim = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string sp_str = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string sp_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + sp_r + " = call i64 @kl_str_split(i64 " + sp_str + ", i64 " + sp_delim + ")\n";
+        vstack.push(sp_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::StrTrim || ins.op == KirOpcode::StrToUpper || ins.op == KirOpcode::StrToLower) {
+        string tr_s = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string tr_fn = "@kl_str_trim";
+        if (ins.op == KirOpcode::StrToUpper) { tr_fn = "@kl_str_to_upper"; }
+        if (ins.op == KirOpcode::StrToLower) { tr_fn = "@kl_str_to_lower"; }
+        string tr_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + tr_r + " = call i64 " + tr_fn + "(i64 " + tr_s + ")\n";
+        vstack.push(tr_r);
+        tstack.push(0);
       }
     }
     if (!terminated) {
@@ -741,6 +776,13 @@ pub string emit_ll(KirModule m, Chunk ch) {
   out = out + "declare i32 @kl_value_eq(i64, i64)\n";
   out = out + "declare i32 @kl_value_cmp(i64, i64)\n";
   out = out + "declare i32 @kl_value_is_err(i64)\n";
+  out = out + "declare i32 @kl_str_starts_with(i64, i64)\n";
+  out = out + "declare i32 @kl_str_ends_with(i64, i64)\n";
+  out = out + "declare i64 @kl_str_replace(i64, i64, i64)\n";
+  out = out + "declare i64 @kl_str_split(i64, i64)\n";
+  out = out + "declare i64 @kl_str_trim(i64)\n";
+  out = out + "declare i64 @kl_str_to_upper(i64)\n";
+  out = out + "declare i64 @kl_str_to_lower(i64)\n";
   out = out + "declare i64 @kl_enum_new_payload(i32, i32, i32, i64*)\n";
   out = out + "declare i64 @kl_enum_payload_at(i64, i32)\n";
   out = out + "declare i64 @kl_array_new(i32, i64*)\n";
