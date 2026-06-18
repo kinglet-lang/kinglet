@@ -69,3 +69,4 @@ enum_guard
 null_basic
 arr_index
 arr_local
+struct_local
