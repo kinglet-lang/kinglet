@@ -43,9 +43,15 @@ Source (.kl)
   path); `clang++` assembles and links `libkinglet_rt.a` into a native binary.
   Driven by `bash tests/native/run_smoke_shadow.sh` (cases in
   `tests/native/shadow_manifest.txt`). Lowered so far: integer constants,
-  arithmetic, local variables, bitwise/shift, comparisons, unary, control flow
-  (`if`/`else`, `while` loops), and function calls (incl. recursion). Aggregates
-  (structs/arrays/strings) and errors are not yet.
+  arithmetic, local variables, bitwise/shift, comparisons, unary, bool literals
+  + logical not, control flow (`if`/`else`, `while` loops, pattern matching
+  with SSA phi at merges), function calls (incl. recursion), tag-only enums
+  (variant construction + match), inline structs (`StructNew`/`FieldGet`/
+  `FieldSet` via `insertvalue`/`extractvalue`, value semantics), and inline
+  fixed-size arrays with constant indices (`ArrayNew`/`IndexGet`/`ArrayLen`).
+  Not yet: struct/array **locals** and dynamic array indices (need typed allocas
+  — local slots are reused across scopes, a design decision pending), strings,
+  payload enums, and error handling (`try`).
 
 ### Key Properties
 
