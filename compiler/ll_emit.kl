@@ -126,16 +126,6 @@ bool is_cmp(KirOpcode op) {
   return op == KirOpcode::IEq || op == KirOpcode::INe || op == KirOpcode::ILt || op == KirOpcode::IGt || op == KirOpcode::ILe || op == KirOpcode::IGe;
 }
 
-string ll_cmp_pred(KirOpcode op) {
-  if (op == KirOpcode::IEq) { return "eq"; }
-  if (op == KirOpcode::INe) { return "ne"; }
-  if (op == KirOpcode::ILt) { return "slt"; }
-  if (op == KirOpcode::IGt) { return "sgt"; }
-  if (op == KirOpcode::ILe) { return "sle"; }
-  if (op == KirOpcode::IGe) { return "sge"; }
-  return "eq";
-}
-
 int[] compute_leaders(KirInstr[] instrs) {
   int n = instrs.len();
   bool[] marks = [];
@@ -380,13 +370,39 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
           vstack.push(z);
           tstack.push(0);
         } else {
-          string c = "%" + string(reg);
-          reg = reg + 1;
-          out = out + "  " + c + " = icmp " + ll_cmp_pred(ins.op) + " i64 " + a + ", " + b + "\n";
-          string r = "%" + string(reg);
-          reg = reg + 1;
-          out = out + "  " + r + " = zext i1 " + c + " to i64\n";
-          vstack.push(r);
+          // Non-float compares go through the runtime's polymorphic
+          // kl_value_eq / kl_value_cmp so enums (inline-marked or heap) and
+          // strings compare by value, not by raw bits. Result normalised to
+          // i64 0/1 to match the stack convention. Temporaries are allocated
+          // in emission order so LLVM instruction numbering stays sequential.
+          if (ins.op == KirOpcode::IEq) {
+            string c = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + c + " = call i32 @kl_value_eq(i64 " + a + ", i64 " + b + ")\n";
+            string r = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + r + " = zext i32 " + c + " to i64\n";
+            vstack.push(r);
+          } else if (ins.op == KirOpcode::INe) {
+            string c = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + c + " = call i32 @kl_value_eq(i64 " + a + ", i64 " + b + ")\n";
+            string z = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + z + " = icmp eq i32 " + c + ", 0\n";
+            string r = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + r + " = zext i1 " + z + " to i64\n";
+            vstack.push(r);
+          } else {
+            // Relational: kl_value_cmp returns -1/0/1; compare against 0.
+            string c = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + c + " = call i32 @kl_value_cmp(i64 " + a + ", i64 " + b + ")\n";
+            string pred = "slt";
+            if (ins.op == KirOpcode::IGt) { pred = "sgt"; }
+            if (ins.op == KirOpcode::ILe) { pred = "sle"; }
+            if (ins.op == KirOpcode::IGe) { pred = "sge"; }
+            string z = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + z + " = icmp " + pred + " i32 " + c + ", 0\n";
+            string r = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + r + " = zext i1 " + z + " to i64\n";
+            vstack.push(r);
+          }
           tstack.push(0);
         }
       } else if (ins.op == KirOpcode::INeg || ins.op == KirOpcode::IBNot) {
@@ -582,7 +598,9 @@ string emit_entry_shim() {
 pub string emit_ll(KirModule m, Chunk ch) {
   string out = "declare i32 @kl_exit_code(i64)\n";
   out = out + "declare i64 @kl_float_new(double)\n";
-  out = out + "declare double @kl_float_get(i64)\n\n";
+  out = out + "declare double @kl_float_get(i64)\n";
+  out = out + "declare i32 @kl_value_eq(i64, i64)\n";
+  out = out + "declare i32 @kl_value_cmp(i64, i64)\n\n";
   for (int i = 0; i < m.functions.len(); i = i + 1) {
     out = out + emit_function(m.functions[i], m, ch);
   }
