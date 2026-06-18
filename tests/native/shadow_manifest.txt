@@ -53,3 +53,5 @@ enum_match2
 enum_default
 struct_basic
 struct_two
+bool_lit
+bool_not
