@@ -582,6 +582,27 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out = out + "  " + nl_r + " = sext i32 " + nl_l + " to i64\n";
         vstack.push(nl_r);
         tstack.push(0);
+      } else if (ins.op == KirOpcode::IndexSet) {
+        string is_val = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string is_idx = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string is_arr = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string is_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + is_r + " = call i64 @kl_index_set(i64 " + is_arr + ", i64 " + is_idx + ", i64 " + is_val + ")\n";
+        vstack.push(is_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::ArrayPush) {
+        string ap_val = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string ap_arr = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string ap_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + ap_r + " = call i64 @kl_array_push(i64 " + ap_arr + ", i64 " + ap_val + ")\n";
+        vstack.push(ap_r);
+        tstack.push(0);
+      } else if (ins.op == KirOpcode::ArrayPop) {
+        string po_arr = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+        string po_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + po_r + " = call i64 @kl_array_pop(i64 " + po_arr + ")\n";
+        vstack.push(po_r);
+        tstack.push(0);
       }
     }
     if (!terminated) {
@@ -638,6 +659,9 @@ pub string emit_ll(KirModule m, Chunk ch) {
   out = out + "declare i64 @kl_enum_payload_at(i64, i32)\n";
   out = out + "declare i64 @kl_array_new(i32, i64*)\n";
   out = out + "declare i64 @kl_index_get(i64, i64)\n";
+  out = out + "declare i64 @kl_index_set(i64, i64, i64)\n";
+  out = out + "declare i64 @kl_array_push(i64, i64)\n";
+  out = out + "declare i64 @kl_array_pop(i64)\n";
   out = out + "declare i32 @kl_value_len(i64)\n";
   out = out + "declare i64 @kl_struct_new(i32, i32, i64*)\n";
   out = out + "declare i64 @kl_struct_field_at(i64, i32)\n";

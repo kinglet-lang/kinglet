@@ -28,6 +28,7 @@ pub enum KirOpcode {
   INeg, IBNot, LNot, IsNull,
   StructNew, FieldGet, FieldSet,
   ArrayNew, IndexGet, ArrayLen,
+  IndexSet, ArrayPush, ArrayPop,
   EnumPayloadNew, EnumPayloadGet,
   CastTo,
   Call,
