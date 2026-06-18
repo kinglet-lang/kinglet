@@ -37,13 +37,7 @@ Decl parse_declaration(Parser p) {
   if (match_tt(p, TokenType::Struct))  { return parse_struct_decl(p, is_pub); }
   if (match_tt(p, TokenType::Enum))    { return parse_enum_decl(p, is_pub); }
 
-  // match_tt(TokenType::Concept) fails at self-host runtime when compiled
-  // by the C++ bootstrap — the bootstrap resolves enum variant indices
-  // for newly-added variants inconsistently across modules.  Use lexeme
-  // comparison as a temporary workaround.
-  // TODO(concepts): revert to match_tt(TokenType::Concept) after self-hosting.
-  if (peek_tok(p).lexeme == "concept") {
-    advance_tok(p);
+  if (match_tt(p, TokenType::Concept)) {
     return parse_concept_decl(p, is_pub);
   }
 
