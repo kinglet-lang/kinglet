@@ -1,0 +1,4 @@
+int main() {
+  string s = "aaa".replace("a", "xx");
+  return s.len();
+}

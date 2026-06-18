@@ -1,0 +1,4 @@
+int main() {
+  if ("hello".starts_with("he")) { return 7; }
+  return 0;
+}

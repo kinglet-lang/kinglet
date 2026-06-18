@@ -74,6 +74,13 @@ arr_index_set
 arr_pop
 struct_local
 str_concat
+str_upper
+str_lower
+str_split
+str_replace
+str_trim
+str_starts_with
+str_ends_with
 generic_fn
 if_chain
 if_nested

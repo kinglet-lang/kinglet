@@ -1,0 +1,4 @@
+int main() {
+  if ("hello".ends_with("lo")) { return 9; }
+  return 0;
+}

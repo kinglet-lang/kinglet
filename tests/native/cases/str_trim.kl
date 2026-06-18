@@ -1,0 +1,4 @@
+int main() {
+  string s = "   hi   ".trim();
+  return s.len();
+}

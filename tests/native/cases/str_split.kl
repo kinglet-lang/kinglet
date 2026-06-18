@@ -1,0 +1,4 @@
+int main() {
+  string[] parts = "x,y,z".split(",");
+  return parts.len();
+}

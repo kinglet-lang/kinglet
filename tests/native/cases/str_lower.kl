@@ -1,0 +1,4 @@
+int main() {
+  string s = "ABcd".to_lower();
+  return s.len();
+}
