@@ -36,6 +36,9 @@ string find_project_root(string start_dir) {
     if (fs::__read(nest) != null) { return dir; }
     string candidate = dir + "/kinglet.toml";
     if (fs::__read(candidate) != null) { return dir; }
+    // Reached the filesystem root: one more probe of "/" then stop, so walking
+    // up from outside any project (e.g. /tmp) terminates instead of looping.
+    if (dir == "/") { break; }
     int i = dir.len() - 1;
     while (i >= 0) {
       if (dir.slice(i, i + 1) == "/") {
