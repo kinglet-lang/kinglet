@@ -67,3 +67,5 @@ enum_payload
 match_option_payload
 enum_guard
 null_basic
+arr_index
+arr_local
