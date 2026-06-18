@@ -91,3 +91,5 @@ cast_char_code
 try_ok
 try_propagate
 cast_catch
+native_io
+fs_roundtrip
