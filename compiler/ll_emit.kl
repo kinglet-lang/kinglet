@@ -302,6 +302,9 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         int hi = ins.operands[1];
         vstack.push(string((hi << 32) | lo));
         tstack.push(0);
+      } else if (ins.op == KirOpcode::ConstNull) {
+        vstack.push("0");
+        tstack.push(0);
       } else if (ins.op == KirOpcode::ConstString) {
         vstack.push("str#" + string(ins.operands[0]));
         tstack.push(0);
@@ -405,6 +408,15 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
           }
           tstack.push(0);
         }
+      } else if (ins.op == KirOpcode::IsNull) {
+        string iv = vstack[vstack.len() - 1]; vstack.pop();
+        if (tstack.len() > 0) { tstack.pop(); }
+        string c = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + c + " = icmp eq i64 " + iv + ", 0\n";
+        string r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + r + " = zext i1 " + c + " to i64\n";
+        vstack.push(r);
+        tstack.push(0);
       } else if (ins.op == KirOpcode::INeg || ins.op == KirOpcode::IBNot) {
         string a = vstack[vstack.len() - 1];
         vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
@@ -453,6 +465,10 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         tstack.push(lty);
       } else if (ins.op == KirOpcode::Pop) {
         vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
+      } else if (ins.op == KirOpcode::Dup) {
+        // SSA: a value can have many uses, so Dup just references the top again.
+        if (vstack.len() > 0) { vstack.push(vstack[vstack.len() - 1]); }
+        if (tstack.len() > 0) { tstack.push(tstack[tstack.len() - 1]); }
       } else if (ins.op == KirOpcode::Call) {
         int argc = ins.operands[0];
         int fn_idx = ins.operands[1];
