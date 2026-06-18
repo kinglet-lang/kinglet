@@ -10,93 +10,21 @@ import compiler.bytecode;
 using namespace ir.ir;
 using namespace compiler.bytecode;
 
-// --- IEEE 754 double → hex literal helpers ---
+// --- IEEE 754 double → hex literal ---
 
-string to_hex_digit(int v) {
-  if (v < 10) { return string(v); }
-  if (v == 10) { return "a"; }
-  if (v == 11) { return "b"; }
-  if (v == 12) { return "c"; }
-  if (v == 13) { return "d"; }
-  if (v == 14) { return "e"; }
-  return "f";
-}
-
-// Extract exponent bits from |d|: floor(log2(|d|)) biased by 1023.
-int extract_exponent(float d) {
-  if (d == 0.0) { return 0; }
-  int e = 0;
-  float v = d;
-  if (v >= 2048.0) { while (v >= 2048.0) { v = v / 2048.0; e = e + 11; } }
-  while (v >= 2.0) { v = v / 2.0; e = e + 1; }
-  while (v < 1.0) { v = v * 2.0; e = e - 1; }
-  return e + 1023;
-}
-
-// Extract mantissa high 20 bits: ((|d| / 2^e) - 1) * 2^52, high 32 of that.
-int extract_mantissa_hi(float d, int e) {
-  if (d == 0.0) { return 0; }
-  float v = d;
-  for (int i = 0; i < e - 1023; i = i + 1) { v = v / 2.0; }
-  // v is now in [1.0, 2.0); fractional part * 2^52.
-  float frac = v - 1.0;
-  // frac * 2^52 may overflow int; break into frac * 2^20 * 2^32.
-  float big = frac * 1048576.0;  // 2^20
-  return int(big);
-}
-
-int extract_mantissa_lo(float d, int e) {
-  if (d == 0.0) { return 0; }
-  float v = d;
-  for (int i = 0; i < e - 1023; i = i + 1) { v = v / 2.0; }
-  float frac = v - 1.0;
-  float big = frac * 1048576.0;
-  int hi = int(big);
-  float rem = (big - float(hi)) * 1073741824.0;  // 2^30
-  return int(rem) * 4;  // shift to fill low 32 bits
-}
-
+// Exact IEEE-754 bits of a double, formatted as a 16-digit LLVM hex literal.
+// The emitter runs on the VM, which has native floats, so int::bits(d) yields
+// the precise i64 bit pattern (kl_float_to_bits) — no manual exponent/mantissa
+// extraction. Nibbles are masked low-to-high; 16 iterations drain the value
+// so the arithmetic >> never leaks sign bits into the result.
 string double_to_hex(float d) {
-  int sign = 0;
-  float v = d;
-  if (v < 0.0) { sign = 1; v = 0.0 - v; }
-  if (v == 0.0) {
-    if (sign == 1) { return "0x8000000000000000"; }
-    return "0x0000000000000000";
-  }
-  int e = extract_exponent(v);
-  int mhi = extract_mantissa_hi(v, e);
-  int mlo = extract_mantissa_lo(v, e);
-  int ehi = sign * 32768 + e * 8;  // sign<<15 | exp<<4  → top 16 bits
-  // ehi is 16 bits: sign(1) + exponent(11) + mantissa_hi_top4(4)
-  // Actually ehi = sign*32768 + e*8 gives us bits [sign|exponent(11)|000]
-  // The top 4 mantissa bits go into the low 3 bits of ehi + top bit of mhi's lowest nibble.
-  // Let me restructure: build the 16-bit high field as sign(1)|exp(11)|mantissa_top4(4).
-  int top16 = sign * 32768 + e * 16 + (mhi >> 16);
-  // mhi has 20 bits; top16 takes the top 4 bits of mhi (bits 16-19).
-  // The remaining 16 bits of mhi (bits 0-15) form the middle.
-  int mid16 = mhi & 65535;
+  int bits = int::bits(d);
+  string digits = "0123456789abcdef";
   string hex = "";
-  // top16 → 4 hex digits
-  int t = top16;
-  for (int i = 0; i < 4; i = i + 1) {
-    int nib = t & 15;
-    hex = to_hex_digit(nib) + hex;
-    t = t >> 4;
-  }
-  // mid16 → 4 hex digits
-  int m = mid16;
-  for (int i = 0; i < 4; i = i + 1) {
-    int nib = m & 15;
-    hex = to_hex_digit(nib) + hex;
-    m = m >> 4;
-  }
-  // mlo → 8 hex digits
-  int lo = mlo;
-  for (int i = 0; i < 8; i = i + 1) {
-    int nib = lo & 15;
-    hex = to_hex_digit(nib) + hex;
-    lo = lo >> 4;
+  for (int i = 0; i < 16; i = i + 1) {
+    int nib = bits & 15;
+    hex = digits.slice(nib, nib + 1) + hex;
+    bits = bits >> 4;
   }
   return "0x" + hex;
 }
@@ -455,6 +383,21 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out = out + "  " + r + " = zext i1 " + c + " to i64\n";
         vstack.push(r);
         tstack.push(0);
+      } else if (ins.op == KirOpcode::CastTo) {
+        int ck = ins.operands[0];
+        string cv = vstack[vstack.len() - 1]; vstack.pop();
+        if (tstack.len() > 0) { tstack.pop(); }
+        // All stack values are boxed i64 (floats included), so every cast takes
+        // an i64 and returns the boxed result. kind: 0=int 1=float 2=string 3=char.
+        string fn_name = "kl_cast_to_int";
+        int res_ty = 0;
+        if (ck == 1) { fn_name = "kl_cast_to_float"; res_ty = 1; }
+        if (ck == 2) { fn_name = "kl_cast_to_string"; res_ty = 0; }
+        if (ck == 3) { fn_name = "kl_cast_to_char"; res_ty = 0; }
+        string r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + r + " = call i64 @" + fn_name + "(i64 " + cv + ")\n";
+        vstack.push(r);
+        tstack.push(res_ty);
       } else if (ins.op == KirOpcode::INeg || ins.op == KirOpcode::IBNot) {
         string a = vstack[vstack.len() - 1];
         vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
@@ -700,7 +643,11 @@ pub string emit_ll(KirModule m, Chunk ch) {
   out = out + "declare i64 @kl_struct_field_at(i64, i32)\n";
   out = out + "declare i64 @kl_struct_field_set(i64, i32, i64)\n";
   out = out + "declare i64 @kl_string_new(i8*, i32)\n";
-  out = out + "declare i64 @kl_value_add(i64, i64)\n\n";
+  out = out + "declare i64 @kl_value_add(i64, i64)\n";
+  out = out + "declare i64 @kl_cast_to_int(i64)\n";
+  out = out + "declare i64 @kl_cast_to_float(i64)\n";
+  out = out + "declare i64 @kl_cast_to_string(i64)\n";
+  out = out + "declare i64 @kl_cast_to_char(i64)\n\n";
   // String literal globals: one per string constant in the pool, escaped as
   // LLVM c"\HH" bytes. Byte access uses int(s[i]) (char -> code) per the
   // kinglet design (no `as int` on values).
