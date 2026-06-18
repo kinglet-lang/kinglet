@@ -55,3 +55,5 @@ struct_basic
 struct_two
 bool_lit
 bool_not
+array_inline
+array_len
