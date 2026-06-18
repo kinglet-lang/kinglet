@@ -42,7 +42,7 @@ pub enum OpCode {
   // native intrinsics (io / fs / sys)
   NativeOut, NativeOutLn, NativeErr, NativeErrLn,
   NativeIn, NativeInSecret,
-  NativeFsRead, NativeFsWrite, NativeSysArgs,
+  NativeFsRead, NativeFsWrite, NativeFsListdir, NativeSysArgs,
   // structs
   StructNew, FieldGet, FieldSet,
   // enums

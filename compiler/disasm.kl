@@ -70,6 +70,7 @@ string opcode_name(OpCode op) {
   if (op == OpCode::NativeInSecret) { return "NativeInSecret"; }
   if (op == OpCode::NativeFsRead)   { return "NativeFsRead"; }
   if (op == OpCode::NativeFsWrite)  { return "NativeFsWrite"; }
+  if (op == OpCode::NativeFsListdir) { return "NativeFsListdir"; }
   if (op == OpCode::NativeSysArgs)  { return "NativeSysArgs"; }
   if (op == OpCode::StructNew) { return "StructNew"; }
   if (op == OpCode::FieldGet)  { return "FieldGet"; }
@@ -156,6 +157,7 @@ bool is_native_call(OpCode op) {
   if (op == OpCode::NativeInSecret) { return true; }
   if (op == OpCode::NativeFsRead)   { return true; }
   if (op == OpCode::NativeFsWrite)  { return true; }
+  if (op == OpCode::NativeFsListdir) { return true; }
   if (op == OpCode::NativeSysArgs)  { return true; }
   return false;
 }

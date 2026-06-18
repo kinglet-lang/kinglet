@@ -1281,6 +1281,7 @@ bool emit_native_call(Compiler co, string ns, string member, Expr[] args, int li
   if (ns == "fs") {
     if (member == "__read")   { return emit_native_io(co, OpCode::NativeFsRead, args, line, col); }
     if (member == "__write")  { return emit_native_io(co, OpCode::NativeFsWrite, args, line, col); }
+    if (member == "__listdir") { return emit_native_io(co, OpCode::NativeFsListdir, args, line, col); }
     return false;
   }
   if (ns == "sys") {

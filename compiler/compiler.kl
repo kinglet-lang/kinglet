@@ -250,61 +250,64 @@ string module_id_to_path(string module_id) {
   return result;
 }
 
+bool ends_with_kl(string s) {
+  int n = s.len();
+  return n >= 3 && s.slice(n - 3, n) == ".kl";
+}
+
 string try_directory_import(Compiler co, string module_id, string importing_dir, int line, int col) {
   string dir_rel = module_id_to_path(module_id);
-  // Try multiple base paths: importing dir, project root, and combinations
+  // Bases to search: the importing file's directory first (file-relative, works
+  // with no kinglet.nest), then the project root if one was discovered.
   string[] bases = [];
   bases.push(importing_dir);
   if (co.imports.project_root.len() > 0 && co.imports.project_root != importing_dir) {
     bases.push(co.imports.project_root);
   }
-  string content = null;
-  string resolved_dir = "";
+  string resolved_base = "";
+  string[] entries = null;
   for (int bi = 0; bi < bases.len(); bi = bi + 1) {
     string candidate = bases[bi];
     if (candidate == ".") { candidate = ""; }
-    string manifest_path = candidate.len() > 0 ? candidate + "/" + dir_rel + "/_dir.kl" : dir_rel + "/_dir.kl";
-    content = fs::__read(manifest_path);
-    if (content != null) {
-      resolved_dir = candidate.len() > 0 ? candidate + "/" + dir_rel : dir_rel;
+    string dir_path = candidate.len() > 0 ? candidate + "/" + dir_rel : dir_rel;
+    entries = fs::__listdir(dir_path);
+    if (entries != null) {
+      resolved_base = candidate;
       break;
     }
   }
-  if (content == null) { return "no _dir.kl found for " + module_id; }
-  string[] lines = content.split("\n");
-  for (int i = 0; i < lines.len(); i = i + 1) {
-    string name = trim_str(lines[i]);
-    if (name.len() == 0) { continue; }
-    if (name.len() >= 2 && name.slice(0, 2) == "//") { continue; }
-    string sub_module_id = module_id + "." + name;
-    string sub_rel = dir_rel + "/" + name + ".kl";
-    string err = load_module(co, sub_rel, co.imports.project_root, sub_module_id, [], true);
+  if (entries == null) { return "no directory '" + dir_rel + "' found for " + module_id; }
+  string load_base = resolved_base.len() > 0 ? resolved_base : ".";
+  for (int ei = 0; ei < entries.len(); ei = ei + 1) {
+    string name = entries[ei];
+    if (!ends_with_kl(name)) { continue; }
+    string stem = name.slice(0, name.len() - 3);
+    if (stem == "_dir") { continue; }
+    string sub_module_id = module_id + "." + stem;
+    string sub_rel = dir_rel + "/" + stem + ".kl";
+    string err = load_module(co, sub_rel, load_base, sub_module_id, [], true);
     if (err.len() > 0) { return err; }
   }
   return "";
 }
 
 void handle_logical_import(Compiler co, string module_id, string importing_dir, int line, int col) {
-  if (co.imports.project_root.len() == 0) {
-    compile_error(co, line, col, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
-    return;
+  if (co.imports.project_root.len() > 0) {
+    string nest = fs::__read(co.imports.project_root + "/kinglet.nest");
+    if (nest != null) {
+      string rel = compiler::project_config::nest_module_path(nest, module_id);
+      if (rel.len() > 0) {
+        string err = load_module(co, rel, co.imports.project_root, module_id, [], true);
+        if (err.len() > 0) { compile_error(co, line, col, err); }
+        return;
+      }
+    }
   }
-  string nest_path = co.imports.project_root + "/kinglet.nest";
-  string nest = fs::__read(nest_path);
-  if (nest == null) {
-    compile_error(co, line, col, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
-    return;
-  }
-  string rel = compiler::project_config::nest_module_path(nest, module_id);
-  if (rel.len() == 0) {
-    // Try directory import via _dir.kl
-    string dir_err = try_directory_import(co, module_id, importing_dir, line, col);
-    if (dir_err.len() == 0) { return; }
-    compile_error(co, line, col, "Unknown module '" + module_id + "'");
-    return;
-  }
-  string err = load_module(co, rel, co.imports.project_root, module_id, [], true);
-  if (err.len() > 0) { compile_error(co, line, col, err); }
+  // No project, or module absent from the manifest: fall back to
+  // directory-as-module relative to the importing file (no .nest needed).
+  string dir_err = try_directory_import(co, module_id, importing_dir, line, col);
+  if (dir_err.len() == 0) { return; }
+  compile_error(co, line, col, "Unknown module '" + module_id + "'");
 }
 
 string load_module(Compiler co, string import_path, string importing_dir, string alias, string[] selected, bool export_must_match) {
@@ -411,24 +414,21 @@ string load_module(Compiler co, string import_path, string importing_dir, string
 }
 
 void _handle_transitive_logical(Compiler co, string module_id) {
-  if (co.imports.project_root.len() == 0) {
-    compile_error(co, 0, 0, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
-    return;
+  if (co.imports.project_root.len() > 0) {
+    string nest = fs::__read(co.imports.project_root + "/kinglet.nest");
+    if (nest != null) {
+      string rel = compiler::project_config::nest_module_path(nest, module_id);
+      if (rel.len() > 0) {
+        string err = load_module(co, rel, co.imports.project_root, module_id, [], true);
+        if (err.len() > 0) { compile_error(co, 0, 0, err); }
+        return;
+      }
+    }
   }
-  string nest = fs::__read(co.imports.project_root + "/kinglet.nest");
-  if (nest == null) {
-    compile_error(co, 0, 0, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
-    return;
-  }
-  string rel = compiler::project_config::nest_module_path(nest, module_id);
-  if (rel.len() == 0) {
-    string dir_err = try_directory_import(co, module_id, co.imports.project_root, 0, 0);
-    if (dir_err.len() == 0) { return; }
-    compile_error(co, 0, 0, "Unknown module '" + module_id + "' in project manifest");
-    return;
-  }
-  string err = load_module(co, rel, co.imports.project_root, module_id, [], true);
-  if (err.len() > 0) { compile_error(co, 0, 0, err); }
+  string base = co.imports.project_root.len() > 0 ? co.imports.project_root : ".";
+  string dir_err = try_directory_import(co, module_id, base, 0, 0);
+  if (dir_err.len() == 0) { return; }
+  compile_error(co, 0, 0, "Unknown module '" + module_id + "'");
 }
 
 void _apply_imported_using(Compiler co, string module_id, bool is_ns) {

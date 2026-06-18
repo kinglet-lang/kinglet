@@ -830,6 +830,17 @@ Type check_native_qualified_call(Checker c, string ns, string member, Expr[] arg
     }
     return type_void();
   }
+  if (ns == "fs" && member == "__listdir") {
+    if (args.len() != 1) {
+      add_error(c, line, col, "fs::__listdir expects exactly one argument.");
+    } else {
+      Type at = check_expr(c, args[0]);
+      if (at.kind != TypeKind::String && at.kind != TypeKind::Unknown) {
+        add_error(c, line, col, "fs::__listdir expects a string path.");
+      }
+    }
+    return type_array("string");
+  }
   if (ns == "io" && (member == "out" || member == "err" || member == "outln" || member == "errln")) {
     for (int i = 0; i < args.len(); i = i + 1) {
       Type _at = check_expr(c, args[i]);
