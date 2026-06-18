@@ -261,6 +261,48 @@ string emit_function_body(KirFunction fn, KirModule m) {
         reg = reg + 1;
         out = out + "  " + r + " = call i64 @" + resolve_target(m, fn_idx) + "(" + callstr + ")\n";
         vstack.push(r);
+      } else if (ins.op == KirOpcode::StructNew) {
+        int sn_fc = ins.operands[0];
+        string sn_ty = "{i64";
+        for (int sn_a = 1; sn_a < sn_fc; sn_a = sn_a + 1) { sn_ty = sn_ty + ",i64"; }
+        sn_ty = sn_ty + "}";
+        string[] sn_fields = [];
+        for (int sn_b = 0; sn_b < sn_fc; sn_b = sn_b + 1) { sn_fields.push(vstack[vstack.len() - 1]); vstack.pop(); }
+        string sn_cur = "undef";
+        for (int sn_c = 0; sn_c < sn_fc; sn_c = sn_c + 1) {
+          string sn_fld = sn_fields[sn_fc - 1 - sn_c];
+          string sn_r = "%" + string(reg); reg = reg + 1;
+          out = out + "  " + sn_r + " = insertvalue " + sn_ty + " " + sn_cur + ", i64 " + sn_fld + ", " + string(sn_c) + "\n";
+          sn_cur = sn_r;
+        }
+        vstack.push(sn_cur + "|" + string(sn_fc));
+      } else if (ins.op == KirOpcode::FieldGet) {
+        int gidx = ins.operands[0];
+        string gs = vstack[vstack.len() - 1]; vstack.pop();
+        int gbar = 0;
+        for (int gb = 0; gb < gs.len(); gb = gb + 1) { if (gs.slice(gb, gb + 1) == "|") { gbar = gb; } }
+        string gnm = gs.slice(0, gbar);
+        int gfc = int(gs.slice(gbar + 1, gs.len()));
+        string gty = "{i64";
+        for (int gf = 1; gf < gfc; gf = gf + 1) { gty = gty + ",i64"; }
+        gty = gty + "}";
+        string gr = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + gr + " = extractvalue " + gty + " " + gnm + ", " + string(gidx) + "\n";
+        vstack.push(gr);
+      } else if (ins.op == KirOpcode::FieldSet) {
+        int sidx = ins.operands[0];
+        string sval = vstack[vstack.len() - 1]; vstack.pop();
+        string ss = vstack[vstack.len() - 1]; vstack.pop();
+        int sbar = 0;
+        for (int sb = 0; sb < ss.len(); sb = sb + 1) { if (ss.slice(sb, sb + 1) == "|") { sbar = sb; } }
+        string snm = ss.slice(0, sbar);
+        int sfc = int(ss.slice(sbar + 1, ss.len()));
+        string sty = "{i64";
+        for (int sf = 1; sf < sfc; sf = sf + 1) { sty = sty + ",i64"; }
+        sty = sty + "}";
+        string sr = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + sr + " = insertvalue " + sty + " " + snm + ", i64 " + sval + ", " + string(sidx) + "\n";
+        vstack.push(sr + "|" + string(sfc));
       }
     }
     if (!terminated) {

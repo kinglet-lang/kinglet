@@ -109,6 +109,7 @@ pub KirModule build_kir_from_chunk(Chunk c) {
       end = c.functions[order[k + 1]].entry;
     }
     KirInstr[] instrs = [];
+    int[] tstack = [];
     for (int pc = start; pc < end; pc = pc + 1) {
       Instruction raw = c.instructions[pc];
       if (raw.op == OpCode::Call) {
@@ -121,8 +122,53 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           }
         }
         instrs.push(KirInstr { KirOpcode::Call, [raw.operand, fn_idx], raw.line, raw.col, KirType::Int });
+        int ac = raw.operand;
+        for (int a = 0; a < ac; a = a + 1) { if (tstack.len() > 0) { tstack.pop(); } }
+        tstack.push(-1);
+      } else if (raw.op == OpCode::StructNew) {
+        int field_count = raw.operand & 0xFFFF;
+        for (int f = 0; f < field_count; f = f + 1) { if (tstack.len() > 0) { tstack.pop(); } }
+        instrs.push(KirInstr { KirOpcode::StructNew, [field_count], raw.line, raw.col, KirType::Struct });
+        tstack.push(raw.operand >> 16);
+      } else if (raw.op == OpCode::FieldGet || raw.op == OpCode::FieldSet) {
+        bool is_set = raw.op == OpCode::FieldSet;
+        int styidx = -1;
+        if (tstack.len() > 0) { styidx = tstack[tstack.len() - 1]; }
+        if (is_set && tstack.len() > 1) { styidx = tstack[tstack.len() - 2]; }
+        int fidx = 0;
+        if (styidx >= 0 && styidx < c.struct_metas.len()) {
+          string fname = c.constants[raw.operand].string_value;
+          string[] fns = c.struct_metas[styidx].field_names;
+          for (int fj = 0; fj < fns.len(); fj = fj + 1) {
+            if (fns[fj] == fname) { fidx = fj; }
+          }
+        }
+        if (is_set) {
+          instrs.push(KirInstr { KirOpcode::FieldSet, [fidx], raw.line, raw.col, KirType::Struct });
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(styidx);
+        } else {
+          instrs.push(KirInstr { KirOpcode::FieldGet, [fidx], raw.line, raw.col, KirType::Int });
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        }
       } else {
-        instrs.push(to_kir_instr(c, raw, pc - start));
+        KirInstr ki = to_kir_instr(c, raw, pc - start);
+        instrs.push(ki);
+        KirOpcode kop = ki.op;
+        if (kop == KirOpcode::ConstInt || kop == KirOpcode::LoadLocal) {
+          tstack.push(-1);
+        } else if (kop == KirOpcode::Pop || kop == KirOpcode::CondBr) {
+          if (tstack.len() > 0) { tstack.pop(); }
+        } else if (kop == KirOpcode::INeg || kop == KirOpcode::IBNot) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        } else if (kop == KirOpcode::IAdd || kop == KirOpcode::ISub || kop == KirOpcode::IMul || kop == KirOpcode::IDiv || kop == KirOpcode::IMod || kop == KirOpcode::IAnd || kop == KirOpcode::IOr || kop == KirOpcode::IXor || kop == KirOpcode::IShl || kop == KirOpcode::IShr || kop == KirOpcode::IEq || kop == KirOpcode::INe || kop == KirOpcode::ILt || kop == KirOpcode::IGt || kop == KirOpcode::ILe || kop == KirOpcode::IGe) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        }
       }
     }
     KirBasicBlock[] blocks = [];
