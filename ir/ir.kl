@@ -35,6 +35,7 @@ pub enum KirOpcode {
   Ret,
   Br,
   CondBr,
+  JmpIfErr, PushHandler, PopHandler, PropagateErr,
   Switch,
   Unreachable,
   Nop,

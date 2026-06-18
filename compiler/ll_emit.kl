@@ -84,6 +84,20 @@ int[] compute_leaders(KirInstr[] instrs) {
       if (target >= 0 && target < n) { marks[target] = true; }
       if (i + 1 < n) { marks[i + 1] = true; }
     }
+    if (ins.op == KirOpcode::JmpIfErr) {
+      int target = ins.operands[0];
+      int err_t = i + 1 + target;
+      if (err_t >= 0 && err_t < n) { marks[err_t] = true; }
+      if (i + 1 < n) { marks[i + 1] = true; }
+    }
+    if (ins.op == KirOpcode::PropagateErr) {
+      if (i + 1 < n) { marks[i + 1] = true; }
+    }
+    if (ins.op == KirOpcode::PushHandler) {
+      int target = ins.operands[0];
+      int landing = i + 1 + target;
+      if (landing >= 0 && landing < n) { marks[landing] = true; }
+    }
     if (ins.op == KirOpcode::Ret) {
       if (i + 1 < n) { marks[i + 1] = true; }
     }
@@ -140,6 +154,29 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
   int n = instrs.len();
   int[] leaders = compute_leaders(instrs);
   int nl = leaders.len();
+  // Resolve each PropagateErr to its catch landing by simulating the
+  // PushHandler/PopHandler stack in source order.
+  int[] prop_idx = [];
+  int[] prop_catch = [];
+  int[] handler_landings = [];
+  {
+    int[] hstack = [];
+    for (int i = 0; i < n; i = i + 1) {
+      KirInstr hins = instrs[i];
+      if (hins.op == KirOpcode::PushHandler) {
+        int landing = i + 1 + hins.operands[0];
+        hstack.push(landing);
+        handler_landings.push(landing);
+      } else if (hins.op == KirOpcode::PopHandler) {
+        if (hstack.len() > 0) { hstack.pop(); }
+      } else if (hins.op == KirOpcode::PropagateErr) {
+        int ct = 0;
+        if (hstack.len() > 0) { ct = hstack[hstack.len() - 1]; }
+        prop_idx.push(i);
+        prop_catch.push(ct);
+      }
+    }
+  }
   int[] edge_pred = [];
   int[] edge_succ = [];
   for (int k = 0; k < nl; k = k + 1) {
@@ -154,6 +191,22 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
       edge_succ.push(k + 1);
       edge_pred.push(k);
       edge_succ.push(leader_pos(leaders, last.operands[0]));
+    } else if (last.op == KirOpcode::JmpIfErr) {
+      int jidx = lend - 1;
+      edge_pred.push(k);
+      edge_succ.push(k + 1);
+      edge_pred.push(k);
+      edge_succ.push(leader_pos(leaders, jidx + 1 + last.operands[0]));
+    } else if (last.op == KirOpcode::PropagateErr) {
+      int pidx = lend - 1;
+      int pcatch = 0;
+      for (int qi = 0; qi < prop_idx.len(); qi = qi + 1) {
+        if (prop_idx[qi] == pidx) { pcatch = prop_catch[qi]; }
+      }
+      edge_pred.push(k);
+      edge_succ.push(k + 1);
+      edge_pred.push(k);
+      edge_succ.push(leader_pos(leaders, pcatch));
     } else if (last.op != KirOpcode::Ret) {
       if (k + 1 < nl) {
         edge_pred.push(k);
@@ -180,7 +233,15 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
     string[] vstack = [];
     int[] tstack = [];
     string phis = "";
-    if (pp.len() == 1) {
+    if (pp.len() == 0) {
+      bool is_landing = false;
+      for (int hi = 0; hi < handler_landings.len(); hi = hi + 1) {
+        if (handler_landings[hi] == lstart) { is_landing = true; }
+      }
+      // Dead catch (no propagating op inside the try): synthesize the error
+      // binding slot so the catch body's StoreLocal can pop.
+      if (is_landing) { vstack.push("0"); tstack.push(0); }
+    } else if (pp.len() == 1) {
       string[] src = exit_stacks[pp[0]];
       int[] tsrc = exit_types[pp[0]];
       for (int q = 0; q < src.len(); q = q + 1) { vstack.push(src[q]); }
@@ -243,6 +304,30 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out = out + "  " + t + " = icmp ne i64 " + cond + ", 0\n";
         out = out + "  br i1 " + t + ", label %" + label_for(leaders, i + 1) + ", label %" + label_for(leaders, ins.operands[0]) + "\n";
         terminated = true;
+      } else if (ins.op == KirOpcode::JmpIfErr) {
+        // Peek (no pop): both branches keep the value on the wire.
+        string je_top = vstack[vstack.len() - 1];
+        string je_is = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + je_is + " = call i32 @kl_value_is_err(i64 " + je_top + ")\n";
+        string je_c = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + je_c + " = icmp ne i32 " + je_is + ", 0\n";
+        int je_err = i + 1 + ins.operands[0];
+        out = out + "  br i1 " + je_c + ", label %" + label_for(leaders, je_err) + ", label %" + label_for(leaders, i + 1) + "\n";
+        terminated = true;
+      } else if (ins.op == KirOpcode::PropagateErr) {
+        string pe_top = vstack[vstack.len() - 1];
+        string pe_is = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + pe_is + " = call i32 @kl_value_is_err(i64 " + pe_top + ")\n";
+        string pe_c = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + pe_c + " = icmp ne i32 " + pe_is + ", 0\n";
+        int pe_catch = 0;
+        for (int qi = 0; qi < prop_idx.len(); qi = qi + 1) {
+          if (prop_idx[qi] == i) { pe_catch = prop_catch[qi]; }
+        }
+        out = out + "  br i1 " + pe_c + ", label %" + label_for(leaders, pe_catch) + ", label %" + label_for(leaders, i + 1) + "\n";
+        terminated = true;
+      } else if (ins.op == KirOpcode::PushHandler || ins.op == KirOpcode::PopHandler) {
+        // Compile-time handler markers: no IR, no stack effect.
       } else if (ins.op == KirOpcode::ConstInt) {
         int lo = ins.operands[0];
         int hi = ins.operands[1];
@@ -655,6 +740,7 @@ pub string emit_ll(KirModule m, Chunk ch) {
   out = out + "declare double @kl_float_get(i64)\n";
   out = out + "declare i32 @kl_value_eq(i64, i64)\n";
   out = out + "declare i32 @kl_value_cmp(i64, i64)\n";
+  out = out + "declare i32 @kl_value_is_err(i64)\n";
   out = out + "declare i64 @kl_enum_new_payload(i32, i32, i32, i64*)\n";
   out = out + "declare i64 @kl_enum_payload_at(i64, i32)\n";
   out = out + "declare i64 @kl_array_new(i32, i64*)\n";

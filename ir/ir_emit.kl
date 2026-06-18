@@ -93,6 +93,10 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
   if (ins.op == OpCode::ArrayPush) { return KirInstr { KirOpcode::ArrayPush, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::ArrayPop) { return KirInstr { KirOpcode::ArrayPop, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::EnumPayloadGet) { return KirInstr { KirOpcode::EnumPayloadGet, [ins.operand], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::PushHandler) { return KirInstr { KirOpcode::PushHandler, [ins.operand], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::PopHandler) { return KirInstr { KirOpcode::PopHandler, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::PropagateErr) { return KirInstr { KirOpcode::PropagateErr, [], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::JmpIfErr) { return KirInstr { KirOpcode::JmpIfErr, [ins.operand], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::CastTo) {
     // operand: 0=int, 1=float, 2=string, 3=char/byte
     KirType ct = ins.operand == 1 ? KirType::Float : (ins.operand == 2 ? KirType::String : (ins.operand == 3 ? KirType::Char : KirType::Int));
