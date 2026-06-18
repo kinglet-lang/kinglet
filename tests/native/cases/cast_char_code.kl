@@ -1,0 +1,1 @@
+int main() { string s = "ABC"; return int(s[1]); }

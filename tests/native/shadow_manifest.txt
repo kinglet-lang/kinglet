@@ -75,3 +75,6 @@ generic_fn
 if_chain
 if_nested
 if_in_loop
+cast_f2i
+cast_i2f
+cast_char_code
