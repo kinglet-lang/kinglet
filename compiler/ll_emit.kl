@@ -570,36 +570,48 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         tstack.push(0);
       } else if (ins.op == KirOpcode::ArrayNew) {
         int na_n = ins.operands[0];
-        string na_ty = "[" + string(na_n) + " x i64]";
         string[] na_flds = [];
         for (int na_p = 0; na_p < na_n; na_p = na_p + 1) { na_flds.push(vstack[vstack.len() - 1]); vstack.pop(); if (tstack.len() > 0) { tstack.pop(); } }
-        string na_cur = "undef";
-        for (int na_i = 0; na_i < na_n; na_i = na_i + 1) {
-          string na_fld = na_flds[na_n - 1 - na_i];
-          string na_r = "%" + string(reg); reg = reg + 1;
-          out = out + "  " + na_r + " = insertvalue " + na_ty + " " + na_cur + ", i64 " + na_fld + ", " + string(na_i) + "\n";
-          na_cur = na_r;
+        // Heap-allocate via kl_array_new so arrays fit i64 locals/params.
+        string na_ptr = "null";
+        if (na_n > 0) {
+          string na_buf = "%" + string(reg); reg = reg + 1;
+          out = out + "  " + na_buf + " = alloca i64, i32 " + string(na_n) + "\n";
+          // na_flds[0] is the topmost (last) element -> store at slot n-1.
+          for (int na_j = 0; na_j < na_n; na_j = na_j + 1) {
+            int na_slot = na_n - 1 - na_j;
+            string na_gp = "%" + string(reg); reg = reg + 1;
+            out = out + "  " + na_gp + " = getelementptr i64, i64* " + na_buf + ", i32 " + string(na_slot) + "\n";
+            out = out + "  store i64 " + na_flds[na_j] + ", i64* " + na_gp + "\n";
+          }
+          na_ptr = na_buf;
         }
-        vstack.push(na_cur + "#" + string(na_n));
+        string na_r = "%" + string(reg); reg = reg + 1;
+        out = out + "  " + na_r + " = call i64 @kl_array_new(i32 " + string(na_n) + ", i64* " + na_ptr + ")\n";
+        vstack.push(na_r);
         tstack.push(0);
       } else if (ins.op == KirOpcode::IndexGet) {
         string ni_idx = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
-        string ni_s = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
-        int ni_h = 0;
-        for (int ni_b = 0; ni_b < ni_s.len(); ni_b = ni_b + 1) { if (ni_s.slice(ni_b, ni_b + 1) == "#") { ni_h = ni_b; } }
-        string ni_nm = ni_s.slice(0, ni_h);
-        int ni_n = int(ni_s.slice(ni_h + 1, ni_s.len()));
-        string ni_ty = "[" + string(ni_n) + " x i64]";
+        string ni_arr = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ni_r = "%" + string(reg); reg = reg + 1;
-        out = out + "  " + ni_r + " = extractvalue " + ni_ty + " " + ni_nm + ", " + ni_idx + "\n";
+        out = out + "  " + ni_r + " = call i64 @kl_index_get(i64 " + ni_arr + ", i64 " + ni_idx + ")\n";
         vstack.push(ni_r);
         tstack.push(0);
       } else if (ins.op == KirOpcode::ArrayLen) {
         string nl_s = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
-        int nl_h = 0;
-        for (int nl_b = 0; nl_b < nl_s.len(); nl_b = nl_b + 1) { if (nl_s.slice(nl_b, nl_b + 1) == "#") { nl_h = nl_b; } }
-        int nl_n = int(nl_s.slice(nl_h + 1, nl_s.len()));
-        vstack.push(string(nl_n));
+        if (nl_s.len() >= 4 && nl_s.slice(0, 4) == "str#") {
+          // String literals are still length-only str#<len> markers (full string
+          // lowering is incomplete); read the length directly off the marker.
+          int nl_h = 0;
+          for (int nl_b = 0; nl_b < nl_s.len(); nl_b = nl_b + 1) { if (nl_s.slice(nl_b, nl_b + 1) == "#") { nl_h = nl_b; } }
+          vstack.push(nl_s.slice(nl_h + 1, nl_s.len()));
+        } else {
+          string nl_l = "%" + string(reg); reg = reg + 1;
+          out = out + "  " + nl_l + " = call i32 @kl_value_len(i64 " + nl_s + ")\n";
+          string nl_r = "%" + string(reg); reg = reg + 1;
+          out = out + "  " + nl_r + " = sext i32 " + nl_l + " to i64\n";
+          vstack.push(nl_r);
+        }
         tstack.push(0);
       }
     }
@@ -654,7 +666,10 @@ pub string emit_ll(KirModule m, Chunk ch) {
   out = out + "declare i32 @kl_value_eq(i64, i64)\n";
   out = out + "declare i32 @kl_value_cmp(i64, i64)\n";
   out = out + "declare i64 @kl_enum_new_payload(i32, i32, i32, i64*)\n";
-  out = out + "declare i64 @kl_enum_payload_at(i64, i32)\n\n";
+  out = out + "declare i64 @kl_enum_payload_at(i64, i32)\n";
+  out = out + "declare i64 @kl_array_new(i32, i64*)\n";
+  out = out + "declare i64 @kl_index_get(i64, i64)\n";
+  out = out + "declare i32 @kl_value_len(i64)\n\n";
   for (int i = 0; i < m.functions.len(); i = i + 1) {
     out = out + emit_function(m.functions[i], m, ch);
   }
