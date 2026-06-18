@@ -44,3 +44,4 @@ call_chain
 call_recurse
 call_reassign
 call_fib
+dir_import

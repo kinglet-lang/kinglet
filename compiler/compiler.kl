@@ -220,7 +220,68 @@ string export_module_name(Program prog) {
   return "";
 }
 
-void handle_logical_import(Compiler co, string module_id, int line, int col) {
+// Trim leading and trailing whitespace from a string.
+string trim_str(string s) {
+  int start = 0;
+  while (start < s.len()) {
+    string c = s.slice(start, start + 1);
+    if (c == " " || c == "\t" || c == "\r") { start = start + 1; } else { break; }
+  }
+  int end = s.len();
+  while (end > start) {
+    string c = s.slice(end - 1, end);
+    if (c == " " || c == "\t" || c == "\r") { end = end - 1; } else { break; }
+  }
+  return s.slice(start, end);
+}
+
+// Try directory import: read <project_root>/<module_id>/_dir.kl and import each listed sub-module.
+// Returns "" on success, error message on failure.
+// Convert module ID dots to path separators: "tests.dir_import_test" → "tests/dir_import_test"
+string module_id_to_path(string module_id) {
+  string result = "";
+  for (int i = 0; i < module_id.len(); i = i + 1) {
+    string c = module_id.slice(i, i + 1);
+    if (c == ".") { result = result + "/"; } else { result = result + c; }
+  }
+  return result;
+}
+
+string try_directory_import(Compiler co, string module_id, string importing_dir, int line, int col) {
+  string dir_rel = module_id_to_path(module_id);
+  // Try multiple base paths: importing dir, project root, and combinations
+  string[] bases = [];
+  bases.push(importing_dir);
+  if (co.imports.project_root.len() > 0 && co.imports.project_root != importing_dir) {
+    bases.push(co.imports.project_root);
+  }
+  string content = null;
+  string resolved_dir = "";
+  for (int bi = 0; bi < bases.len(); bi = bi + 1) {
+    string candidate = bases[bi];
+    if (candidate == ".") { candidate = ""; }
+    string manifest_path = candidate.len() > 0 ? candidate + "/" + dir_rel + "/_dir.kl" : dir_rel + "/_dir.kl";
+    content = fs::__read(manifest_path);
+    if (content != null) {
+      resolved_dir = candidate.len() > 0 ? candidate + "/" + dir_rel : dir_rel;
+      break;
+    }
+  }
+  if (content == null) { return "no _dir.kl found for " + module_id; }
+  string[] lines = content.split("\n");
+  for (int i = 0; i < lines.len(); i = i + 1) {
+    string name = trim_str(lines[i]);
+    if (name.len() == 0) { continue; }
+    if (name.len() >= 2 && name.slice(0, 2) == "//") { continue; }
+    string sub_module_id = module_id + "." + name;
+    string sub_rel = dir_rel + "/" + name + ".kl";
+    string err = load_module(co, sub_rel, co.imports.project_root, sub_module_id, [], true);
+    if (err.len() > 0) { return err; }
+  }
+  return "";
+}
+
+void handle_logical_import(Compiler co, string module_id, string importing_dir, int line, int col) {
   if (co.imports.project_root.len() == 0) {
     compile_error(co, line, col, "Cannot resolve import '" + module_id + "': no kinglet.nest found");
     return;
@@ -233,7 +294,10 @@ void handle_logical_import(Compiler co, string module_id, int line, int col) {
   }
   string rel = compiler::project_config::nest_module_path(nest, module_id);
   if (rel.len() == 0) {
-    compile_error(co, line, col, "Unknown module '" + module_id + "' in project manifest");
+    // Try directory import via _dir.kl
+    string dir_err = try_directory_import(co, module_id, importing_dir, line, col);
+    if (dir_err.len() == 0) { return; }
+    compile_error(co, line, col, "Unknown module '" + module_id + "'");
     return;
   }
   string err = load_module(co, rel, co.imports.project_root, module_id, [], true);
@@ -355,6 +419,8 @@ void _handle_transitive_logical(Compiler co, string module_id) {
   }
   string rel = compiler::project_config::nest_module_path(nest, module_id);
   if (rel.len() == 0) {
+    string dir_err = try_directory_import(co, module_id, co.imports.project_root, 0, 0);
+    if (dir_err.len() == 0) { return; }
     compile_error(co, 0, 0, "Unknown module '" + module_id + "' in project manifest");
     return;
   }
@@ -502,7 +568,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
     for (int i = 0; i < prog.declarations.len(); i = i + 1) {
       prog.declarations[i] match {
         Decl::LogicalImportDecl(let module_id, let line, let col) =>
-          handle_logical_import(co, module_id, line, col),
+          handle_logical_import(co, module_id, dir_of(source_path), line, col),
         _ => {},
       };
       if (co.errors.len() > 0) { return co.errors.len(); }

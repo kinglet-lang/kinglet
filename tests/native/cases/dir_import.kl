@@ -1,0 +1,6 @@
+import dirtest;
+using namespace dirtest.hello;
+
+int main() {
+  return greet();
+}
