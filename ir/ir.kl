@@ -29,6 +29,7 @@ pub enum KirOpcode {
   StructNew, FieldGet, FieldSet,
   ArrayNew, IndexGet, ArrayLen,
   EnumPayloadNew, EnumPayloadGet,
+  CastTo,
   Call,
   Ret,
   Br,

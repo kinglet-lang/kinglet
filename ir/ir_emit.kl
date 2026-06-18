@@ -90,6 +90,11 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
   if (ins.op == OpCode::IndexGet) { return KirInstr { KirOpcode::IndexGet, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::ArrayLen) { return KirInstr { KirOpcode::ArrayLen, [], ins.line, ins.col, KirType::Int }; }
   if (ins.op == OpCode::EnumPayloadGet) { return KirInstr { KirOpcode::EnumPayloadGet, [ins.operand], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == OpCode::CastTo) {
+    // operand: 0=int, 1=float, 2=string, 3=char/byte
+    KirType ct = ins.operand == 1 ? KirType::Float : (ins.operand == 2 ? KirType::String : (ins.operand == 3 ? KirType::Char : KirType::Int));
+    return KirInstr { KirOpcode::CastTo, [ins.operand], ins.line, ins.col, ct };
+  }
   if (ins.op == OpCode::EnumVariantPayload) {
     int packed = ins.operand;
     int type_idx = packed >> 16;
@@ -216,7 +221,7 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           if (slslot >= 0 && slslot < local_types.len()) { local_types[slslot] = slty; }
         } else if (kop == KirOpcode::Pop || kop == KirOpcode::CondBr) {
           if (tstack.len() > 0) { tstack.pop(); }
-        } else if (kop == KirOpcode::INeg || kop == KirOpcode::IBNot || kop == KirOpcode::LNot) {
+        } else if (kop == KirOpcode::INeg || kop == KirOpcode::IBNot || kop == KirOpcode::LNot || kop == KirOpcode::CastTo) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
         } else if (kop == KirOpcode::IAdd || kop == KirOpcode::ISub || kop == KirOpcode::IMul || kop == KirOpcode::IDiv || kop == KirOpcode::IMod || kop == KirOpcode::IAnd || kop == KirOpcode::IOr || kop == KirOpcode::IXor || kop == KirOpcode::IShl || kop == KirOpcode::IShr || kop == KirOpcode::IEq || kop == KirOpcode::INe || kop == KirOpcode::ILt || kop == KirOpcode::IGt || kop == KirOpcode::ILe || kop == KirOpcode::IGe) {
@@ -309,6 +314,13 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
           rtype = KirType::Int;
+        } else if (ins.op == KirOpcode::CastTo) {
+          // operand: 0=int, 1=float, 2=string, 3=char/byte
+          int ck = ins.operands.len() > 0 ? ins.operands[0] : 0;
+          if (tstack.len() > 0) { tstack.pop(); }
+          int cty = ck == 1 ? 1 : (ck == 2 ? 2 : 0);
+          tstack.push(cty);
+          rtype = ck == 1 ? KirType::Float : (ck == 2 ? KirType::String : (ck == 3 ? KirType::Char : KirType::Int));
         } else if (ins.op == KirOpcode::IAdd || ins.op == KirOpcode::ISub || ins.op == KirOpcode::IMul || ins.op == KirOpcode::IDiv || ins.op == KirOpcode::IMod) {
           int ty_r = 0;
           int ty_l = 0;
