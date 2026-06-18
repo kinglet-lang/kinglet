@@ -13,6 +13,9 @@ import compiler;
 import compiler.disasm;
 import compiler.bytecode;
 import compiler.ll_emit;
+import ir.ir;
+import ir.ir_emit;
+using namespace ir.ir;
 import core.ast_printer;
 import core.checker_driver;
 using io;
@@ -98,7 +101,8 @@ int run_emit_ll(string source, string source_path, string ll_path) {
     }
     return 65;
   }
-  string ll = compiler::ll_emit::emit_ll(co.kir);
+  KirModule typed_kir = ir::ir_emit::infer_types(co.kir, co.chunk);
+  string ll = compiler::ll_emit::emit_ll(typed_kir, co.chunk);
   fs::__write(ll_path, ll);
   return 0;
 }
