@@ -185,6 +185,20 @@ pub KirModule build_kir_from_chunk(Chunk c) {
     // StoreLocal/LoadLocal so field access works after a store/load round-trip.
     int[] local_types = [];
     for (int lt = 0; lt < 64; lt = lt + 1) { local_types.push(-1); }
+    // Seed parameter slots with their struct type index. Parameters occupy
+    // slots 0..param_count-1 but are never produced by a StructNew in this
+    // function, so without seeding, a function that reads a struct PARAMETER's
+    // fields (e.g. `at_end(Scanner s) => s.current >= s.source.len()`) cannot
+    // resolve the field index and every FieldGet collapses to field 0.
+    for (int pp = 0; pp < fi.param_count; pp = pp + 1) {
+      if (pp >= local_types.len()) { break; }
+      if (pp < fi.param_type_names.len()) {
+        string ptn = fi.param_type_names[pp];
+        for (int sm = 0; sm < c.struct_metas.len(); sm = sm + 1) {
+          if (c.struct_metas[sm].name == ptn) { local_types[pp] = sm; }
+        }
+      }
+    }
     for (int pc = start; pc < end; pc = pc + 1) {
       Instruction raw = c.instructions[pc];
       if (raw.op == OpCode::Call) {
@@ -199,7 +213,17 @@ pub KirModule build_kir_from_chunk(Chunk c) {
         instrs.push(KirInstr { KirOpcode::Call, [raw.operand, fn_idx], raw.line, raw.col, KirType::Int });
         int ac = raw.operand;
         for (int a = 0; a < ac; a = a + 1) { if (tstack.len() > 0) { tstack.pop(); } }
-        tstack.push(-1);
+        // Track a struct-typed return value so the caller can resolve field
+        // access on it (e.g. `s = skip(s); s.current`). Without this the call
+        // result is typed -1 and FieldGet on it collapses to field 0.
+        int call_sty = -1;
+        if (fn_idx >= 0 && fn_idx < c.functions.len()) {
+          string rtn = c.functions[fn_idx].return_type_name;
+          for (int sm = 0; sm < c.struct_metas.len(); sm = sm + 1) {
+            if (c.struct_metas[sm].name == rtn) { call_sty = sm; }
+          }
+        }
+        tstack.push(call_sty);
       } else if (raw.op == OpCode::StructNew) {
         int field_count = raw.operand & 0xFFFF;
         for (int f = 0; f < field_count; f = f + 1) { if (tstack.len() > 0) { tstack.pop(); } }
