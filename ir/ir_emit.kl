@@ -15,6 +15,39 @@ pub KirModule empty_module() {
   return KirModule { fs };
 }
 
+// --- struct-array type encoding for the Pass-1 FieldGet resolver ---
+// Pass 1's tstack/local_types hold either a struct_metas index (the value is a
+// struct), -1 (non-struct / unknown), or an encoded "array of struct sm". The
+// encoding lets IndexGet recover the element struct type so that
+// `P p = arr[i]; p.field` resolves the field index instead of collapsing every
+// field to index 0 (reading the wrong field).
+//   v >= 0x40000000        -> array whose elements are struct (v - 0x40000000 - 1)
+//   0 <= v < #struct_metas -> a struct_metas index (value is struct v)
+//   v == -1                -> non-struct / unknown
+int mk_arr(int sm) { return 0x40000000 | (sm + 1); }
+bool is_arr(int v) { return v >= 0x40000000; }
+int arr_elem_struct(int v) { return (v - 0x40000000) - 1; }
+
+// Resolve a declared type name ("Scanner", "Token[]", ...) to a tstack
+// encoding: struct_metas index for a struct, mk_arr(sm) for "StructName[]",
+// else -1. Used to type function-call results and parameters whose declared
+// type names the bytecode carries, so `Token[] ts = scan(...); ts[i].field`
+// resolves the field index.
+int encode_decl_type(string name, Chunk c) {
+  bool is_array = false;
+  string base = name;
+  if (name.ends_with("[]")) {
+    is_array = true;
+    base = name.slice(0, name.len() - 2);
+  }
+  for (int sm = 0; sm < c.struct_metas.len(); sm = sm + 1) {
+    if (c.struct_metas[sm].name == base) {
+      return is_array ? mk_arr(sm) : sm;
+    }
+  }
+  return -1;
+}
+
 KirOpcode cmp_kir_op(OpCode op) {
   if (op == OpCode::Eq) { return KirOpcode::IEq; }
   if (op == OpCode::Neq) { return KirOpcode::INe; }
@@ -193,10 +226,7 @@ pub KirModule build_kir_from_chunk(Chunk c) {
     for (int pp = 0; pp < fi.param_count; pp = pp + 1) {
       if (pp >= local_types.len()) { break; }
       if (pp < fi.param_type_names.len()) {
-        string ptn = fi.param_type_names[pp];
-        for (int sm = 0; sm < c.struct_metas.len(); sm = sm + 1) {
-          if (c.struct_metas[sm].name == ptn) { local_types[pp] = sm; }
-        }
+        local_types[pp] = encode_decl_type(fi.param_type_names[pp], c);
       }
     }
     for (int pc = start; pc < end; pc = pc + 1) {
@@ -213,15 +243,13 @@ pub KirModule build_kir_from_chunk(Chunk c) {
         instrs.push(KirInstr { KirOpcode::Call, [raw.operand, fn_idx], raw.line, raw.col, KirType::Int });
         int ac = raw.operand;
         for (int a = 0; a < ac; a = a + 1) { if (tstack.len() > 0) { tstack.pop(); } }
-        // Track a struct-typed return value so the caller can resolve field
-        // access on it (e.g. `s = skip(s); s.current`). Without this the call
-        // result is typed -1 and FieldGet on it collapses to field 0.
+        // Track a struct-typed (or struct-array) return value so the caller can
+        // resolve field access on it (e.g. `s = skip(s); s.current`, or
+        // `Token[] ts = scan(src); ts[i].type`). encode_decl_type also handles
+        // "X[]" return types so IndexGet recovers the element struct.
         int call_sty = -1;
         if (fn_idx >= 0 && fn_idx < c.functions.len()) {
-          string rtn = c.functions[fn_idx].return_type_name;
-          for (int sm = 0; sm < c.struct_metas.len(); sm = sm + 1) {
-            if (c.struct_metas[sm].name == rtn) { call_sty = sm; }
-          }
+          call_sty = encode_decl_type(c.functions[fn_idx].return_type_name, c);
         }
         tstack.push(call_sty);
       } else if (raw.op == OpCode::StructNew) {
@@ -249,8 +277,18 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           tstack.push(styidx);
         } else {
           instrs.push(KirInstr { KirOpcode::FieldGet, [fidx], raw.line, raw.col, KirType::Int });
+          // Propagate the field's declared type so chained access like
+          // `p.tokens[i].type` resolves: tokens is "Token[]" -> mk_arr(Token),
+          // IndexGet then yields Token, and `.type` resolves its index.
+          int field_ty = -1;
+          if (styidx >= 0 && styidx < c.struct_metas.len()) {
+            string[] ftns = c.struct_metas[styidx].field_type_names;
+            if (fidx < ftns.len()) {
+              field_ty = encode_decl_type(ftns[fidx], c);
+            }
+          }
           if (tstack.len() > 0) { tstack.pop(); }
-          tstack.push(-1);
+          tstack.push(field_ty);
         }
       } else {
         KirInstr ki = to_kir_instr(c, raw, pc - start);
@@ -280,12 +318,28 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           tstack.push(-1);
         } else if (kop == KirOpcode::ArrayNew) {
           int ac2 = ki.operands[0];
+          // Peek the last element's tracked type before popping, so the array
+          // remembers its element struct type (e.g. [P{...}, P{...}] is struct P[]).
+          int elem_ty = -1;
+          if (ac2 > 0 && tstack.len() > 0) { elem_ty = tstack[tstack.len() - 1]; }
           for (int a2 = 0; a2 < ac2; a2 = a2 + 1) { if (tstack.len() > 0) { tstack.pop(); } }
-          tstack.push(-1);
+          if (elem_ty >= 0 && elem_ty < c.struct_metas.len()) {
+            tstack.push(mk_arr(elem_ty));
+          } else {
+            tstack.push(-1);
+          }
         } else if (kop == KirOpcode::IndexGet) {
-          if (tstack.len() > 0) { tstack.pop(); }
-          if (tstack.len() > 0) { tstack.pop(); }
-          tstack.push(-1);
+          if (tstack.len() > 0) { tstack.pop(); }  // index
+          // Recover the element struct type from the array's tracked type so a
+          // subsequent FieldGet/StoreLocal resolves fields correctly.
+          int arr_ty = -1;
+          if (tstack.len() > 0) { arr_ty = tstack[tstack.len() - 1]; }
+          if (tstack.len() > 0) { tstack.pop(); }  // array
+          if (is_arr(arr_ty)) {
+            tstack.push(arr_elem_struct(arr_ty));
+          } else {
+            tstack.push(-1);
+          }
         } else if (kop == KirOpcode::ArrayLen) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);

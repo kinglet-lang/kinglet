@@ -695,7 +695,15 @@ void _register_struct_decl(Compiler co, string name, FieldDef[] fields) {
   string[] field_types = [];
   for (int i = 0; i < fields.len(); i = i + 1) {
     field_names.push(fields[i].name);
-    field_types.push(fields[i].type.name);
+    TypeExpr ft = fields[i].type;
+    // Preserve element type for array fields: `Tok[] toks` parses as a generic
+    // Array<Tok> (name "Array", type_args ["Tok"]). Store "Tok[]" so downstream
+    // type tracking (ir_emit's encode_decl_type) can recover the element struct.
+    string tn = ft.name;
+    if (ft.name == "Array" && ft.type_args.len() > 0) {
+      tn = ft.type_args[0] + "[]";
+    }
+    field_types.push(tn);
   }
   StructMeta meta = StructMeta { name, field_names, field_types };
   int idx = compiler::bytecode::add_struct_meta(co.chunk, meta);
