@@ -461,7 +461,7 @@ void register_compiler_function(Compiler co, string chunk_name, string lookup_na
   // Allocate function table slot (entry to be patched once body emits).
   // chunk_name is the bare name stored in the chunk (bootstrap uses bare names;
   // qualified names only go in the lookup table so serialized output matches).
-  FunctionInfo info = FunctionInfo { chunk_name, 0, param_count, "", [] };
+  FunctionInfo info = FunctionInfo { chunk_name, 0, param_count, "", [], [] };
   co.chunk.functions.push(info);
   int func_index = co.chunk.functions.len() - 1;
   // Every function gets a Function_ constant, even at decl time. Mirrors

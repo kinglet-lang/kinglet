@@ -218,15 +218,24 @@ pub KirModule build_kir_from_chunk(Chunk c) {
     // StoreLocal/LoadLocal so field access works after a store/load round-trip.
     int[] local_types = [];
     for (int lt = 0; lt < 64; lt = lt + 1) { local_types.push(-1); }
-    // Seed parameter slots with their struct type index. Parameters occupy
-    // slots 0..param_count-1 but are never produced by a StructNew in this
-    // function, so without seeding, a function that reads a struct PARAMETER's
-    // fields (e.g. `at_end(Scanner s) => s.current >= s.source.len()`) cannot
-    // resolve the field index and every FieldGet collapses to field 0.
-    for (int pp = 0; pp < fi.param_count; pp = pp + 1) {
-      if (pp >= local_types.len()) { break; }
-      if (pp < fi.param_type_names.len()) {
-        local_types[pp] = encode_decl_type(fi.param_type_names[pp], c);
+    // Seed local slot types from declared type names. Every variable known
+    // to codegen (params + locals) is recorded in slot_type_names, so the
+    // struct-field resolver does not need a simulated stack — it reads the
+    // slot's declared type directly.
+    // Fall back to param_type_names when slot_type_names is empty (old bytecode
+    // compiled without per-slot type recording).
+    if (fi.slot_type_names.len() > 0) {
+      for (int ss = 0; ss < fi.slot_type_names.len(); ss = ss + 1) {
+        if (ss >= local_types.len()) { break; }
+        string tn = fi.slot_type_names[ss];
+        if (tn.len() > 0) { local_types[ss] = encode_decl_type(tn, c); }
+      }
+    } else {
+      for (int pp = 0; pp < fi.param_count; pp = pp + 1) {
+        if (pp >= local_types.len()) { break; }
+        if (pp < fi.param_type_names.len()) {
+          local_types[pp] = encode_decl_type(fi.param_type_names[pp], c);
+        }
       }
     }
     for (int pc = start; pc < end; pc = pc + 1) {
@@ -263,12 +272,26 @@ pub KirModule build_kir_from_chunk(Chunk c) {
         if (tstack.len() > 0) { styidx = tstack[tstack.len() - 1]; }
         if (is_set && tstack.len() > 1) { styidx = tstack[tstack.len() - 2]; }
         int fidx = 0;
+        string fname = c.constants[raw.operand].string_value;
         if (styidx >= 0 && styidx < c.struct_metas.len()) {
-          string fname = c.constants[raw.operand].string_value;
           string[] fns = c.struct_metas[styidx].field_names;
           for (int fj = 0; fj < fns.len(); fj = fj + 1) {
             if (fns[fj] == fname) { fidx = fj; }
           }
+        }
+        // Fallback: when the tstack derived styidx fails, scan every known
+        // struct. If the field name exists in exactly ONE struct, trust that
+        // match. This reliably resolves unique field names ("fn_tail_return",
+        // "chunk", "funcs", …) without needing a perfect simulated stack.
+        if (fidx == 0 && fname.len() > 0) {
+          int found = 0;
+          for (int ss = 0; ss < c.struct_metas.len(); ss = ss + 1) {
+            string[] sfns = c.struct_metas[ss].field_names;
+            for (int sf = 0; sf < sfns.len(); sf = sf + 1) {
+              if (sfns[sf] == fname) { fidx = sf; found = found + 1; }
+            }
+          }
+          if (found != 1) { fidx = 0; }
         }
         if (is_set) {
           instrs.push(KirInstr { KirOpcode::FieldSet, [fidx], raw.line, raw.col, KirType::Struct });

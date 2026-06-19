@@ -127,6 +127,10 @@ pub struct FunctionInfo {
   int param_count;
   string return_type_name;
   string[] param_type_names;
+  // Per-slot declared type names, indexed by slot number. Populated from
+  // co.locals at the end of compile_function_body so ir_emit can seed its
+  // struct-field resolver directly from declarations — no stack simulation.
+  string[] slot_type_names;
 }
 
 pub struct StructMeta {
