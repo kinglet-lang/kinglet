@@ -270,33 +270,51 @@ string byte_chr(int v) {
   return string(byte(v & 0xFF));
 }
 
-pub string write_u8(string buf, int v) {
-  return buf + byte_chr(v);
+// Concatenate string pieces in O(total_len) via divide and conquer, avoiding
+// the O(n^2) `buf = buf + piece` accumulator (each `+` copies the whole
+// prefix). Serialization pushes byte/string pieces into a string[] builder and
+// joins once at the end.
+string join_parts(string[] parts, int lo, int hi) {
+  if (hi - lo <= 1) {
+    if (lo < hi) { return parts[lo]; }
+    return "";
+  }
+  int mid = lo + (hi - lo) / 2;
+  return join_parts(parts, lo, mid) + join_parts(parts, mid, hi);
 }
 
-pub string write_u32(string buf, int v) {
-  buf = buf + byte_chr(v);
-  buf = buf + byte_chr(v >> 8);
-  buf = buf + byte_chr(v >> 16);
-  buf = buf + byte_chr(v >> 24);
+string join_all(string[] parts) {
+  return join_parts(parts, 0, parts.len());
+}
+
+pub string[] write_u8(string[] buf, int v) {
+  buf.push(byte_chr(v));
   return buf;
 }
 
-pub string write_i32(string buf, int v) {
+pub string[] write_u32(string[] buf, int v) {
+  buf.push(byte_chr(v));
+  buf.push(byte_chr(v >> 8));
+  buf.push(byte_chr(v >> 16));
+  buf.push(byte_chr(v >> 24));
+  return buf;
+}
+
+pub string[] write_i32(string[] buf, int v) {
   return write_u32(buf, v);
 }
 
-pub string write_u64(string buf, int v) {
+pub string[] write_u64(string[] buf, int v) {
   buf = write_u32(buf, v & 0xFFFFFFFF);
   buf = write_u32(buf, (v >> 32) & 0xFFFFFFFF);
   return buf;
 }
 
-pub string write_i64(string buf, int v) {
+pub string[] write_i64(string[] buf, int v) {
   return write_u64(buf, v);
 }
 
-pub string write_f64(string buf, float v) {
+pub string[] write_f64(string[] buf, float v) {
   return write_i64(buf, int::bits(v));
 }
 
@@ -313,7 +331,7 @@ int arith_shr7(int v) {
   return -r;
 }
 
-pub string write_sleb128(string buf, int v) {
+pub string[] write_sleb128(string[] buf, int v) {
   bool more = true;
   while (more) {
     int b = v & 0x7F;
@@ -323,15 +341,15 @@ pub string write_sleb128(string buf, int v) {
     } else {
       b = b | 0x80;
     }
-    buf = buf + byte_chr(b);
+    buf.push(byte_chr(b));
   }
   return buf;
 }
 
-pub string write_str(string buf, string s) {
+pub string[] write_str(string[] buf, string s) {
   buf = write_u32(buf, s.len());
   for (int i = 0; i < s.len(); i += 1) {
-    buf = buf + byte_chr(int(s[i]));
+    buf.push(byte_chr(int(s[i])));
   }
   return buf;
 }
@@ -350,7 +368,7 @@ int const_kind_to_tag(ConstKind k) {
   return 0;
 }
 
-string serialize_constant(string buf, Constant c) {
+string[] serialize_constant(string[] buf, Constant c) {
   buf = write_u8(buf, const_kind_to_tag(c.kind));
   if (c.kind == ConstKind::Int_) {
     buf = write_i64(buf, c.int_value);
@@ -376,7 +394,7 @@ string serialize_constant(string buf, Constant c) {
 }
 
 pub void serialize_chunk(Chunk c, string path, bool strip_debug) {
-  string buf = "";
+  string[] buf = [];
 
   // Header (16 bytes)
   buf = write_u32(buf, 0x01424B43);   // magic
@@ -435,5 +453,5 @@ pub void serialize_chunk(Chunk c, string path, bool strip_debug) {
     }
   }
 
-  fs::__write(path, buf);
+  fs::__write(path, join_all(buf));
 }
