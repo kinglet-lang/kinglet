@@ -354,14 +354,14 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
       Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
-        _reg_import_func_if(co, ns, n, rt.name, params, body, is_pub, dl, dc, selected, is_sel, true),
+        _reg_import_func_if(co, ns, n, decl_type_name(rt), params, body, is_pub, dl, dc, selected, is_sel, true),
       _ => {},
     };
   }
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     prog.declarations[i] match {
       Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
-        _reg_import_func_if(co, ns, n, rt.name, params, body, is_pub, dl, dc, selected, is_sel, false),
+        _reg_import_func_if(co, ns, n, decl_type_name(rt), params, body, is_pub, dl, dc, selected, is_sel, false),
       _ => {},
     };
   }
@@ -528,7 +528,7 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
   co.chunk.functions[co.funcs[fi].func_index].entry = co.chunk.instructions.len();
   co.chunk.functions[co.funcs[fi].func_index].return_type_name = ret_type;
   string[] fn_ptypes = [];
-  for (int fn_pi = 0; fn_pi < params.len(); fn_pi = fn_pi + 1) { fn_ptypes.push(params[fn_pi].type.name); }
+  for (int fn_pi = 0; fn_pi < params.len(); fn_pi = fn_pi + 1) { fn_ptypes.push(decl_type_name(params[fn_pi].type)); }
   co.chunk.functions[co.funcs[fi].func_index].param_type_names = fn_ptypes;
   // Reset locals; params take slots 0..N-1 at depth 1.
   while (co.locals.len() > 0) { co.locals.pop(); }
@@ -630,7 +630,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
     Decl d = prog.declarations[i];
     d match {
       Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let body, let _is_pub, let l, let c) =>
-        compile_function_body(co, n, rt.name, params, body, l, c),
+        compile_function_body(co, n, decl_type_name(rt), params, body, l, c),
       _ => skip_decl(co),
     };
     if (co.errors.len() > 0) { return co.errors.len(); }
@@ -690,20 +690,20 @@ void register_top_function(Compiler co, string name, Parameter[] params) {
   }
 }
 
+// Normalize a declared type to a name encode_decl_type can parse: the parser
+// represents `T[]` as a generic Array<T> (name "Array", type_args ["T"]), so we
+// render it as "T[]" to preserve the element type for downstream tracking.
+string decl_type_name(TypeExpr t) {
+  if (t.name == "Array" && t.type_args.len() > 0) { return t.type_args[0] + "[]"; }
+  return t.name;
+}
+
 void _register_struct_decl(Compiler co, string name, FieldDef[] fields) {
   string[] field_names = [];
   string[] field_types = [];
   for (int i = 0; i < fields.len(); i = i + 1) {
     field_names.push(fields[i].name);
-    TypeExpr ft = fields[i].type;
-    // Preserve element type for array fields: `Tok[] toks` parses as a generic
-    // Array<Tok> (name "Array", type_args ["Tok"]). Store "Tok[]" so downstream
-    // type tracking (ir_emit's encode_decl_type) can recover the element struct.
-    string tn = ft.name;
-    if (ft.name == "Array" && ft.type_args.len() > 0) {
-      tn = ft.type_args[0] + "[]";
-    }
-    field_types.push(tn);
+    field_types.push(decl_type_name(fields[i].type));
   }
   StructMeta meta = StructMeta { name, field_names, field_types };
   int idx = compiler::bytecode::add_struct_meta(co.chunk, meta);
