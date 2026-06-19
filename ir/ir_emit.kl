@@ -484,8 +484,18 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
         } else if (ins.op == KirOpcode::Call) {
           int argc = ins.operands[0];
           for (int a = 0; a < argc; a = a + 1) { if (tstack.len() > 0) { tstack.pop(); } }
-          tstack.push(0);
-          rtype = KirType::Int;
+          // Track the callee's return type so a `+` on call results selects
+          // string concat (kl_value_add) instead of integer add — e.g.
+          // join_parts' recursive `a + b` must concat strings, not add handles.
+          int cty = 0;
+          int cfn = ins.operands.len() > 1 ? ins.operands[1] : -1;
+          if (cfn >= 0 && cfn < ch.functions.len()) {
+            string rtn = ch.functions[cfn].return_type_name;
+            if (rtn == "string" || rtn == "String") { cty = 2; }
+            else if (rtn == "float" || rtn == "double" || rtn == "float32" || rtn == "float64") { cty = 1; }
+          }
+          tstack.push(cty);
+          rtype = cty == 1 ? KirType::Float : (cty == 2 ? KirType::String : KirType::Int);
         } else if (ins.op == KirOpcode::NativeOut || ins.op == KirOpcode::NativeOutLn ||
                    ins.op == KirOpcode::NativeErr || ins.op == KirOpcode::NativeErrLn ||
                    ins.op == KirOpcode::NativeIn || ins.op == KirOpcode::NativeInSecret) {
