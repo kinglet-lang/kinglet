@@ -131,11 +131,10 @@ int[] compute_leaders(KirInstr[] instrs) {
 string label_for(int[] leaders, int idx) {
   for (int k = 0; k < leaders.len(); k = k + 1) {
     if (leaders[k] == idx) {
-      if (k == 0) { return "entry"; }
       return "bb" + string(k);
     }
   }
-  return "entry";
+  return "bb0";
 }
 
 int count_locals(KirInstr[] instrs) {
@@ -154,9 +153,18 @@ string mangle(string name) {
   return "kinglet_fn_" + name;
 }
 
+// Unique symbol for a function. Bare names collide across modules (e.g.
+// `func_exists` exists in both checker.kl and compiler.kl), so non-main
+// functions are disambiguated by their globally-unique fn_index. `main` keeps
+// the fixed entry symbol the runtime shim calls.
+string mangle_fn(string name, int fn_index) {
+  if (name == "main") { return "kinglet_user_main"; }
+  return "kinglet_fn_" + name + "_" + string(fn_index);
+}
+
 string resolve_target(KirModule m, int fn_idx) {
   for (int i = 0; i < m.functions.len(); i = i + 1) {
-    if (m.functions[i].fn_index == fn_idx) { return mangle(m.functions[i].name); }
+    if (m.functions[i].fn_index == fn_idx) { return mangle_fn(m.functions[i].name, m.functions[i].fn_index); }
   }
   return "kinglet_fn_unknown";
 }
@@ -297,9 +305,11 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         }
       }
     }
-    if (bi > 0) {
-      out.push(label_for(leaders, lstart) + ":\n");
-    }
+    // Every block, including the first, gets an explicit label. The `entry`
+    // block (allocas + param stores) branches into bb0, so a loop back-edge to
+    // the function start targets %bb0 — never %entry, which LLVM forbids as a
+    // branch target.
+    out.push(label_for(leaders, lstart) + ":\n");
     out.push(join_all(phis));
     bool terminated = false;
     for (int i = lstart; i < lend; i = i + 1) {
@@ -846,20 +856,29 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
 string emit_function(KirFunction fn, KirModule m, Chunk ch) {
   KirInstr[] instrs = fn.blocks[0].instrs;
   string[] out = [];
-  out.push("define i64 @" + mangle(fn.name) + "(");
+  out.push("define i64 @" + mangle_fn(fn.name, fn.fn_index) + "(");
   for (int p = 0; p < fn.param_count; p = p + 1) {
     if (p > 0) { out.push(", "); }
     out.push("i64 %arg" + string(p));
   }
   out.push(") {\n");
   out.push("entry:\n");
+  // Slots must cover both the locals referenced by the body AND every
+  // parameter: params are always stored into %slot0..%slot<param_count-1>
+  // below, but an unused parameter never appears in a Load/StoreLocal so
+  // count_locals() alone would under-allocate and the param store would
+  // reference an undefined %slot (invalid LLVM IR).
   int lc = count_locals(instrs);
+  if (fn.param_count > lc) { lc = fn.param_count; }
   for (int s = 0; s < lc; s = s + 1) {
     out.push("  %slot" + string(s) + " = alloca i64\n");
   }
   for (int p = 0; p < fn.param_count; p = p + 1) {
     out.push("  store i64 %arg" + string(p) + ", i64* %slot" + string(p) + "\n");
   }
+  // Branch into the first body block so `entry` has no predecessors even when
+  // the function body loops back to its start.
+  out.push("  br label %bb0\n");
   out.push(emit_function_body(fn, m, ch));
   out.push("}\n\n");
   return join_all(out);
