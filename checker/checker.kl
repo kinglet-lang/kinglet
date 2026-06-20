@@ -20,10 +20,28 @@ pub enum TypeKind {
 }
 
 pub struct Type {
-  TypeKind kind;
+  int kind;
   string tag;
   bool nullable;
 }
+
+// Stable ordinals for TypeKind — store `int` in Type.kind (ADR 0023 D10).
+pub int type_kind_ord(TypeKind k) {
+  if (k >= 0 && k <= 10) { return k; }
+  return tk_unknown();
+}
+
+int tk_int()     { return 0; }
+int tk_float()   { return 1; }
+int tk_bool()    { return 2; }
+int tk_string()  { return 3; }
+int tk_void()    { return 4; }
+int tk_unknown() { return 5; }
+int tk_null()    { return 6; }
+int tk_array()   { return 7; }
+int tk_map()     { return 8; }
+int tk_struct()  { return 9; }
+int tk_enum()    { return 10; }
 
 pub struct StructField {
   string name;
@@ -58,19 +76,19 @@ pub struct NativeUsingAlias {
   string member;
 }
 
-pub Type type_int()     => Type { TypeKind::Int,     "int64", false };
-pub Type type_float()   => Type { TypeKind::Float,   "float32", false };
-pub Type type_double()  => Type { TypeKind::Float,   "float64", false };
-pub Type type_bool()    => Type { TypeKind::Bool,    "", false };
-pub Type type_string()  => Type { TypeKind::String,  "", false };
-pub Type type_void()    => Type { TypeKind::Void,    "", false };
-pub Type type_unknown() => Type { TypeKind::Unknown, "", false };
-pub Type type_null()    => Type { TypeKind::Null,    "", false };
+pub Type type_int()     => Type { tk_int(),     "int64", false };
+pub Type type_float()   => Type { tk_float(),   "float32", false };
+pub Type type_double()  => Type { tk_float(),   "float64", false };
+pub Type type_bool()    => Type { tk_bool(),    "", false };
+pub Type type_string()  => Type { tk_string(),  "", false };
+pub Type type_void()    => Type { tk_void(),    "", false };
+pub Type type_unknown() => Type { tk_unknown(), "", false };
+pub Type type_null()    => Type { tk_null(),    "", false };
 
-pub Type type_array(string elem_enc) => Type { TypeKind::Array, elem_enc, false };
-pub Type type_map(string key_enc, string val_enc) => Type { TypeKind::Map, key_enc + ":" + val_enc, false };
-pub Type type_struct(string name) => Type { TypeKind::Struct, name, false };
-pub Type type_enum(string name) => Type { TypeKind::Enum, name, false };
+pub Type type_array(string elem_enc) => Type { tk_array(), elem_enc, false };
+pub Type type_map(string key_enc, string val_enc) => Type { tk_map(), key_enc + ":" + val_enc, false };
+pub Type type_struct(string name) => Type { tk_struct(), name, false };
+pub Type type_enum(string name) => Type { tk_enum(), name, false };
 
 string int_type_name(Type t) {
   if (t.tag == "int64") { return "int"; }
@@ -88,43 +106,38 @@ string float_type_name(Type t) {
 }
 
 pub string type_kind_name(Type t) {
-  return t.kind match {
-    TypeKind::Int     => int_type_name(t),
-    TypeKind::Float   => float_type_name(t),
-    TypeKind::Bool    => "bool",
-    TypeKind::String  => "string",
-    TypeKind::Void    => "void",
-    TypeKind::Unknown => "unknown",
-    TypeKind::Null    => "null",
-    TypeKind::Array   => "array",
-    TypeKind::Map     => "map",
-    TypeKind::Struct  => t.tag,
-    TypeKind::Enum    => t.tag,
-  };
+  if (t.kind == tk_int())     { return int_type_name(t); }
+  if (t.kind == tk_float())   { return float_type_name(t); }
+  if (t.kind == tk_bool())    { return "bool"; }
+  if (t.kind == tk_string())  { return "string"; }
+  if (t.kind == tk_void())    { return "void"; }
+  if (t.kind == tk_unknown()) { return "unknown"; }
+  if (t.kind == tk_null())    { return "null"; }
+  if (t.kind == tk_array())   { return "array"; }
+  if (t.kind == tk_map())     { return "map"; }
+  if (t.kind == tk_struct())  { return t.tag; }
+  if (t.kind == tk_enum())    { return t.tag; }
+  return "unknown";
 }
 
 string canonical_type_tag(Type t) {
   if (t.tag.len() > 0) { return t.tag; }
-  return t.kind match {
-    TypeKind::Int   => "int64",
-    TypeKind::Float => "float32",
-    _               => type_kind_name(t),
-  };
+  if (t.kind == tk_int())   { return "int64"; }
+  if (t.kind == tk_float()) { return "float32"; }
+  return type_kind_name(t);
 }
 
 // Full surface encoding for container element types (e.g. Array<int32>, Array<Array<int32>>).
 pub string type_encode(Type t) {
-  return t.kind match {
-    TypeKind::Int     => canonical_type_tag(t),
-    TypeKind::Float   => canonical_type_tag(t),
-    TypeKind::Bool    => "bool",
-    TypeKind::String  => "string",
-    TypeKind::Array   => "Array<" + t.tag + ">",
-    TypeKind::Map     => "Map<" + t.tag + ">",
-    TypeKind::Struct  => t.tag,
-    TypeKind::Enum    => t.tag,
-    _                 => type_kind_name(t),
-  };
+  if (t.kind == tk_int())     { return canonical_type_tag(t); }
+  if (t.kind == tk_float())   { return canonical_type_tag(t); }
+  if (t.kind == tk_bool())    { return "bool"; }
+  if (t.kind == tk_string())  { return "string"; }
+  if (t.kind == tk_array())   { return "Array<" + t.tag + ">"; }
+  if (t.kind == tk_map())     { return "Map<" + t.tag + ">"; }
+  if (t.kind == tk_struct())  { return t.tag; }
+  if (t.kind == tk_enum())    { return t.tag; }
+  return type_kind_name(t);
 }
 
 bool int_tags_equal(string a, string b) {
@@ -134,7 +147,7 @@ bool int_tags_equal(string a, string b) {
 }
 
 bool integer_assignable(Type from, Type to) {
-  if (from.kind != TypeKind::Int || to.kind != TypeKind::Int) { return false; }
+  if (from.kind != tk_int() || to.kind != tk_int()) { return false; }
   string ft = from.tag;
   string tt = to.tag;
   if (ft.len() == 0) { ft = "int64"; }
@@ -145,7 +158,7 @@ bool integer_assignable(Type from, Type to) {
 }
 
 bool float_assignable(Type from, Type to) {
-  if (from.kind != TypeKind::Float || to.kind != TypeKind::Float) { return false; }
+  if (from.kind != tk_float() || to.kind != tk_float()) { return false; }
   string ft = from.tag;
   string tt = to.tag;
   if (ft.len() == 0) { ft = "float32"; }
@@ -156,16 +169,16 @@ bool float_assignable(Type from, Type to) {
 }
 
 bool types_assignable(Type from, Type to) {
-  if (from.kind == TypeKind::Int && to.kind == TypeKind::Int) {
+  if (from.kind == tk_int() && to.kind == tk_int()) {
     return integer_assignable(from, to);
   }
-  if (from.kind == TypeKind::Float && to.kind == TypeKind::Float) {
+  if (from.kind == tk_float() && to.kind == tk_float()) {
     return float_assignable(from, to);
   }
-  if (from.kind == TypeKind::Struct && to.kind == TypeKind::Struct) {
+  if (from.kind == tk_struct() && to.kind == tk_struct()) {
     return from.tag == to.tag;
   }
-  if (from.kind == TypeKind::Array && to.kind == TypeKind::Array) {
+  if (from.kind == tk_array() && to.kind == tk_array()) {
     if (from.tag == to.tag) { return true; }
     if (from.tag == "int32" && to.tag == "int") { return true; }
     if (from.tag == "float32" && to.tag == "float") { return true; }
@@ -175,15 +188,15 @@ bool types_assignable(Type from, Type to) {
 }
 
 bool types_compatible(Type a, Type b) {
-  if (a.kind == TypeKind::Unknown) { return true; }
-  if (b.kind == TypeKind::Unknown) { return true; }
-  if (a.kind == TypeKind::Null || b.kind == TypeKind::Null) { return true; }
-  if (a.kind == TypeKind::Int && b.kind == TypeKind::Int) {
+  if (a.kind == tk_unknown()) { return true; }
+  if (b.kind == tk_unknown()) { return true; }
+  if (a.kind == tk_null() || b.kind == tk_null()) { return true; }
+  if (a.kind == tk_int() && b.kind == tk_int()) {
     return true;
   }
-  if (a.kind == TypeKind::Int && b.kind == TypeKind::Float) { return true; }
-  if (a.kind == TypeKind::Float && b.kind == TypeKind::Int) { return true; }
-  if (a.kind == TypeKind::Float && b.kind == TypeKind::Float) {
+  if (a.kind == tk_int() && b.kind == tk_float()) { return true; }
+  if (a.kind == tk_float() && b.kind == tk_int()) { return true; }
+  if (a.kind == tk_float() && b.kind == tk_float()) {
     string at = a.tag;
     string bt = b.tag;
     if (at.len() == 0) { at = "float32"; }
@@ -192,16 +205,16 @@ bool types_compatible(Type a, Type b) {
     if (at == "float32" || bt == "float32") { return true; }
     return false;
   }
-  if (a.kind == TypeKind::Struct && b.kind == TypeKind::Struct) { return a.tag == b.tag; }
-  if (a.kind == TypeKind::Enum && b.kind == TypeKind::Enum) { return a.tag == b.tag; }
-  if (a.kind == TypeKind::Array && b.kind == TypeKind::Array) { return a.tag == b.tag; }
-  if (a.kind == TypeKind::Map && b.kind == TypeKind::Map) { return a.tag == b.tag; }
+  if (a.kind == tk_struct() && b.kind == tk_struct()) { return a.tag == b.tag; }
+  if (a.kind == tk_enum() && b.kind == tk_enum()) { return a.tag == b.tag; }
+  if (a.kind == tk_array() && b.kind == tk_array()) { return a.tag == b.tag; }
+  if (a.kind == tk_map() && b.kind == tk_map()) { return a.tag == b.tag; }
   return a.kind == b.kind;
 }
 
 bool is_numeric(Type t) {
-  if (t.kind == TypeKind::Int) { return true; }
-  if (t.kind == TypeKind::Float) { return true; }
+  if (t.kind == tk_int()) { return true; }
+  if (t.kind == tk_float()) { return true; }
   return false;
 }
 
@@ -401,8 +414,8 @@ bool is_auto_type(TypeExpr t) {
   return t.name == "auto";
 }
 
-Type make_int_tag(string tag) => Type { TypeKind::Int, tag, false };
-Type make_float_tag(string tag) => Type { TypeKind::Float, tag, false };
+Type make_int_tag(string tag) => Type { tk_int(), tag, false };
+Type make_float_tag(string tag) => Type { tk_float(), tag, false };
 
 Type resolve_scalar_name(string name) {
   if (name == "int")     { return type_int(); }
@@ -465,7 +478,7 @@ Type resolve_encoded_type(Checker c, string encoded) {
     }
   }
   Type scalar = resolve_scalar_name(encoded);
-  if (scalar.kind != TypeKind::Unknown) { return scalar; }
+  if (scalar.kind != tk_unknown()) { return scalar; }
   if (enum_exists(c, encoded)) { return type_enum(encoded); }
   if (struct_exists(c, encoded)) { return type_struct(encoded); }
   return type_unknown();
@@ -489,7 +502,7 @@ Type resolve_type_expr(Checker c, TypeExpr t) {
     return inner;
   }
   Type scalar = resolve_scalar_name(t.name);
-  if (scalar.kind != TypeKind::Unknown) { return scalar; }
+  if (scalar.kind != tk_unknown()) { return scalar; }
   if (enum_exists(c, t.name)) { return type_enum(t.name); }
   if (t.type_args.len() > 0) {
     if (struct_exists(c, t.name)) { return type_struct(t.name); }
@@ -640,15 +653,15 @@ Type check_unary(Checker c, UnaryOp op, Expr r, int line, int col) {
 }
 
 Type check_neg(Checker c, Type rt, int line, int col) {
-  if (rt.kind == TypeKind::Unknown) { return type_int(); }
+  if (rt.kind == tk_unknown()) { return type_int(); }
   if (is_numeric(rt)) { return rt; }
   add_error(c, line, col, "Cannot negate non-numeric type '" + type_kind_name(rt) + "'.");
   return type_int();
 }
 
 Type check_bitnot(Checker c, Type rt, int line, int col) {
-  if (rt.kind == TypeKind::Unknown) { return type_int(); }
-  if (rt.kind != TypeKind::Int) {
+  if (rt.kind == tk_unknown()) { return type_int(); }
+  if (rt.kind != tk_int()) {
     add_error(c, line, col, "Bitwise NOT requires an integer operand.");
   }
   return type_int();
@@ -665,16 +678,16 @@ Type check_binary(Checker c, Expr lhs, BinaryOp op, Expr rhs, int line, int col)
 }
 
 Type check_arithmetic(Checker c, BinaryOp op, Type l, Type r, int line, int col) {
-  if (op_is_add(op) && (l.kind == TypeKind::String || r.kind == TypeKind::String)) {
+  if (op_is_add(op) && (l.kind == tk_string() || r.kind == tk_string())) {
     return type_string();
   }
-  if (l.kind == TypeKind::Unknown || r.kind == TypeKind::Unknown) { return type_int(); }
+  if (l.kind == tk_unknown() || r.kind == tk_unknown()) { return type_int(); }
   if (!is_numeric(l) || !is_numeric(r)) {
     add_error(c, line, col, "Arithmetic operands must be numeric.");
     return type_int();
   }
-  if (l.kind == TypeKind::Float || r.kind == TypeKind::Float) {
-    if (l.kind == TypeKind::Float && r.kind == TypeKind::Float && l.tag == r.tag && l.tag.len() > 0) {
+  if (l.kind == tk_float() || r.kind == tk_float()) {
+    if (l.kind == tk_float() && r.kind == tk_float() && l.tag == r.tag && l.tag.len() > 0) {
       return l;
     }
     if (float_type_name(l) == "float64" || float_type_name(r) == "float64") {
@@ -682,7 +695,7 @@ Type check_arithmetic(Checker c, BinaryOp op, Type l, Type r, int line, int col)
     }
     return type_float();
   }
-  if (l.kind == TypeKind::Int && r.kind == TypeKind::Int && l.tag == r.tag && l.tag.len() > 0) {
+  if (l.kind == tk_int() && r.kind == tk_int() && l.tag == r.tag && l.tag.len() > 0) {
     return l;
   }
   return type_int();
@@ -697,8 +710,8 @@ Type check_comparison(Checker c, Type l, Type r, int line, int col) {
 }
 
 Type check_bitwise(Checker c, Type l, Type r, int line, int col) {
-  if (l.kind == TypeKind::Unknown || r.kind == TypeKind::Unknown) { return type_int(); }
-  if (l.kind != TypeKind::Int || r.kind != TypeKind::Int) {
+  if (l.kind == tk_unknown() || r.kind == tk_unknown()) { return type_int(); }
+  if (l.kind != tk_int() || r.kind != tk_int()) {
     add_error(c, line, col, "Bitwise operators require integer operands.");
   }
   return type_int();
@@ -788,7 +801,7 @@ bool concept_exists(Checker c, string name) {
 }
 
 string type_match_key(Type t) {
-  if (t.kind == TypeKind::Struct) { return t.tag; }
+  if (t.kind == tk_struct()) { return t.tag; }
   return type_kind_name(t);
 }
 
@@ -809,7 +822,7 @@ Type check_native_qualified_call(Checker c, string ns, string member, Expr[] arg
       add_error(c, line, col, "fs::__read expects exactly one argument.");
     } else {
       Type at = check_expr(c, args[0]);
-      if (at.kind != TypeKind::String && at.kind != TypeKind::Unknown) {
+      if (at.kind != tk_string() && at.kind != tk_unknown()) {
         add_error(c, line, col, "fs::__read expects a string path.");
       }
     }
@@ -821,10 +834,10 @@ Type check_native_qualified_call(Checker c, string ns, string member, Expr[] arg
     } else {
       Type p = check_expr(c, args[0]);
       Type ctt = check_expr(c, args[1]);
-      if (p.kind != TypeKind::String && p.kind != TypeKind::Unknown) {
+      if (p.kind != tk_string() && p.kind != tk_unknown()) {
         add_error(c, line, col, "fs::__write expects a string path.");
       }
-      if (ctt.kind != TypeKind::String && ctt.kind != TypeKind::Unknown) {
+      if (ctt.kind != tk_string() && ctt.kind != tk_unknown()) {
         add_error(c, line, col, "fs::__write expects string content.");
       }
     }
@@ -835,7 +848,7 @@ Type check_native_qualified_call(Checker c, string ns, string member, Expr[] arg
       add_error(c, line, col, "fs::__listdir expects exactly one argument.");
     } else {
       Type at = check_expr(c, args[0]);
-      if (at.kind != TypeKind::String && at.kind != TypeKind::Unknown) {
+      if (at.kind != tk_string() && at.kind != tk_unknown()) {
         add_error(c, line, col, "fs::__listdir expects a string path.");
       }
     }
@@ -941,31 +954,31 @@ Type check_array_lit(Checker c, Expr[] elems, int line, int col) {
 Type check_index(Checker c, Expr obj, Expr idx, int line, int col) {
   Type ot = check_expr(c, obj);
   Type it = check_expr(c, idx);
-  if (ot.kind == TypeKind::Map) {
+  if (ot.kind == tk_map()) {
     Type key_ty = resolve_encoded_type(c, map_key_enc(ot));
-    if (key_ty.kind == TypeKind::String) {
-      if (it.kind != TypeKind::String && it.kind != TypeKind::Unknown) {
+    if (key_ty.kind == tk_string()) {
+      if (it.kind != tk_string() && it.kind != tk_unknown()) {
         add_error(c, line, col, "Map key must be string.");
       }
-    } else if (it.kind != TypeKind::Int && it.kind != TypeKind::Unknown) {
+    } else if (it.kind != tk_int() && it.kind != tk_unknown()) {
       add_error(c, line, col, "Map key must be int.");
     }
     return resolve_encoded_type(c, map_val_enc(ot));
   }
-  if (ot.kind == TypeKind::String) {
-    if (it.kind != TypeKind::Int && it.kind != TypeKind::Unknown) {
+  if (ot.kind == tk_string()) {
+    if (it.kind != tk_int() && it.kind != tk_unknown()) {
       add_error(c, line, col, "String index must be int.");
     }
     return type_int();
   }
-  if (it.kind != TypeKind::Int && it.kind != TypeKind::Unknown) {
+  if (it.kind != tk_int() && it.kind != tk_unknown()) {
     add_error(c, line, col, "Array index must be int.");
   }
-  if (ot.kind != TypeKind::Array && ot.kind != TypeKind::Unknown) {
+  if (ot.kind != tk_array() && ot.kind != tk_unknown()) {
     add_error(c, line, col, "Cannot index non-array type.");
     return type_unknown();
   }
-  if (ot.kind == TypeKind::Array) {
+  if (ot.kind == tk_array()) {
     return resolve_encoded_type(c, ot.tag);
   }
   return type_unknown();
@@ -975,7 +988,7 @@ Type check_index_assign(Checker c, Expr obj, Expr idx, Expr val, int line, int c
   Type ot = check_expr(c, obj);
   Type _it = check_expr(c, idx);
   Type vt = check_expr(c, val);
-  if (ot.kind == TypeKind::Array) {
+  if (ot.kind == tk_array()) {
     Type elem = resolve_type_name(c, ot.tag);
     if (!types_compatible(vt, elem)) {
       add_error(c, line, col, "Array element type mismatch.");
@@ -986,12 +999,12 @@ Type check_index_assign(Checker c, Expr obj, Expr idx, Expr val, int line, int c
 
 Type check_struct_lit(Checker c, TypeExpr ty, FieldInit[] fields, int line, int col) {
   Type st = resolve_type_expr(c, ty);
-  if (st.kind != TypeKind::Struct && st.kind != TypeKind::Unknown) {
+  if (st.kind != tk_struct() && st.kind != tk_unknown()) {
     add_error(c, line, col, "Expected struct type for struct literal.");
     return st;
   }
   StructInfo info = lookup_struct_info(c, st.tag);
-  if (st.kind == TypeKind::Struct && fields.len() != info.fields.len()) {
+  if (st.kind == tk_struct() && fields.len() != info.fields.len()) {
     add_error(c, line, col, "Struct field count mismatch.");
   }
   for (int i = 0; i < fields.len(); i = i + 1) {
@@ -1038,13 +1051,13 @@ string map_val_enc(Type m) {
 }
 
 void check_string_operand(Checker c, Type at, int line, int col, string ctx) {
-  if (at.kind != TypeKind::String && at.kind != TypeKind::Unknown) {
+  if (at.kind != tk_string() && at.kind != tk_unknown()) {
     add_error(c, line, col, ctx + " must be string.");
   }
 }
 
 void check_int_operand(Checker c, Type at, int line, int col, string ctx) {
-  if (at.kind != TypeKind::Int && at.kind != TypeKind::Unknown) {
+  if (at.kind != tk_int() && at.kind != tk_unknown()) {
     add_error(c, line, col, ctx + " must be int.");
   }
 }
@@ -1057,7 +1070,7 @@ Type check_array_builtin_method(Checker c, Type ot, string method, Expr[] args, 
   if (method == "push") {
     if (args.len() != 1) {
       add_error(c, line, col, "push() takes exactly 1 argument.");
-    } else if (ot.kind == TypeKind::Array) {
+    } else if (ot.kind == tk_array()) {
       Type at = check_expr(c, args[0]);
       Type elem = resolve_type_name(c, ot.tag);
       if (!types_assignable(at, elem)) {
@@ -1070,7 +1083,7 @@ Type check_array_builtin_method(Checker c, Type ot, string method, Expr[] args, 
   }
   if (method == "pop") {
     if (args.len() > 0) { add_error(c, line, col, "pop() takes no arguments."); }
-    if (ot.kind == TypeKind::Array) { return resolve_type_name(c, ot.tag); }
+    if (ot.kind == tk_array()) { return resolve_type_name(c, ot.tag); }
     return type_unknown();
   }
   if (method == "remove") {
@@ -1080,7 +1093,7 @@ Type check_array_builtin_method(Checker c, Type ot, string method, Expr[] args, 
       Type at = check_expr(c, args[0]);
       check_int_operand(c, at, line, col, "remove() index");
     }
-    if (ot.kind == TypeKind::Array) { return resolve_type_name(c, ot.tag); }
+    if (ot.kind == tk_array()) { return resolve_type_name(c, ot.tag); }
     return type_unknown();
   }
   if (method == "contains") {
@@ -1124,7 +1137,7 @@ Type check_array_builtin_method(Checker c, Type ot, string method, Expr[] args, 
       check_int_operand(c, s, line, col, "slice() start");
       check_int_operand(c, e, line, col, "slice() end");
     }
-    if (ot.kind == TypeKind::Array) { return type_array(ot.tag); }
+    if (ot.kind == tk_array()) { return type_array(ot.tag); }
     return type_unknown();
   }
   if (method == "resize") {
@@ -1133,7 +1146,7 @@ Type check_array_builtin_method(Checker c, Type ot, string method, Expr[] args, 
     } else {
       Type count = check_expr(c, args[0]);
       check_int_operand(c, count, line, col, "resize() count");
-      if (ot.kind == TypeKind::Array) {
+      if (ot.kind == tk_array()) {
         Type elem = resolve_type_name(c, ot.tag);
         Type fill = check_expr(c, args[1]);
         if (!types_compatible(fill, elem)) {
@@ -1164,7 +1177,7 @@ Type check_map_builtin_method(Checker c, Type ot, string method, Expr[] args, in
   }
   if (method == "keys") {
     if (args.len() > 0) { add_error(c, line, col, "keys() takes no arguments."); }
-    if (ot.kind == TypeKind::Map) {
+    if (ot.kind == tk_map()) {
       return type_array(map_key_enc(ot));
     }
     return type_array("string");
@@ -1282,16 +1295,16 @@ Type check_method_call(Checker c, Expr obj, string method, Expr[] args, int line
     };
   }
   Type ot = check_expr(c, obj);
-  if (ot.kind == TypeKind::Array) {
+  if (ot.kind == tk_array()) {
     return check_array_builtin_method(c, ot, method, args, line, col);
   }
-  if (ot.kind == TypeKind::Map) {
+  if (ot.kind == tk_map()) {
     return check_map_builtin_method(c, ot, method, args, line, col);
   }
-  if (ot.kind == TypeKind::String) {
+  if (ot.kind == tk_string()) {
     return check_string_builtin_method(c, ot, method, args, line, col);
   }
-  if (ot.kind == TypeKind::Unknown) {
+  if (ot.kind == tk_unknown()) {
     if (is_string_only_builtin(method)) {
       return check_string_builtin_method(c, ot, method, args, line, col);
     }
@@ -1342,7 +1355,7 @@ Type check_method_call(Checker c, Expr obj, string method, Expr[] args, int line
     }
     return type_unknown();
   }
-  if (ot.kind == TypeKind::Struct) {
+  if (ot.kind == tk_struct()) {
     FuncSig sig = lookup_func(c, ot.tag + "::" + method);
     if (sig.name.len() > 0) {
       int expected = sig.param_types.len() - 1;
@@ -1372,14 +1385,14 @@ Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
     }
   }
   Type ot = check_expr(c, obj);
-  if (ot.kind != TypeKind::Struct && ot.kind != TypeKind::Unknown) {
+  if (ot.kind != tk_struct() && ot.kind != tk_unknown()) {
     add_error(c, line, col, "Cannot access field on non-struct type.");
     return type_unknown();
   }
-  if (ot.kind == TypeKind::Struct) {
+  if (ot.kind == tk_struct()) {
     StructInfo info = lookup_struct_info(c, ot.tag);
     Type ft = lookup_field_type(c, info, field);
-    if (ft.kind == TypeKind::Unknown && info.type_params.len() > 0) {
+    if (ft.kind == tk_unknown() && info.type_params.len() > 0) {
       if (oname.len() > 0) {
         TypeExpr decl_ty = lookup_var_type_expr(c, oname);
         if (decl_ty.type_args.len() > 0) {
@@ -1387,7 +1400,7 @@ Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
         }
       }
     }
-    if (ft.kind == TypeKind::Unknown) {
+    if (ft.kind == tk_unknown()) {
       add_error(c, line, col, "Struct '" + ot.tag + "' has no field '" + field + "'.");
     }
     return ft;
@@ -1398,10 +1411,10 @@ Type check_field_access(Checker c, Expr obj, string field, int line, int col) {
 Type check_field_assign(Checker c, Expr obj, string field, Expr val, int line, int col) {
   Type ot = check_expr(c, obj);
   Type vt = check_expr(c, val);
-  if (ot.kind == TypeKind::Struct) {
+  if (ot.kind == tk_struct()) {
     StructInfo info = lookup_struct_info(c, ot.tag);
     Type ft = lookup_field_type(c, info, field);
-    if (ft.kind == TypeKind::Unknown) {
+    if (ft.kind == tk_unknown()) {
       add_error(c, line, col, "Struct '" + ot.tag + "' has no field '" + field + "'.");
     } else if (!types_compatible(vt, ft)) {
       add_error(c, line, col, "Field assignment type mismatch.");
@@ -1436,8 +1449,8 @@ Type check_cast(Checker c, TypeExpr target, Expr val, int line, int col) {
 }
 
 Type unify_match_types(Checker c, Type acc, Type next, int line, int col) {
-  if (acc.kind == TypeKind::Unknown) { return next; }
-  if (next.kind == TypeKind::Unknown) { return acc; }
+  if (acc.kind == tk_unknown()) { return next; }
+  if (next.kind == tk_unknown()) { return acc; }
   if (types_compatible(acc, next)) { return acc; }
   add_error(c, line, col, "Match arms have incompatible types.");
   return acc;
@@ -1452,7 +1465,7 @@ void bind_struct_pattern(Checker c, Expr pattern, Type scrutinee) {
     Expr::StructPat(_, let fs, _, _) => fs,
     _ => [],
   };
-  if (scrutinee.kind != TypeKind::Struct || scrutinee.tag != struct_name) {
+  if (scrutinee.kind != tk_struct() || scrutinee.tag != struct_name) {
     add_error(c, 0, 0, "Struct pattern '" + struct_name + "' does not match scrutinee type.");
     return;
   }
@@ -1607,7 +1620,7 @@ Type check_match_arm(Checker c, MatchArm arm, Type scrutinee, int line, int col)
   bind_match_pattern(c, arm.pattern, scrutinee, line, col);
   if (arm.guard_expr match { Expr::None => false, _ => true, }) {
     Type gt = check_expr(c, arm.guard_expr);
-    if (gt.kind != TypeKind::Bool && gt.kind != TypeKind::Int && gt.kind != TypeKind::Unknown) {
+    if (gt.kind != tk_bool() && gt.kind != tk_int() && gt.kind != tk_unknown()) {
       add_error(c, line, col, "Match guard must be 'bool'.");
     }
   }
@@ -1676,11 +1689,11 @@ bool pattern_is_null_literal(Expr pattern) {
 
 bool payload_pattern_is_exhaustive(Checker c, Expr pattern, Type payload_type) {
   if (match_pattern_is_catchall(pattern)) { return true; }
-  if (payload_type.kind == TypeKind::Bool) { return false; }
-  if (payload_type.kind == TypeKind::Int) { return false; }
-  if (payload_type.kind == TypeKind::Float) { return false; }
-  if (payload_type.kind == TypeKind::String) { return false; }
-  if (payload_type.kind == TypeKind::Enum) {
+  if (payload_type.kind == tk_bool()) { return false; }
+  if (payload_type.kind == tk_int()) { return false; }
+  if (payload_type.kind == tk_float()) { return false; }
+  if (payload_type.kind == tk_string()) { return false; }
+  if (payload_type.kind == tk_enum()) {
     if (!(pattern match { Expr::EnumPat(_, _, _, _, _) => true, _ => false, })) {
       return false;
     }
@@ -1827,11 +1840,11 @@ void check_nullable_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int l
   }
   Type inner = scrutinee;
   inner.nullable = false;
-  if (inner.kind == TypeKind::Bool) {
+  if (inner.kind == tk_bool()) {
     check_bool_exhaustive(c, non_null_arms, line, col);
     return;
   }
-  if (inner.kind == TypeKind::Enum) {
+  if (inner.kind == tk_enum()) {
     check_enum_exhaustive(c, inner, non_null_arms, line, col);
     return;
   }
@@ -1958,23 +1971,23 @@ void check_match_exhaustive(Checker c, Type scrutinee, MatchArm[] arms, int line
     check_nullable_exhaustive(c, scrutinee, arms, line, col);
     return;
   }
-  if (scrutinee.kind == TypeKind::Bool) {
+  if (scrutinee.kind == tk_bool()) {
     check_bool_exhaustive(c, arms, line, col);
     return;
   }
-  if (scrutinee.kind == TypeKind::Enum) {
+  if (scrutinee.kind == tk_enum()) {
     check_enum_exhaustive(c, scrutinee, arms, line, col);
     return;
   }
-  if (scrutinee.kind == TypeKind::Int || scrutinee.kind == TypeKind::Float) {
+  if (scrutinee.kind == tk_int() || scrutinee.kind == tk_float()) {
     check_scalar_catchall_exhaustive(c, arms, "int", line, col);
     return;
   }
-  if (scrutinee.kind == TypeKind::String) {
+  if (scrutinee.kind == tk_string()) {
     check_scalar_catchall_exhaustive(c, arms, "string", line, col);
     return;
   }
-  if (scrutinee.kind == TypeKind::Struct) {
+  if (scrutinee.kind == tk_struct()) {
     check_struct_exhaustive(c, scrutinee, arms, line, col);
   }
 }
@@ -2010,7 +2023,7 @@ void check_return(Checker c, Expr v, int line, int col) {
     return;
   }
   if (expr_is_none(v)) {
-    if (c.expected_return.kind != TypeKind::Void) {
+    if (c.expected_return.kind != tk_void()) {
       add_error(c, line, col, "Return type mismatch.");
     }
     return;
@@ -2076,12 +2089,12 @@ void check_block(Checker c, Stmt[] stmts) {
 
 void check_if(Checker c, Expr cond, Stmt th, Stmt el, int line, int col) {
   Type ct = check_expr(c, cond);
-  if (ct.kind != TypeKind::Bool && ct.kind != TypeKind::Int && ct.kind != TypeKind::Unknown) {
+  if (ct.kind != tk_bool() && ct.kind != tk_int() && ct.kind != tk_unknown()) {
     add_error(c, line, col, "If condition must be 'bool'.");
   }
   Type then_type = branch_result_type(c, th);
   Type else_type = branch_result_type(c, el);
-  if (then_type.kind != TypeKind::Void && else_type.kind != TypeKind::Void &&
+  if (then_type.kind != tk_void() && else_type.kind != tk_void() &&
       !types_compatible(then_type, else_type)) {
     add_error(c, line, col, "If branches have incompatible types.");
   }
