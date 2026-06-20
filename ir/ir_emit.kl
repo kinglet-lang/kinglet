@@ -570,11 +570,24 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
           tstack.push(0);
           rtype = KirType::Int;
         } else if (ins.op == KirOpcode::ArraySlice) {
+          // Stack order (top..bottom): end, start, obj. The result follows the
+          // sliced object: slicing a string yields a string, so a later `+`
+          // lowers to kl_value_add (concat) rather than integer add. Without
+          // this, `s.slice(a,b) + s.slice(c,d)` emits `add i64` over two heap
+          // string handles, producing a garbage pointer that downstream
+          // runtime calls dereference and corrupt the heap with.
+          int obj_ty = -1;
+          if (tstack.len() >= 3) { obj_ty = tstack[tstack.len() - 3]; }
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
-          tstack.push(0);
-          rtype = KirType::Array;
+          if (obj_ty == 2) {
+            tstack.push(2);
+            rtype = KirType::String;
+          } else {
+            tstack.push(0);
+            rtype = KirType::Array;
+          }
         } else if (ins.op == KirOpcode::ArrayContains) {
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
