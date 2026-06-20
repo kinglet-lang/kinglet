@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Kinglet Language Developers
 // SPDX-License-Identifier: MIT
 
-// Minimal project manifest reader (kinglet.toml, kinglet.nest).
-// Parses [prelude] imports and modules { } entries; other keys are ignored here.
+// Minimal project manifest reader (kinglet.nest).
+// Parses modules { } entries; other keys are ignored here.
 
 export module compiler.project_config;
 string trim_line(string s) {

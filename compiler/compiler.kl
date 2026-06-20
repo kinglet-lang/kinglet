@@ -28,16 +28,12 @@ using namespace compiler.codegen;
 
 // path helpers
 
-// Walk up from start_dir looking for kinglet.nest / kinglet.toml.
+// Walk up from start_dir looking for kinglet.nest.
 string find_project_root(string start_dir) {
   string dir = start_dir;
   while (dir.len() > 0) {
     string nest = dir + "/kinglet.nest";
     if (fs::__read(nest) != null) { return dir; }
-    string candidate = dir + "/kinglet.toml";
-    if (fs::__read(candidate) != null) { return dir; }
-    // Reached the filesystem root: one more probe of "/" then stop, so walking
-    // up from outside any project (e.g. /tmp) terminates instead of looping.
     if (dir == "/") { break; }
     int i = dir.len() - 1;
     while (i >= 0) {
@@ -53,7 +49,6 @@ string find_project_root(string start_dir) {
     }
   }
   if (fs::__read("kinglet.nest") != null) { return "."; }
-  if (fs::__read("kinglet.toml") != null) { return "."; }
   return "";
 }
 
@@ -97,7 +92,7 @@ string resolve_import_path(string base_dir, string relative, string project_root
   // Project-root-relative path: //parser/ast.kl
   if (relative.len() >= 2 && relative[0] == '/' && relative[1] == '/') {
     if (project_root.len() == 0) {
-      return "";  // caller should report "no kinglet.toml found"
+      return "";  // caller should report "no kinglet.nest found"
     }
     string rel = relative.slice(2, relative.len());
     if (project_root[project_root.len() - 1] == '/') {
@@ -313,7 +308,7 @@ void handle_logical_import(Compiler co, string module_id, string importing_dir, 
 string load_module(Compiler co, string import_path, string importing_dir, string alias, string[] selected, bool export_must_match) {
   string resolved = resolve_import_path(importing_dir, import_path, co.imports.project_root);
   if (resolved.len() == 0 && import_path.len() >= 2 && import_path[0] == '/' && import_path[1] == '/') {
-    return "Cannot resolve '//' path: no kinglet.toml found";
+    return "Cannot resolve '//' path: no kinglet.nest found";
   }
   if (str_arr_contains(co.imports.loading_paths, resolved)) {
     return "Circular import: " + import_path;
@@ -352,16 +347,20 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   // function indices in the resulting chunk match across compilers.
   bool is_sel = selected.len() > 0;
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
-    prog.declarations[i] match {
-      Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
-        _reg_import_func_if(co, ns, n, decl_type_name(rt), params, body, is_pub, dl, dc, selected, is_sel, true),
+    Decl d = prog.declarations[i];
+    d match {
+      Decl::FunctionDecl(_, _, _, _, _, _, let is_pub, let dl, let dc) =>
+        _reg_import_func_if(co, ns, function_decl_name(d), decl_type_name(function_decl_return_type(d)),
+          function_decl_params(d), function_decl_body(d), is_pub, dl, dc, selected, is_sel, true),
       _ => {},
     };
   }
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
-    prog.declarations[i] match {
-      Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let body, let is_pub, let dl, let dc) =>
-        _reg_import_func_if(co, ns, n, decl_type_name(rt), params, body, is_pub, dl, dc, selected, is_sel, false),
+    Decl d = prog.declarations[i];
+    d match {
+      Decl::FunctionDecl(_, _, _, _, _, _, let is_pub, let dl, let dc) =>
+        _reg_import_func_if(co, ns, function_decl_name(d), decl_type_name(function_decl_return_type(d)),
+          function_decl_params(d), function_decl_body(d), is_pub, dl, dc, selected, is_sel, false),
       _ => {},
     };
   }
@@ -463,7 +462,7 @@ void register_compiler_function(Compiler co, string chunk_name, string lookup_na
 
 string first_param_type_name(Parameter[] params) {
   if (params.len() == 0) { return ""; }
-  return params[0].type.name;
+  return parameter_type_name_at(params, 0);
 }
 
 // True if `stmts` ends with a bare expression statement (implicit-return tail).
@@ -520,8 +519,7 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
   co.scope_depth = 0;
   compiler_push_scope(co);
   for (int i = 0; i < params.len(); i = i + 1) {
-    Parameter p = params[i];
-    declare_local_typed(co, p.name, p.type.name);
+    declare_local_typed(co, parameter_name_at(params, i), parameter_type_name_at(params, i));
   }
   // Implicit return: if the body's last statement is a bare expression and the
   // function is non-void, compile it as the return value (mirrors
@@ -534,6 +532,11 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
     compiler::bytecode::write_op(co.chunk, OpCode::Null_, line, col);
     compiler::bytecode::write_op(co.chunk, OpCode::Return_, line, col);
   }
+  string[] slot_names = [];
+  for (int li = 0; li < co.locals.len(); li = li + 1) {
+    slot_names.push(local_type_name_at(co.locals, li));
+  }
+  co.chunk.functions[co.funcs[fi].func_index].slot_type_names = slot_names;
   compiler_pop_scope(co);
   co.compiling_ns = prev_ns;
 }
@@ -550,7 +553,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
       _ => skip_decl(co),
     };
   }
-  // Discover project root from kinglet.nest / kinglet.toml.
+  // Discover project root from kinglet.nest.
   if (source_path.len() > 0) {
     co.imports.project_root = find_project_root(dir_of(source_path));
   }
@@ -588,8 +591,8 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
     d match {
-      Decl::FunctionDecl(let n, let _rt, let _tps, let params, let _w, let _body, let _is_pub, let _l, let _c) =>
-        register_top_function(co, n, params),
+      Decl::FunctionDecl(_, _, _, _, _, _, _, _, _) =>
+        register_top_function(co, function_decl_name(d), function_decl_params(d)),
       _ => skip_decl(co),
     };
     if (co.errors.len() > 0) { return co.errors.len(); }
@@ -608,8 +611,9 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   for (int i = 0; i < prog.declarations.len(); i = i + 1) {
     Decl d = prog.declarations[i];
     d match {
-      Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let body, let _is_pub, let l, let c) =>
-        compile_function_body(co, n, decl_type_name(rt), params, body, l, c),
+      Decl::FunctionDecl(_, _, _, _, _, _, _, let l, let c) =>
+        compile_function_body(co, function_decl_name(d), decl_type_name(function_decl_return_type(d)),
+          function_decl_params(d), function_decl_body(d), l, c),
       _ => skip_decl(co),
     };
     if (co.errors.len() > 0) { return co.errors.len(); }
@@ -673,8 +677,8 @@ void register_top_function(Compiler co, string name, Parameter[] params) {
 // represents `T[]` as a generic Array<T> (name "Array", type_args ["T"]), so we
 // render it as "T[]" to preserve the element type for downstream tracking.
 string decl_type_name(TypeExpr t) {
-  if (t.name == "Array" && t.type_args.len() > 0) { return t.type_args[0] + "[]"; }
-  return t.name;
+  if (type_expr_name(t) == "Array" && t.type_args.len() > 0) { return type_expr_arg_at(t, 0) + "[]"; }
+  return type_expr_name(t);
 }
 
 void _register_struct_decl(Compiler co, string name, FieldDef[] fields) {
@@ -693,8 +697,8 @@ void _register_enum_decl(Compiler co, string name, EnumVariant[] variants) {
   string[] variant_names = [];
   int[] param_counts = [];
   for (int i = 0; i < variants.len(); i = i + 1) {
-    variant_names.push(variants[i].name);
-    param_counts.push(variants[i].param_types.len());
+    variant_names.push(enum_variant_name_at(variants, i));
+    param_counts.push(enum_variant_param_types_len(variants, i));
   }
   EnumMeta meta = EnumMeta { name, variant_names, param_counts };
   int idx = compiler::bytecode::add_enum_meta(co.chunk, meta);

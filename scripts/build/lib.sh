@@ -4,11 +4,11 @@
 
 set -euo pipefail
 
-# Locate project root (directory containing kinglet.nest or kinglet.toml).
+# Locate project root (directory containing kinglet.nest).
 find_project_root() {
   local dir="${1:-$(pwd)}"
   while [[ "$dir" != "/" ]]; do
-    if [[ -f "$dir/kinglet.nest" || -f "$dir/kinglet.toml" ]]; then
+    if [[ -f "$dir/kinglet.nest" ]]; then
       printf '%s' "$(cd "$dir" && pwd)"
       return 0
     fi
@@ -17,10 +17,23 @@ find_project_root() {
   return 1
 }
 
-# Minimal TOML scalar reader: get_build_config <root> <key> <default>
+nest_kv() {
+  local nest="$1" key="$2"
+  grep -E "^[[:space:]]*${key}[[:space:]]*=" "$nest" 2>/dev/null | head -1 \
+    | sed -E 's/^[^=]*=[[:space:]]*"?([^"]*)"?/\1/'
+}
+
+nest_module_path() {
+  local nest="$1" module_id="$2"
+  local escaped="${module_id//./\\.}"
+  grep -E "^[[:space:]]*${escaped}[[:space:]]*=" "$nest" 2>/dev/null | head -1 \
+    | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)"/\1/'
+}
+
+# Read build settings from kinglet.nest: get_build_config <root> <key> <default>
 get_build_config() {
   local root="$1" key="$2" default="${3:-}"
-  local file="$root/kinglet.toml"
+  local file="$root/kinglet.nest"
   local line val
   if [[ ! -f "$file" ]]; then
     printf '%s' "$default"
@@ -28,38 +41,42 @@ get_build_config() {
   fi
   case "$key" in
     root)
-      line=$(grep -E '^[[:space:]]*root[[:space:]]*=' "$file" 2>/dev/null | head -1 || true)
+      val=$(nest_kv "$file" default)
+      if [[ -n "$val" ]]; then
+        val=$(nest_module_path "$file" "$val")
+      fi
+      if [[ -n "$val" ]]; then
+        printf '%s' "$val"
+      else
+        printf '%s' "${default:-core/main.kl}"
+      fi
+      return 0
       ;;
     cache_dir)
-      line=$(grep -E '^[[:space:]]*cache_dir[[:space:]]*=' "$file" 2>/dev/null | head -1 || true)
+      val=$(nest_kv "$file" cache)
       ;;
     out_dir)
-      line=$(grep -E '^[[:space:]]*out_dir[[:space:]]*=' "$file" 2>/dev/null | head -1 || true)
+      val=$(nest_kv "$file" out)
       ;;
     engine)
-      line=$(grep -E '^[[:space:]]*engine[[:space:]]*=' "$file" 2>/dev/null | head -1 || true)
+      val=$(nest_kv "$file" engine)
       ;;
     default_backend)
-      line=$(grep -E '^[[:space:]]*default_backend[[:space:]]*=' "$file" 2>/dev/null | head -1 || true)
+      val=$(nest_kv "$file" backend)
       ;;
     shadow_root)
-      line=$(grep -E '^[[:space:]]*shadow_root[[:space:]]*=' "$file" 2>/dev/null | head -1 || true)
+      val=$(nest_kv "$file" shadow_root)
       ;;
     *)
       printf '%s' "$default"
       return 0
       ;;
   esac
-  if [[ -z "$line" ]]; then
+  if [[ -z "$val" ]]; then
     printf '%s' "$default"
     return 0
   fi
-  val=$(printf '%s' "$line" | sed -E 's/^[^=]*=[[:space:]]*//' | sed -E 's/^["'\''](.*)["'\'']$/\1/')
-  if [[ -n "$val" ]]; then
-    printf '%s' "$val"
-  else
-    printf '%s' "$default"
-  fi
+  printf '%s' "$val"
 }
 
 kinglet_layout_dirs() {
@@ -162,8 +179,8 @@ compute_compiler_stamp() {
     printf 'strip_debug:%s\n' "$strip_debug"
     printf 'bootstrap:%s\n' "$(bootstrap_compiler_id "$bootstrap")"
     printf 'rt_version:%s\n' "$(bootstrap_rt_id "$root" "$bootstrap")"
-    if [[ -f "$root/kinglet.toml" ]]; then
-      printf 'kinglet.toml:%s\n' "$(shasum -a 256 "$root/kinglet.toml" | awk '{print $1}')"
+    if [[ -f "$root/kinglet.nest" ]]; then
+      printf 'kinglet.nest:%s\n' "$(shasum -a 256 "$root/kinglet.nest" | awk '{print $1}')"
     fi
     compiler_source_manifest "$root"
   } >"$tmp"

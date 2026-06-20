@@ -34,5 +34,6 @@ modules {
 build {
   default = "core.main"
   backend = native
+  cache   = ".kinglet/cache"
   out     = ".kinglet/out"
 }
