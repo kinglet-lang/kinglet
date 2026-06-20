@@ -41,6 +41,8 @@ pub enum KirOpcode {
   JmpIfErr, PushHandler, PopHandler, PropagateErr,
   Switch,
   Unreachable,
+  EnumVariant,
+  EnumVariantPayload,
   Nop,
 }
 
@@ -70,12 +72,47 @@ pub enum KirType {
   Fn,
 }
 
+bool kir_is_inline_enum_wire(int wire) {
+  return ((wire >> 48) & 0xFFFF) == 0xFFFD;
+}
+
+int kir_enum_variant_ord(int wire) {
+  return wire & 0xFFFF;
+}
+
+int kir_opcode_ord(KirOpcode op) {
+  // Enum members compile as KL_INLINE_ENUM_MARK wires (0xFFFD<<48 | type | variant).
+  if (kir_is_inline_enum_wire(op)) {
+    return kir_enum_variant_ord(op);
+  }
+  // Same 32768+ wire encoding as OpCode; KIR stores plain ordinals in KirInstr.op.
+  if (op >= 32768) {
+    return op - 32768;
+  }
+  return op;
+}
+
+// Plain ordinal for KirOpcode::EnumVariant (see ir.kl enum order).
+int kir_op_enum_variant() { return 70; }
+
+// Store KirType as plain int in KirInstr to avoid struct-literal misalignment when
+// the last field would be an enum member (compiles as EnumVariant bytecode).
+int kir_type_ord(KirType ty) {
+  if (kir_is_inline_enum_wire(ty)) {
+    return kir_enum_variant_ord(ty);
+  }
+  if (ty >= 32768) {
+    return ty - 32768;
+  }
+  return ty;
+}
+
 pub struct KirInstr {
-  KirOpcode op;
+  int op;
   int[] operands;
   int line;
   int col;
-  KirType result_type;
+  int result_type;
 }
 
 pub struct KirBasicBlock {
@@ -94,4 +131,21 @@ pub struct KirFunction {
 
 pub struct KirModule {
   KirFunction[] functions;
+}
+
+// Field accessors must live in the same module as KirInstr: cross-module
+// `arr[i].op` on structs with int[] fields reads the wrong slot (op becomes 72).
+pub int kir_instr_op(KirInstr[] arr, int idx) { return arr[idx].op; }
+pub int[] kir_instr_operands(KirInstr[] arr, int idx) { return arr[idx].operands; }
+pub int kir_instr_line(KirInstr[] arr, int idx) { return arr[idx].line; }
+pub int kir_instr_col(KirInstr[] arr, int idx) { return arr[idx].col; }
+pub int kir_instr_result_type(KirInstr[] arr, int idx) { return arr[idx].result_type; }
+pub KirInstr kir_instr_make(int op, int[] operands, int line, int col, int result_type) {
+  return KirInstr { op, operands, line, col, result_type };
+}
+
+// Push EnumVariant lowering; must run in this module so KirInstr[] push is not cross-module.
+pub void kir_push_enum_variant(KirInstr[] instrs, int packed, int line, int col) {
+  // Use plain ordinals: enum members in struct slots miscompile as inline wires.
+  instrs.push(kir_instr_make(0, [packed, 1], line, col, 2));
 }

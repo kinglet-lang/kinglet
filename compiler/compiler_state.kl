@@ -308,10 +308,25 @@ pub int resolve_function(Compiler co, string name) {
   // function_indices_ map overwrite semantics).
   int i = co.funcs.len() - 1;
   while (i >= 0) {
-    if (co.funcs[i].name == name) { return i; }
+    if (func_entry_name(co.funcs, i) == name) { return i; }
     i = i - 1;
   }
   return -1;
+}
+
+pub string func_entry_name(FuncEntry[] arr, int idx) {
+  return arr[idx].name;
+}
+
+// Register a function table slot; must live here so FuncEntry[] push is not cross-module.
+pub void register_compiler_function(Compiler co, string chunk_name, string lookup_name, int param_count, string first_param_type) {
+  FunctionInfo info = FunctionInfo { chunk_name, 0, param_count, "", [], [] };
+  co.chunk.functions.push(info);
+  int func_index = co.chunk.functions.len() - 1;
+  co.chunk.constants.push(compiler::bytecode::const_function(func_index));
+  int const_index = co.chunk.constants.len() - 1;
+  FuncEntry fe = FuncEntry { lookup_name, func_index, const_index, param_count, first_param_type };
+  co.funcs.push(fe);
 }
 
 pub bool str_less(string a, string b) {

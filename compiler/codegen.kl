@@ -322,13 +322,22 @@ void emit_field_get(Compiler co, Expr obj, string field, int line, int col) {
 }
 
 void emit_struct_lit(Compiler co, TypeExpr t, FieldInit[] fields, int line, int col) {
-  for (int i = 0; i < fields.len(); i = i + 1) {
-    compile_expr(co, fields[i].value);
-  }
-  // Encode: (type_idx << 16) | field_count.
+  // Encode: (type_idx << 16) | field_count. Match bootstrap compiler.cc:
+  // always emit meta.field_names.size() stack slots (Null for missing fields).
   int type_idx = resolve_struct(co, t.name);
   if (type_idx < 0) { type_idx = 0; }
-  int operand = (type_idx << 16) | fields.len();
+  int field_count = fields.len();
+  if (type_idx >= 0 && type_idx < co.chunk.struct_metas.len()) {
+    field_count = co.chunk.struct_metas[type_idx].field_names.len();
+  }
+  for (int i = 0; i < field_count; i = i + 1) {
+    if (i < fields.len()) {
+      compile_expr(co, fields[i].value);
+    } else {
+      compiler::bytecode::write_op(co.chunk, OpCode::Null_, line, col);
+    }
+  }
+  int operand = (type_idx << 16) | field_count;
   compiler::bytecode::write_operand(co.chunk, OpCode::StructNew, operand, line, col);
 }
 

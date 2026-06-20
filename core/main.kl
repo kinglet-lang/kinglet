@@ -6,8 +6,8 @@ export module core.main;
 import lexer.token;
 import lexer.scanner;
 import parser.ast;
-import parser.helpers;
 import parser;
+import parser.helpers;
 import compiler.compiler_state;
 import compiler;
 import compiler.disasm;
@@ -15,6 +15,7 @@ import compiler.bytecode;
 import compiler.ll_emit;
 import ir.ir;
 import ir.ir_emit;
+import ir.ir_print;
 using namespace ir.ir;
 import core.ast_printer;
 import core.checker_driver;
@@ -32,7 +33,7 @@ using namespace compiler;
 int run_bytecode(string source, string path) {
   Token[] tokens = scan(source);
   if (emit_lexer_errors(tokens) > 0) { return 65; }
-  Parser p = parser::helpers::make_parser(tokens);
+  Parser p = make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) {
     for (int i = 0; i < p.errors.len(); i = i + 1) {
@@ -58,7 +59,7 @@ int run_bytecode(string source, string path) {
 int run_save_bytecode(string source, string source_path, string save_path, bool strip_debug) {
   Token[] tokens = scan(source);
   if (emit_lexer_errors(tokens) > 0) { return 65; }
-  Parser p = parser::helpers::make_parser(tokens);
+  Parser p = make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) {
     for (int i = 0; i < p.errors.len(); i = i + 1) {
@@ -80,10 +81,36 @@ int run_save_bytecode(string source, string source_path, string save_path, bool 
   return 0;
 }
 
+int run_kir(string source, string path) {
+  Token[] tokens = scan(source);
+  if (emit_lexer_errors(tokens) > 0) { return 65; }
+  Parser p = make_parser(tokens);
+  Program prog = parser::parse_program(p);
+  if (p.errors.len() > 0) {
+    for (int i = 0; i < p.errors.len(); i = i + 1) {
+      ParseError e = p.errors[i];
+      io::err.line("{}:{}: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  Compiler co = make_compiler();
+  int errs = compile_program(co, prog, path);
+  if (errs > 0) {
+    for (int i = 0; i < co.errors.len(); i = i + 1) {
+      CompileError e = co.errors[i];
+      io::err.line("{}:{}: compile error: {}", e.line, e.col, e.message);
+    }
+    return 65;
+  }
+  KirModule typed_kir = ir::ir_emit::infer_types(co.kir, co.chunk);
+  io::out(ir::ir_print::dump_module(typed_kir));
+  return 0;
+}
+
 int run_emit_ll(string source, string source_path, string ll_path) {
   Token[] tokens = scan(source);
   if (emit_lexer_errors(tokens) > 0) { return 65; }
-  Parser p = parser::helpers::make_parser(tokens);
+  Parser p = make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) {
     for (int i = 0; i < p.errors.len(); i = i + 1) {
@@ -136,6 +163,7 @@ int main() {
   string path = "";
   string save_path = "";
   bool emit_ll = false;
+  bool dump_kir = false;
   string ll_path = "";
   for (int i = start; i < argv.len(); i = i + 1) {
     if (argv[i] == "--ast") {
@@ -152,6 +180,8 @@ int main() {
       emit_ll = true;
       i = i + 1;
       if (i < argv.len()) { ll_path = argv[i]; }
+    } else if (argv[i] == "--kir") {
+      dump_kir = true;
     } else if (argv[i] == "--strip-debug") {
       strip_debug = true;
     } else {
@@ -181,6 +211,9 @@ int main() {
   }
   if (emit_ll) {
     return run_emit_ll(source, path, ll_path);
+  }
+  if (dump_kir) {
+    return run_kir(source, path);
   }
   return core::ast_printer::run_tokens(source);
 }

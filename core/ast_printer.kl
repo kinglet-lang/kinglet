@@ -587,7 +587,7 @@ void print_using_decl(string n, bool is_ns, int depth) {
 
 pub int run_ast(string source) {
   Token[] tokens = scan(source);
-  Parser p = parser::helpers::make_parser(tokens);
+  Parser p = make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) {
     for (int i = 0; i < p.errors.len(); i = i + 1) {

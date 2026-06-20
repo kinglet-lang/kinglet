@@ -48,113 +48,117 @@ int encode_decl_type(string name, Chunk c) {
   return -1;
 }
 
-KirOpcode cmp_kir_op(OpCode op) {
-  if (op == OpCode::Eq) { return KirOpcode::IEq; }
-  if (op == OpCode::Neq) { return KirOpcode::INe; }
-  if (op == OpCode::Lt) { return KirOpcode::ILt; }
-  if (op == OpCode::Gt) { return KirOpcode::IGt; }
-  if (op == OpCode::Le) { return KirOpcode::ILe; }
-  if (op == OpCode::Ge) { return KirOpcode::IGe; }
+KirOpcode cmp_kir_op(int op) {
+  if (op == vm_opcode_ord(OpCode::Eq)) { return KirOpcode::IEq; }
+  if (op == vm_opcode_ord(OpCode::Neq)) { return KirOpcode::INe; }
+  if (op == vm_opcode_ord(OpCode::Lt)) { return KirOpcode::ILt; }
+  if (op == vm_opcode_ord(OpCode::Gt)) { return KirOpcode::IGt; }
+  if (op == vm_opcode_ord(OpCode::Le)) { return KirOpcode::ILe; }
+  if (op == vm_opcode_ord(OpCode::Ge)) { return KirOpcode::IGe; }
   return KirOpcode::Nop;
 }
 
-KirOpcode bin_kir_op(OpCode op) {
-  if (op == OpCode::Add || op == OpCode::AddI32) { return KirOpcode::IAdd; }
-  if (op == OpCode::Subtract || op == OpCode::SubtractI32) { return KirOpcode::ISub; }
-  if (op == OpCode::Multiply || op == OpCode::MultiplyI32) { return KirOpcode::IMul; }
-  if (op == OpCode::Divide || op == OpCode::DivideI32) { return KirOpcode::IDiv; }
-  if (op == OpCode::Modulo || op == OpCode::ModuloI32) { return KirOpcode::IMod; }
-  if (op == OpCode::BitAnd) { return KirOpcode::IAnd; }
-  if (op == OpCode::BitOr) { return KirOpcode::IOr; }
-  if (op == OpCode::BitXor) { return KirOpcode::IXor; }
-  if (op == OpCode::Shl) { return KirOpcode::IShl; }
-  if (op == OpCode::Shr) { return KirOpcode::IShr; }
+KirOpcode bin_kir_op(int op) {
+  if (op == vm_opcode_ord(OpCode::Add) || op == vm_opcode_ord(OpCode::AddI32)) { return KirOpcode::IAdd; }
+  if (op == vm_opcode_ord(OpCode::Subtract) || op == vm_opcode_ord(OpCode::SubtractI32)) { return KirOpcode::ISub; }
+  if (op == vm_opcode_ord(OpCode::Multiply) || op == vm_opcode_ord(OpCode::MultiplyI32)) { return KirOpcode::IMul; }
+  if (op == vm_opcode_ord(OpCode::Divide) || op == vm_opcode_ord(OpCode::DivideI32)) { return KirOpcode::IDiv; }
+  if (op == vm_opcode_ord(OpCode::Modulo) || op == vm_opcode_ord(OpCode::ModuloI32)) { return KirOpcode::IMod; }
+  if (op == vm_opcode_ord(OpCode::BitAnd)) { return KirOpcode::IAnd; }
+  if (op == vm_opcode_ord(OpCode::BitOr)) { return KirOpcode::IOr; }
+  if (op == vm_opcode_ord(OpCode::BitXor)) { return KirOpcode::IXor; }
+  if (op == vm_opcode_ord(OpCode::Shl)) { return KirOpcode::IShl; }
+  if (op == vm_opcode_ord(OpCode::Shr)) { return KirOpcode::IShr; }
   return KirOpcode::Nop;
+}
+
+// EnumVariant bytecode → KirOpcode::EnumVariant (ll_emit calls kl_enum_inline_packed).
+KirInstr enum_variant_kir(Instruction ins) {
+  return KirInstr {
+    kir_op_enum_variant(),
+    [ins.operand],
+    ins.line, ins.col, kir_type_ord(KirType::Void),
+  };
 }
 
 KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
-  if (ins.op == OpCode::EnumVariant_) {
-    int v = ins.operand;
-    // Tag-only enums use the canonical inline wire format: the 0xFFFD mark in
-    // bits 48..63 (kinglet_rt_value.h KL_INLINE_ENUM_MARK) so the runtime
-    // (kl_value_eq, kl_value_cmp, printing) treats them as enums, not ints.
-    // Low 32 bits carry (type<<16)|variant.
-    return KirInstr { KirOpcode::ConstInt, [v & 0xFFFFFFFF, 0xFFFD0000], ins.line, ins.col, KirType::Int };
+  if (ins.op - vm_op_enum_variant() == 0) {
+    return enum_variant_kir(ins);
   }
-  if (ins.op == OpCode::Constant) {
+  if (ins.op == vm_opcode_ord(OpCode::Constant)) {
     Constant k = c.constants[ins.operand];
     if (k.kind == ConstKind::Int_) {
       int v = k.int_value;
-      return KirInstr { KirOpcode::ConstInt, [v & 0xFFFFFFFF, (v >> 32) & 0xFFFFFFFF], ins.line, ins.col, KirType::Int };
+      return KirInstr { kir_opcode_ord(KirOpcode::ConstInt), [v & 0xFFFFFFFF, (v >> 32) & 0xFFFFFFFF], ins.line, ins.col, kir_type_ord(KirType::Int) };
     }
     if (k.kind == ConstKind::Double_) {
       // Store raw IEEE 754 bits as two 32-bit operands (matches bootstrap kir_to_llvm.cc const_double).
       // We cannot extract bits from a double within Kinglet, so use constant pool index.
-      return KirInstr { KirOpcode::ConstFloat, [ins.operand, 0], ins.line, ins.col, KirType::Float };
+      return KirInstr { kir_opcode_ord(KirOpcode::ConstFloat), [ins.operand, 0], ins.line, ins.col, kir_type_ord(KirType::Float) };
     }
     if (k.kind == ConstKind::String_) {
       // Operand is the constant pool index; ll_emit reads the bytes from the
       // Chunk to emit an LLVM string global (via int(s[i]) byte access).
-      return KirInstr { KirOpcode::ConstString, [ins.operand], ins.line, ins.col, KirType::String };
+      return KirInstr { kir_opcode_ord(KirOpcode::ConstString), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::String) };
     }
-    return KirInstr { KirOpcode::Nop, [], ins.line, ins.col, KirType::Int };
+    return KirInstr { kir_opcode_ord(KirOpcode::Nop), [], ins.line, ins.col, kir_type_ord(KirType::Int) };
   }
-  if (ins.op == OpCode::Return_) {
-    return KirInstr { KirOpcode::Ret, [], ins.line, ins.col, KirType::Void };
+  if (ins.op == vm_opcode_ord(OpCode::Return_)) {
+    return KirInstr { kir_opcode_ord(KirOpcode::Ret), [], ins.line, ins.col, kir_type_ord(KirType::Void) };
   }
-  if (ins.op == OpCode::Jmp) {
+  if (ins.op == vm_opcode_ord(OpCode::Jmp)) {
     int target = rel_pc + 1 + ins.operand;
-    return KirInstr { KirOpcode::Br, [target], ins.line, ins.col, KirType::Void };
+    return KirInstr { kir_opcode_ord(KirOpcode::Br), [target], ins.line, ins.col, kir_type_ord(KirType::Void) };
   }
-  if (ins.op == OpCode::JmpFalse) {
+  if (ins.op == vm_opcode_ord(OpCode::JmpFalse)) {
     int target = rel_pc + 1 + ins.operand;
-    return KirInstr { KirOpcode::CondBr, [target], ins.line, ins.col, KirType::Void };
+    return KirInstr { kir_opcode_ord(KirOpcode::CondBr), [target], ins.line, ins.col, kir_type_ord(KirType::Void) };
   }
-  if (ins.op == OpCode::StoreLocal) { return KirInstr { KirOpcode::StoreLocal, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::LoadLocal) { return KirInstr { KirOpcode::LoadLocal, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::Pop) { return KirInstr { KirOpcode::Pop, [], ins.line, ins.col, KirType::Void }; }
-  if (ins.op == OpCode::Dup) { return KirInstr { KirOpcode::Dup, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::Negate) { return KirInstr { KirOpcode::INeg, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::BitNot) { return KirInstr { KirOpcode::IBNot, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::Not_) { return KirInstr { KirOpcode::LNot, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::Null_) { return KirInstr { KirOpcode::ConstNull, [], ins.line, ins.col, KirType::Null }; }
-  if (ins.op == OpCode::IsNull) { return KirInstr { KirOpcode::IsNull, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::ArrayNew) { return KirInstr { KirOpcode::ArrayNew, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::IndexGet) { return KirInstr { KirOpcode::IndexGet, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::ArrayLen) { return KirInstr { KirOpcode::ArrayLen, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::IndexSet) { return KirInstr { KirOpcode::IndexSet, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::ArrayPush) { return KirInstr { KirOpcode::ArrayPush, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::ArrayPop) { return KirInstr { KirOpcode::ArrayPop, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::ArraySlice) { return KirInstr { KirOpcode::ArraySlice, [], ins.line, ins.col, KirType::Array }; }
-  if (ins.op == OpCode::ArrayContains) { return KirInstr { KirOpcode::ArrayContains, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::StringStartsWith) { return KirInstr { KirOpcode::StrStartsWith, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::StringEndsWith) { return KirInstr { KirOpcode::StrEndsWith, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::StringReplace) { return KirInstr { KirOpcode::StrReplace, [], ins.line, ins.col, KirType::String }; }
-  if (ins.op == OpCode::StringSplit) { return KirInstr { KirOpcode::StrSplit, [], ins.line, ins.col, KirType::Array }; }
-  if (ins.op == OpCode::StringTrim) { return KirInstr { KirOpcode::StrTrim, [], ins.line, ins.col, KirType::String }; }
-  if (ins.op == OpCode::StringToUpper) { return KirInstr { KirOpcode::StrToUpper, [], ins.line, ins.col, KirType::String }; }
-  if (ins.op == OpCode::StringToLower) { return KirInstr { KirOpcode::StrToLower, [], ins.line, ins.col, KirType::String }; }
-  if (ins.op == OpCode::EnumPayloadGet) { return KirInstr { KirOpcode::EnumPayloadGet, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::PushHandler) { return KirInstr { KirOpcode::PushHandler, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::PopHandler) { return KirInstr { KirOpcode::PopHandler, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::PropagateErr) { return KirInstr { KirOpcode::PropagateErr, [], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::JmpIfErr) { return KirInstr { KirOpcode::JmpIfErr, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::NativeOut) { return KirInstr { KirOpcode::NativeOut, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::NativeOutLn) { return KirInstr { KirOpcode::NativeOutLn, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::NativeErr) { return KirInstr { KirOpcode::NativeErr, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::NativeErrLn) { return KirInstr { KirOpcode::NativeErrLn, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::NativeIn) { return KirInstr { KirOpcode::NativeIn, [ins.operand], ins.line, ins.col, KirType::String }; }
-  if (ins.op == OpCode::NativeInSecret) { return KirInstr { KirOpcode::NativeInSecret, [ins.operand], ins.line, ins.col, KirType::String }; }
-  if (ins.op == OpCode::NativeFsRead) { return KirInstr { KirOpcode::NativeFsRead, [ins.operand], ins.line, ins.col, KirType::String }; }
-  if (ins.op == OpCode::NativeFsWrite) { return KirInstr { KirOpcode::NativeFsWrite, [ins.operand], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::NativeFsListdir) { return KirInstr { KirOpcode::NativeFsListdir, [ins.operand], ins.line, ins.col, KirType::Array }; }
-  if (ins.op == OpCode::NativeSysArgs) { return KirInstr { KirOpcode::NativeSysArgs, [], ins.line, ins.col, KirType::Array }; }
-  if (ins.op == OpCode::CastTo) {
+  if (ins.op == vm_opcode_ord(OpCode::StoreLocal)) { return KirInstr { kir_opcode_ord(KirOpcode::StoreLocal), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::LoadLocal)) { return KirInstr { kir_opcode_ord(KirOpcode::LoadLocal), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::Pop)) { return KirInstr { kir_opcode_ord(KirOpcode::Pop), [], ins.line, ins.col, kir_type_ord(KirType::Void) }; }
+  if (ins.op == vm_opcode_ord(OpCode::Dup)) { return KirInstr { kir_opcode_ord(KirOpcode::Dup), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::Negate)) { return KirInstr { kir_opcode_ord(KirOpcode::INeg), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::BitNot)) { return KirInstr { kir_opcode_ord(KirOpcode::IBNot), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::Not_)) { return KirInstr { kir_opcode_ord(KirOpcode::LNot), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::Null_)) { return KirInstr { kir_opcode_ord(KirOpcode::ConstNull), [], ins.line, ins.col, kir_type_ord(KirType::Null) }; }
+  if (ins.op == vm_opcode_ord(OpCode::IsNull)) { return KirInstr { kir_opcode_ord(KirOpcode::IsNull), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::ArrayNew)) { return KirInstr { kir_opcode_ord(KirOpcode::ArrayNew), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::IndexGet)) { return KirInstr { kir_opcode_ord(KirOpcode::IndexGet), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::ArrayLen)) { return KirInstr { kir_opcode_ord(KirOpcode::ArrayLen), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::IndexSet)) { return KirInstr { kir_opcode_ord(KirOpcode::IndexSet), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::ArrayPush)) { return KirInstr { kir_opcode_ord(KirOpcode::ArrayPush), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::ArrayPop)) { return KirInstr { kir_opcode_ord(KirOpcode::ArrayPop), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::ArraySlice)) { return KirInstr { kir_opcode_ord(KirOpcode::ArraySlice), [], ins.line, ins.col, kir_type_ord(KirType::Array) }; }
+  if (ins.op == vm_opcode_ord(OpCode::ArrayContains)) { return KirInstr { kir_opcode_ord(KirOpcode::ArrayContains), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::StringStartsWith)) { return KirInstr { kir_opcode_ord(KirOpcode::StrStartsWith), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::StringEndsWith)) { return KirInstr { kir_opcode_ord(KirOpcode::StrEndsWith), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::StringReplace)) { return KirInstr { kir_opcode_ord(KirOpcode::StrReplace), [], ins.line, ins.col, kir_type_ord(KirType::String) }; }
+  if (ins.op == vm_opcode_ord(OpCode::StringSplit)) { return KirInstr { kir_opcode_ord(KirOpcode::StrSplit), [], ins.line, ins.col, kir_type_ord(KirType::Array) }; }
+  if (ins.op == vm_opcode_ord(OpCode::StringTrim)) { return KirInstr { kir_opcode_ord(KirOpcode::StrTrim), [], ins.line, ins.col, kir_type_ord(KirType::String) }; }
+  if (ins.op == vm_opcode_ord(OpCode::StringToUpper)) { return KirInstr { kir_opcode_ord(KirOpcode::StrToUpper), [], ins.line, ins.col, kir_type_ord(KirType::String) }; }
+  if (ins.op == vm_opcode_ord(OpCode::StringToLower)) { return KirInstr { kir_opcode_ord(KirOpcode::StrToLower), [], ins.line, ins.col, kir_type_ord(KirType::String) }; }
+  if (ins.op == vm_opcode_ord(OpCode::EnumPayloadGet)) { return KirInstr { kir_opcode_ord(KirOpcode::EnumPayloadGet), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::PushHandler)) { return KirInstr { kir_opcode_ord(KirOpcode::PushHandler), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::PopHandler)) { return KirInstr { kir_opcode_ord(KirOpcode::PopHandler), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::PropagateErr)) { return KirInstr { kir_opcode_ord(KirOpcode::PropagateErr), [], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::JmpIfErr)) { return KirInstr { kir_opcode_ord(KirOpcode::JmpIfErr), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::NativeOut)) { return KirInstr { kir_opcode_ord(KirOpcode::NativeOut), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::NativeOutLn)) { return KirInstr { kir_opcode_ord(KirOpcode::NativeOutLn), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::NativeErr)) { return KirInstr { kir_opcode_ord(KirOpcode::NativeErr), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::NativeErrLn)) { return KirInstr { kir_opcode_ord(KirOpcode::NativeErrLn), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::NativeIn)) { return KirInstr { kir_opcode_ord(KirOpcode::NativeIn), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::String) }; }
+  if (ins.op == vm_opcode_ord(OpCode::NativeInSecret)) { return KirInstr { kir_opcode_ord(KirOpcode::NativeInSecret), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::String) }; }
+  if (ins.op == vm_opcode_ord(OpCode::NativeFsRead)) { return KirInstr { kir_opcode_ord(KirOpcode::NativeFsRead), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::String) }; }
+  if (ins.op == vm_opcode_ord(OpCode::NativeFsWrite)) { return KirInstr { kir_opcode_ord(KirOpcode::NativeFsWrite), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::NativeFsListdir)) { return KirInstr { kir_opcode_ord(KirOpcode::NativeFsListdir), [ins.operand], ins.line, ins.col, kir_type_ord(KirType::Array) }; }
+  if (ins.op == vm_opcode_ord(OpCode::NativeSysArgs)) { return KirInstr { kir_opcode_ord(KirOpcode::NativeSysArgs), [], ins.line, ins.col, kir_type_ord(KirType::Array) }; }
+  if (ins.op == vm_opcode_ord(OpCode::CastTo)) {
     // operand: 0=int, 1=float, 2=string, 3=char/byte
     KirType ct = ins.operand == 1 ? KirType::Float : (ins.operand == 2 ? KirType::String : (ins.operand == 3 ? KirType::Char : KirType::Int));
-    return KirInstr { KirOpcode::CastTo, [ins.operand], ins.line, ins.col, ct };
+    return KirInstr { kir_opcode_ord(KirOpcode::CastTo), [ins.operand], ins.line, ins.col, kir_type_ord(ct) };
   }
-  if (ins.op == OpCode::EnumVariantPayload) {
+  if (ins.op == vm_opcode_ord(OpCode::EnumVariantPayload)) {
     int packed = ins.operand;
     int type_idx = packed >> 16;
     int variant_idx = packed & 0xFFFF;
@@ -167,19 +171,19 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
     }
     // Payload values are already on the stack (pushed before this instruction);
     // EnumPayloadNew pops param_count of them.
-    return KirInstr { KirOpcode::EnumPayloadNew, [packed, param_count], ins.line, ins.col, KirType::Enum };
+    return KirInstr { kir_opcode_ord(KirOpcode::EnumPayloadNew), [packed, param_count], ins.line, ins.col, kir_type_ord(KirType::Enum) };
   }
-  if (ins.op == OpCode::True_) { return KirInstr { KirOpcode::ConstInt, [1, 0], ins.line, ins.col, KirType::Int }; }
-  if (ins.op == OpCode::False_) { return KirInstr { KirOpcode::ConstInt, [0, 0], ins.line, ins.col, KirType::Int }; }
+  if (ins.op == vm_opcode_ord(OpCode::True_)) { return KirInstr { kir_opcode_ord(KirOpcode::ConstInt), [1, 0], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
+  if (ins.op == vm_opcode_ord(OpCode::False_)) { return KirInstr { kir_opcode_ord(KirOpcode::ConstInt), [0, 0], ins.line, ins.col, kir_type_ord(KirType::Int) }; }
   KirOpcode a = bin_kir_op(ins.op);
   if (a != KirOpcode::Nop) {
-    return KirInstr { a, [], ins.line, ins.col, KirType::Int };
+    return KirInstr { kir_opcode_ord(a), [], ins.line, ins.col, kir_type_ord(KirType::Int) };
   }
   KirOpcode cmp = cmp_kir_op(ins.op);
   if (cmp != KirOpcode::Nop) {
-    return KirInstr { cmp, [], ins.line, ins.col, KirType::Int };
+    return KirInstr { kir_opcode_ord(cmp), [], ins.line, ins.col, kir_type_ord(KirType::Int) };
   }
-  return KirInstr { KirOpcode::Nop, [], ins.line, ins.col, KirType::Int };
+  return KirInstr { kir_opcode_ord(KirOpcode::Nop), [], ins.line, ins.col, kir_type_ord(KirType::Int) };
 }
 
 pub KirModule build_kir_from_chunk(Chunk c) {
@@ -240,16 +244,16 @@ pub KirModule build_kir_from_chunk(Chunk c) {
     }
     for (int pc = start; pc < end; pc = pc + 1) {
       Instruction raw = c.instructions[pc];
-      if (raw.op == OpCode::Call) {
+      if (raw.op == vm_opcode_ord(OpCode::Call)) {
         int fn_idx = -1;
         if (pc > start) {
           Instruction prev = c.instructions[pc - 1];
-          if (prev.op == OpCode::Constant) {
+          if (prev.op == vm_opcode_ord(OpCode::Constant)) {
             Constant pk = c.constants[prev.operand];
             if (pk.kind == ConstKind::Function_) { fn_idx = pk.aux1; }
           }
         }
-        instrs.push(KirInstr { KirOpcode::Call, [raw.operand, fn_idx], raw.line, raw.col, KirType::Int });
+        instrs.push(KirInstr { kir_opcode_ord(KirOpcode::Call), [raw.operand, fn_idx], raw.line, raw.col, kir_type_ord(KirType::Int) });
         int ac = raw.operand;
         for (int a = 0; a < ac; a = a + 1) { if (tstack.len() > 0) { tstack.pop(); } }
         // Track a struct-typed (or struct-array) return value so the caller can
@@ -261,13 +265,13 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           call_sty = encode_decl_type(c.functions[fn_idx].return_type_name, c);
         }
         tstack.push(call_sty);
-      } else if (raw.op == OpCode::StructNew) {
+      } else if (raw.op == vm_opcode_ord(OpCode::StructNew)) {
         int field_count = raw.operand & 0xFFFF;
         for (int f = 0; f < field_count; f = f + 1) { if (tstack.len() > 0) { tstack.pop(); } }
-        instrs.push(KirInstr { KirOpcode::StructNew, [raw.operand], raw.line, raw.col, KirType::Struct });
+        instrs.push(KirInstr { kir_opcode_ord(KirOpcode::StructNew), [raw.operand], raw.line, raw.col, kir_type_ord(KirType::Struct) });
         tstack.push(raw.operand >> 16);
-      } else if (raw.op == OpCode::FieldGet || raw.op == OpCode::FieldSet) {
-        bool is_set = raw.op == OpCode::FieldSet;
+      } else if (raw.op == vm_opcode_ord(OpCode::FieldGet) || raw.op == vm_opcode_ord(OpCode::FieldSet)) {
+        bool is_set = raw.op == vm_opcode_ord(OpCode::FieldSet);
         int styidx = -1;
         if (tstack.len() > 0) { styidx = tstack[tstack.len() - 1]; }
         if (is_set && tstack.len() > 1) { styidx = tstack[tstack.len() - 2]; }
@@ -294,12 +298,12 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           if (found != 1) { fidx = 0; }
         }
         if (is_set) {
-          instrs.push(KirInstr { KirOpcode::FieldSet, [fidx], raw.line, raw.col, KirType::Struct });
+          instrs.push(KirInstr { kir_opcode_ord(KirOpcode::FieldSet), [fidx], raw.line, raw.col, kir_type_ord(KirType::Struct) });
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(styidx);
         } else {
-          instrs.push(KirInstr { KirOpcode::FieldGet, [fidx], raw.line, raw.col, KirType::Int });
+          instrs.push(KirInstr { kir_opcode_ord(KirOpcode::FieldGet), [fidx], raw.line, raw.col, kir_type_ord(KirType::Int) });
           // Propagate the field's declared type so chained access like
           // `p.tokens[i].type` resolves: tokens is "Token[]" -> mk_arr(Token),
           // IndexGet then yields Token, and `.type` resolves its index.
@@ -313,33 +317,36 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(field_ty);
         }
+      } else if (raw.op - vm_op_enum_variant() == 0) {
+        kir_push_enum_variant(instrs, raw.operand, raw.line, raw.col);
+        tstack.push(-1);
       } else {
         KirInstr ki = to_kir_instr(c, raw, pc - start);
         instrs.push(ki);
-        KirOpcode kop = ki.op;
-        if (kop == KirOpcode::ConstInt || kop == KirOpcode::ConstString || kop == KirOpcode::ConstFloat || kop == KirOpcode::ConstNull) {
+        int kop = ki.op;
+        if (kop == kir_opcode_ord(KirOpcode::ConstInt) || kop == kir_opcode_ord(KirOpcode::ConstString) || kop == kir_opcode_ord(KirOpcode::ConstFloat) || kop == kir_opcode_ord(KirOpcode::ConstNull)) {
           tstack.push(-1);
-        } else if (kop == KirOpcode::LoadLocal) {
+        } else if (kop == kir_opcode_ord(KirOpcode::LoadLocal)) {
           int lslot = ki.operands[0];
           int lty = -1;
           if (lslot >= 0 && lslot < local_types.len()) { lty = local_types[lslot]; }
           tstack.push(lty);
-        } else if (kop == KirOpcode::StoreLocal) {
+        } else if (kop == kir_opcode_ord(KirOpcode::StoreLocal)) {
           // StoreLocal copies (peek); record the value's type into its slot.
           int slslot = ki.operands[0];
           int slty = -1;
           if (tstack.len() > 0) { slty = tstack[tstack.len() - 1]; }
           if (slslot >= 0 && slslot < local_types.len()) { local_types[slslot] = slty; }
-        } else if (kop == KirOpcode::Pop || kop == KirOpcode::CondBr) {
+        } else if (kop == kir_opcode_ord(KirOpcode::Pop) || kop == kir_opcode_ord(KirOpcode::CondBr)) {
           if (tstack.len() > 0) { tstack.pop(); }
-        } else if (kop == KirOpcode::INeg || kop == KirOpcode::IBNot || kop == KirOpcode::LNot || kop == KirOpcode::CastTo) {
-          if (tstack.len() > 0) { tstack.pop(); }
-          tstack.push(-1);
-        } else if (kop == KirOpcode::IAdd || kop == KirOpcode::ISub || kop == KirOpcode::IMul || kop == KirOpcode::IDiv || kop == KirOpcode::IMod || kop == KirOpcode::IAnd || kop == KirOpcode::IOr || kop == KirOpcode::IXor || kop == KirOpcode::IShl || kop == KirOpcode::IShr || kop == KirOpcode::IEq || kop == KirOpcode::INe || kop == KirOpcode::ILt || kop == KirOpcode::IGt || kop == KirOpcode::ILe || kop == KirOpcode::IGe) {
-          if (tstack.len() > 0) { tstack.pop(); }
+        } else if (kop == kir_opcode_ord(KirOpcode::INeg) || kop == kir_opcode_ord(KirOpcode::IBNot) || kop == kir_opcode_ord(KirOpcode::LNot) || kop == kir_opcode_ord(KirOpcode::CastTo)) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
-        } else if (kop == KirOpcode::ArrayNew) {
+        } else if (kop == kir_opcode_ord(KirOpcode::IAdd) || kop == kir_opcode_ord(KirOpcode::ISub) || kop == kir_opcode_ord(KirOpcode::IMul) || kop == kir_opcode_ord(KirOpcode::IDiv) || kop == kir_opcode_ord(KirOpcode::IMod) || kop == kir_opcode_ord(KirOpcode::IAnd) || kop == kir_opcode_ord(KirOpcode::IOr) || kop == kir_opcode_ord(KirOpcode::IXor) || kop == kir_opcode_ord(KirOpcode::IShl) || kop == kir_opcode_ord(KirOpcode::IShr) || kop == kir_opcode_ord(KirOpcode::IEq) || kop == kir_opcode_ord(KirOpcode::INe) || kop == kir_opcode_ord(KirOpcode::ILt) || kop == kir_opcode_ord(KirOpcode::IGt) || kop == kir_opcode_ord(KirOpcode::ILe) || kop == kir_opcode_ord(KirOpcode::IGe)) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        } else if (kop == kir_opcode_ord(KirOpcode::ArrayNew)) {
           int ac2 = ki.operands[0];
           // Peek the last element's tracked type before popping, so the array
           // remembers its element struct type (e.g. [P{...}, P{...}] is struct P[]).
@@ -351,7 +358,7 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           } else {
             tstack.push(-1);
           }
-        } else if (kop == KirOpcode::IndexGet) {
+        } else if (kop == kir_opcode_ord(KirOpcode::IndexGet)) {
           if (tstack.len() > 0) { tstack.pop(); }  // index
           // Recover the element struct type from the array's tracked type so a
           // subsequent FieldGet/StoreLocal resolves fields correctly.
@@ -363,40 +370,40 @@ pub KirModule build_kir_from_chunk(Chunk c) {
           } else {
             tstack.push(-1);
           }
-        } else if (kop == KirOpcode::ArrayLen) {
+        } else if (kop == kir_opcode_ord(KirOpcode::ArrayLen)) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
-        } else if (kop == KirOpcode::IndexSet) {
-          if (tstack.len() > 0) { tstack.pop(); }
-          if (tstack.len() > 0) { tstack.pop(); }
-          if (tstack.len() > 0) { tstack.pop(); }
-          tstack.push(-1);
-        } else if (kop == KirOpcode::ArrayPush) {
-          if (tstack.len() > 0) { tstack.pop(); }
-          if (tstack.len() > 0) { tstack.pop(); }
-          tstack.push(-1);
-        } else if (kop == KirOpcode::ArrayPop) {
-          if (tstack.len() > 0) { tstack.pop(); }
-          tstack.push(-1);
-        } else if (kop == KirOpcode::ArraySlice) {
+        } else if (kop == kir_opcode_ord(KirOpcode::IndexSet)) {
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
-        } else if (kop == KirOpcode::ArrayContains) {
+        } else if (kop == kir_opcode_ord(KirOpcode::ArrayPush)) {
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
-        } else if (kop == KirOpcode::StrStartsWith || kop == KirOpcode::StrEndsWith || kop == KirOpcode::StrSplit) {
+        } else if (kop == kir_opcode_ord(KirOpcode::ArrayPop)) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        } else if (kop == kir_opcode_ord(KirOpcode::ArraySlice)) {
+          if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
-        } else if (kop == KirOpcode::StrReplace) {
+        } else if (kop == kir_opcode_ord(KirOpcode::ArrayContains)) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        } else if (kop == kir_opcode_ord(KirOpcode::StrStartsWith) || kop == kir_opcode_ord(KirOpcode::StrEndsWith) || kop == kir_opcode_ord(KirOpcode::StrSplit)) {
+          if (tstack.len() > 0) { tstack.pop(); }
+          if (tstack.len() > 0) { tstack.pop(); }
+          tstack.push(-1);
+        } else if (kop == kir_opcode_ord(KirOpcode::StrReplace)) {
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
-        } else if (kop == KirOpcode::StrTrim || kop == KirOpcode::StrToUpper || kop == KirOpcode::StrToLower) {
+        } else if (kop == kir_opcode_ord(KirOpcode::StrTrim) || kop == kir_opcode_ord(KirOpcode::StrToUpper) || kop == kir_opcode_ord(KirOpcode::StrToLower)) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(-1);
         }
@@ -405,7 +412,7 @@ pub KirModule build_kir_from_chunk(Chunk c) {
     KirBasicBlock[] blocks = [];
     blocks.push(KirBasicBlock { "bb0", instrs });
     string[] pnames = [];
-    funcs.push(KirFunction { fi.name, fi.param_count, pnames, blocks, KirType::Int, order[k] });
+    funcs.push(KirFunction { fi.name, fi.param_count, pnames, blocks, kir_type_ord(KirType::Int), order[k] });
   }
   return KirModule { funcs };
 }
@@ -429,59 +436,63 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
       for (int li = 0; li < 64; li = li + 1) { local_types.push(0); }
       KirInstr[] new_instrs = [];
       for (int i = 0; i < n; i = i + 1) {
-        KirInstr ins = instrs[i];
-        KirType rtype = ins.result_type;
-        if (ins.op == KirOpcode::ConstInt) {
+        int iop = kir_instr_op(instrs, i);
+        int[] iops = kir_instr_operands(instrs, i);
+        int rtype = kir_instr_result_type(instrs, i);
+        if (iop == kir_opcode_ord(KirOpcode::ConstInt)) {
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::ConstFloat) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop - kir_op_enum_variant() == 0) {
+          tstack.push(0);
+          rtype = kir_type_ord(KirType::Enum);
+        } else if (iop == kir_opcode_ord(KirOpcode::ConstFloat)) {
           tstack.push(1);
-          rtype = KirType::Float;
-        } else if (ins.op == KirOpcode::ConstBool || ins.op == KirOpcode::ConstNull) {
+          rtype = kir_type_ord(KirType::Float);
+        } else if (iop == kir_opcode_ord(KirOpcode::ConstBool) || iop == kir_opcode_ord(KirOpcode::ConstNull)) {
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::ConstString) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::ConstString)) {
           tstack.push(2);
-          rtype = KirType::String;
-        } else if (ins.op == KirOpcode::LoadLocal) {
-          int slot = ins.operands[0];
+          rtype = kir_type_ord(KirType::String);
+        } else if (iop == kir_opcode_ord(KirOpcode::LoadLocal)) {
+          int slot = iops[0];
           int ty = 0;
           if (slot >= 0 && slot < local_types.len()) { ty = local_types[slot]; }
           tstack.push(ty);
-          rtype = ty == 1 ? KirType::Float : (ty == 2 ? KirType::String : KirType::Int);
-        } else if (ins.op == KirOpcode::StoreLocal) {
-          int slot = ins.operands[0];
+          rtype = ty == 1 ? kir_type_ord(KirType::Float) : (ty == 2 ? kir_type_ord(KirType::String) : kir_type_ord(KirType::Int));
+        } else if (iop == kir_opcode_ord(KirOpcode::StoreLocal)) {
+          int slot = iops[0];
           int ty = 0;
           if (tstack.len() > 0) { ty = tstack[tstack.len() - 1]; }
           if (slot >= 0 && slot < local_types.len()) {
             local_types[slot] = ty;
           }
-          rtype = ty == 1 ? KirType::Float : (ty == 2 ? KirType::String : KirType::Int);
-        } else if (ins.op == KirOpcode::Pop) {
+          rtype = ty == 1 ? kir_type_ord(KirType::Float) : (ty == 2 ? kir_type_ord(KirType::String) : kir_type_ord(KirType::Int));
+        } else if (iop == kir_opcode_ord(KirOpcode::Pop)) {
           if (tstack.len() > 0) { tstack.pop(); }
-        } else if (ins.op == KirOpcode::Dup) {
+        } else if (iop == kir_opcode_ord(KirOpcode::Dup)) {
           if (tstack.len() > 0) { tstack.push(tstack[tstack.len() - 1]); }
-        } else if (ins.op == KirOpcode::INeg || ins.op == KirOpcode::IBNot) {
+        } else if (iop == kir_opcode_ord(KirOpcode::INeg) || iop == kir_opcode_ord(KirOpcode::IBNot)) {
           int ty = 0;
           if (tstack.len() > 0) { ty = tstack[tstack.len() - 1]; tstack.pop(); }
           tstack.push(ty);
-          rtype = ty == 1 ? KirType::Float : KirType::Int;
-        } else if (ins.op == KirOpcode::LNot) {
+          rtype = ty == 1 ? kir_type_ord(KirType::Float) : kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::LNot)) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::IsNull) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::IsNull)) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::CastTo) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::CastTo)) {
           // operand: 0=int, 1=float, 2=string, 3=char/byte
-          int ck = ins.operands.len() > 0 ? ins.operands[0] : 0;
+          int ck = iops.len() > 0 ? iops[0] : 0;
           if (tstack.len() > 0) { tstack.pop(); }
           int cty = ck == 1 ? 1 : (ck == 2 ? 2 : 0);
           tstack.push(cty);
-          rtype = ck == 1 ? KirType::Float : (ck == 2 ? KirType::String : (ck == 3 ? KirType::Char : KirType::Int));
-        } else if (ins.op == KirOpcode::IAdd || ins.op == KirOpcode::ISub || ins.op == KirOpcode::IMul || ins.op == KirOpcode::IDiv || ins.op == KirOpcode::IMod) {
+          rtype = ck == 1 ? kir_type_ord(KirType::Float) : (ck == 2 ? kir_type_ord(KirType::String) : (ck == 3 ? kir_type_ord(KirType::Char) : kir_type_ord(KirType::Int)));
+        } else if (iop == kir_opcode_ord(KirOpcode::IAdd) || iop == kir_opcode_ord(KirOpcode::ISub) || iop == kir_opcode_ord(KirOpcode::IMul) || iop == kir_opcode_ord(KirOpcode::IDiv) || iop == kir_opcode_ord(KirOpcode::IMod)) {
           int ty_r = 0;
           int ty_l = 0;
           if (tstack.len() > 0) { ty_r = tstack[tstack.len() - 1]; tstack.pop(); }
@@ -489,87 +500,87 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
           int result_ty = 0;
           if (ty_l == 1 || ty_r == 1) { result_ty = 1; }
           // String + String (concat): either operand string -> string result.
-          if (ins.op == KirOpcode::IAdd && (ty_l == 2 || ty_r == 2)) { result_ty = 2; }
+          if (iop == kir_opcode_ord(KirOpcode::IAdd) && (ty_l == 2 || ty_r == 2)) { result_ty = 2; }
           tstack.push(result_ty);
-          rtype = result_ty == 1 ? KirType::Float : (result_ty == 2 ? KirType::String : KirType::Int);
-        } else if (ins.op == KirOpcode::IEq || ins.op == KirOpcode::INe || ins.op == KirOpcode::ILt || ins.op == KirOpcode::IGt || ins.op == KirOpcode::ILe || ins.op == KirOpcode::IGe) {
+          rtype = result_ty == 1 ? kir_type_ord(KirType::Float) : (result_ty == 2 ? kir_type_ord(KirType::String) : kir_type_ord(KirType::Int));
+        } else if (iop == kir_opcode_ord(KirOpcode::IEq) || iop == kir_opcode_ord(KirOpcode::INe) || iop == kir_opcode_ord(KirOpcode::ILt) || iop == kir_opcode_ord(KirOpcode::IGt) || iop == kir_opcode_ord(KirOpcode::ILe) || iop == kir_opcode_ord(KirOpcode::IGe)) {
           int ty_r = 0;
           int ty_l = 0;
           if (tstack.len() > 0) { ty_r = tstack[tstack.len() - 1]; tstack.pop(); }
           if (tstack.len() > 0) { ty_l = tstack[tstack.len() - 1]; tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::IAnd || ins.op == KirOpcode::IOr || ins.op == KirOpcode::IXor || ins.op == KirOpcode::IShl || ins.op == KirOpcode::IShr) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::IAnd) || iop == kir_opcode_ord(KirOpcode::IOr) || iop == kir_opcode_ord(KirOpcode::IXor) || iop == kir_opcode_ord(KirOpcode::IShl) || iop == kir_opcode_ord(KirOpcode::IShr)) {
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::Call) {
-          int argc = ins.operands[0];
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::Call)) {
+          int argc = iops[0];
           for (int a = 0; a < argc; a = a + 1) { if (tstack.len() > 0) { tstack.pop(); } }
           // Track the callee's return type so a `+` on call results selects
           // string concat (kl_value_add) instead of integer add — e.g.
           // join_parts' recursive `a + b` must concat strings, not add handles.
           int cty = 0;
-          int cfn = ins.operands.len() > 1 ? ins.operands[1] : -1;
+          int cfn = iops.len() > 1 ? iops[1] : -1;
           if (cfn >= 0 && cfn < ch.functions.len()) {
             string rtn = ch.functions[cfn].return_type_name;
             if (rtn == "string" || rtn == "String") { cty = 2; }
             else if (rtn == "float" || rtn == "double" || rtn == "float32" || rtn == "float64") { cty = 1; }
           }
           tstack.push(cty);
-          rtype = cty == 1 ? KirType::Float : (cty == 2 ? KirType::String : KirType::Int);
-        } else if (ins.op == KirOpcode::NativeOut || ins.op == KirOpcode::NativeOutLn ||
-                   ins.op == KirOpcode::NativeErr || ins.op == KirOpcode::NativeErrLn ||
-                   ins.op == KirOpcode::NativeIn || ins.op == KirOpcode::NativeInSecret) {
-          int argc = ins.operands[0];
+          rtype = cty == 1 ? kir_type_ord(KirType::Float) : (cty == 2 ? kir_type_ord(KirType::String) : kir_type_ord(KirType::Int));
+        } else if (iop == kir_opcode_ord(KirOpcode::NativeOut) || iop == kir_opcode_ord(KirOpcode::NativeOutLn) ||
+                   iop == kir_opcode_ord(KirOpcode::NativeErr) || iop == kir_opcode_ord(KirOpcode::NativeErrLn) ||
+                   iop == kir_opcode_ord(KirOpcode::NativeIn) || iop == kir_opcode_ord(KirOpcode::NativeInSecret)) {
+          int argc = iops[0];
           for (int a = 0; a < argc; a = a + 1) { if (tstack.len() > 0) { tstack.pop(); } }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::NativeFsRead || ins.op == KirOpcode::NativeFsListdir) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::NativeFsRead) || iop == kir_opcode_ord(KirOpcode::NativeFsListdir)) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::NativeFsWrite) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::NativeFsWrite)) {
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::NativeSysArgs) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::NativeSysArgs)) {
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::Ret) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::Ret)) {
           // no change
-        } else if (ins.op == KirOpcode::Br || ins.op == KirOpcode::CondBr) {
-          if (ins.op == KirOpcode::CondBr) { if (tstack.len() > 0) { tstack.pop(); } }
-        } else if (ins.op == KirOpcode::StructNew) {
-          int fc = ins.operands[0] & 0xFFFF;
+        } else if (iop == kir_opcode_ord(KirOpcode::Br) || iop == kir_opcode_ord(KirOpcode::CondBr)) {
+          if (iop == kir_opcode_ord(KirOpcode::CondBr)) { if (tstack.len() > 0) { tstack.pop(); } }
+        } else if (iop == kir_opcode_ord(KirOpcode::StructNew)) {
+          int fc = iops[0] & 0xFFFF;
           for (int f = 0; f < fc; f = f + 1) { if (tstack.len() > 0) { tstack.pop(); } }
           tstack.push(0);
-          rtype = KirType::Struct;
-        } else if (ins.op == KirOpcode::FieldGet) {
+          rtype = kir_type_ord(KirType::Struct);
+        } else if (iop == kir_opcode_ord(KirOpcode::FieldGet)) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::FieldSet) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::FieldSet)) {
           if (tstack.len() > 1) { tstack.pop(); tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Struct;
-        } else if (ins.op == KirOpcode::ArrayNew) {
-          int ac = ins.operands[0];
+          rtype = kir_type_ord(KirType::Struct);
+        } else if (iop == kir_opcode_ord(KirOpcode::ArrayNew)) {
+          int ac = iops[0];
           for (int a = 0; a < ac; a = a + 1) { if (tstack.len() > 0) { tstack.pop(); } }
           tstack.push(0);
-          rtype = KirType::Array;
-        } else if (ins.op == KirOpcode::IndexGet) {
+          rtype = kir_type_ord(KirType::Array);
+        } else if (iop == kir_opcode_ord(KirOpcode::IndexGet)) {
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::ArrayLen) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::ArrayLen)) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::ArraySlice) {
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::ArraySlice)) {
           // Stack order (top..bottom): end, start, obj. The result follows the
           // sliced object: slicing a string yields a string, so a later `+`
           // lowers to kl_value_add (concat) rather than integer add. Without
@@ -583,27 +594,27 @@ pub KirModule infer_types(KirModule mod, Chunk ch) {
           if (tstack.len() > 0) { tstack.pop(); }
           if (obj_ty == 2) {
             tstack.push(2);
-            rtype = KirType::String;
+            rtype = kir_type_ord(KirType::String);
           } else {
             tstack.push(0);
-            rtype = KirType::Array;
+            rtype = kir_type_ord(KirType::Array);
           }
-        } else if (ins.op == KirOpcode::ArrayContains) {
+        } else if (iop == kir_opcode_ord(KirOpcode::ArrayContains)) {
           if (tstack.len() > 0) { tstack.pop(); }
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
-        } else if (ins.op == KirOpcode::EnumPayloadNew) {
-          int epc = ins.operands.len() > 1 ? ins.operands[1] : 0;
+          rtype = kir_type_ord(KirType::Int);
+        } else if (iop == kir_opcode_ord(KirOpcode::EnumPayloadNew)) {
+          int epc = iops.len() > 1 ? iops[1] : 0;
           for (int p = 0; p < epc; p = p + 1) { if (tstack.len() > 0) { tstack.pop(); } }
           tstack.push(0);
-          rtype = KirType::Enum;
-        } else if (ins.op == KirOpcode::EnumPayloadGet) {
+          rtype = kir_type_ord(KirType::Enum);
+        } else if (iop == kir_opcode_ord(KirOpcode::EnumPayloadGet)) {
           if (tstack.len() > 0) { tstack.pop(); }
           tstack.push(0);
-          rtype = KirType::Int;
+          rtype = kir_type_ord(KirType::Int);
         }
-        new_instrs.push(KirInstr { ins.op, ins.operands, ins.line, ins.col, rtype });
+        new_instrs.push(kir_instr_make(iop, iops, kir_instr_line(instrs, i), kir_instr_col(instrs, i), rtype));
       }
       new_blocks.push(KirBasicBlock { bb.label, new_instrs });
     }

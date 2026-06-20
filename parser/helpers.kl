@@ -17,75 +17,15 @@ pub struct ParseError {
   string message;
 }
 
+// Scalars before array fields: struct literals with Token[] first misalign under ll_emit.
 pub struct Parser {
-  Token[] tokens;
   int current;
-  ParseError[] errors;
   bool pending_greater;
+  Token[] tokens;
+  ParseError[] errors;
 }
 
-pub Parser make_parser(Token[] tokens) => Parser { tokens, 0, [], false };
-
-// token cursor primitives
-
-bool is_at_end(Parser p) => p.tokens[p.current].type == TokenType::Eof;
-
-Token peek_tok(Parser p) => p.tokens[p.current];
-
-Token previous(Parser p) => p.tokens[p.current - 1];
-
-bool check(Parser p, TokenType t) {
-  if (t == TokenType::Greater && p.pending_greater) { return true; }
-  if (is_at_end(p)) { return false; }
-  return peek_tok(p).type == t;
-}
-
-bool check_at(Parser p, int offset, TokenType t) {
-  if (offset == 0 && t == TokenType::Greater && p.pending_greater) { return true; }
-  int i = p.current + offset;
-  if (i >= p.tokens.len()) { return false; }
-  return p.tokens[i].type == t;
-}
-
-Token advance_tok(Parser p) {
-  if (!is_at_end(p)) { p.current = p.current + 1; }
-  return previous(p);
-}
-
-bool match_tt(Parser p, TokenType t) {
-  if (t == TokenType::Greater && p.pending_greater) {
-    p.pending_greater = false;
-    return true;
-  }
-  if (!check(p, t)) { return false; }
-  advance_tok(p);
-  return true;
-}
-
-// Consume a closing '>' in a generic type list, splitting '>>' via pending_greater.
-void consume_type_greater(Parser p) {
-  if (p.pending_greater) {
-    p.pending_greater = false;
-    return;
-  }
-  if (check(p, TokenType::GreaterGreater)) {
-    advance_tok(p);
-    p.pending_greater = true;
-    return;
-  }
-  consume(p, TokenType::Greater, "Expected '>' after type arguments.");
-}
-
-void error_at(Parser p, Token t, string msg) {
-  ParseError e = ParseError { t.line, t.col, msg };
-  p.errors.push(e);
-}
-
-Token consume(Parser p, TokenType t, string msg) {
-  if (check(p, t)) { return advance_tok(p); }
-  error_at(p, peek_tok(p), msg);
-  return peek_tok(p);
-}
+pub Parser make_parser(Token[] tokens) => Parser { 0, false, tokens, [] };
 
 bool is_type_start(TokenType t) {
   if (t == TokenType::Auto)   { return true; }
@@ -305,12 +245,3 @@ int expr_col(Expr e) => e match {
   Expr::None => -1,
 };
 
-pub string parse_module_id(Parser p, string context) {
-  Token first = consume(p, TokenType::Identifier, "Expected " + context + ".");
-  string module_id = first.lexeme;
-  while (match_tt(p, TokenType::Dot)) {
-    Token part = consume(p, TokenType::Identifier, "Expected identifier after '.' in module name.");
-    module_id = module_id + "." + part.lexeme;
-  }
-  return module_id;
-}

@@ -49,3 +49,17 @@ pub struct Token {
   string string_value;
   string suffix;
 }
+
+bool token_is_inline_enum_wire(int wire) {
+  return ((wire >> 48) & 0xFFFF) == 0xFFFD;
+}
+
+int token_type_ord(TokenType ty) {
+  if (token_is_inline_enum_wire(ty)) {
+    return ty & 0xFFFF;
+  }
+  if (ty >= 32768) {
+    return ty - 32768;
+  }
+  return ty;
+}

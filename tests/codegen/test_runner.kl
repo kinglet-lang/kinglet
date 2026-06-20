@@ -21,7 +21,7 @@ int main() {
   }
   // Tokenize + parse
   Token[] tokens = parser::scan_tokens(source);
-  Parser p = parser::make_parser(tokens);
+  Parser p = make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) {
     for (int i = 0; i < p.errors.len(); i = i + 1) {

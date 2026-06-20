@@ -323,7 +323,7 @@ string load_module(Compiler co, string import_path, string importing_dir, string
   if (source == null) { return "Cannot read: " + import_path; }
   Token[] tokens = scan(source);
   if (emit_lexer_errors(tokens) > 0) { return "Lexer error in " + import_path; }
-  Parser p = parser::helpers::make_parser(tokens);
+  Parser p = make_parser(tokens);
   Program prog = parser::parse_program(p);
   if (p.errors.len() > 0) { return "Parse error in " + import_path + ": " + p.errors[0].message; }
   string exported = export_module_name(prog);
@@ -458,23 +458,7 @@ void apply_using_decl(Compiler co, string module_id, bool is_ns) {
 }
 
 void register_compiler_function(Compiler co, string chunk_name, string lookup_name, int param_count, string first_param_type) {
-  // Allocate function table slot (entry to be patched once body emits).
-  // chunk_name is the bare name stored in the chunk (bootstrap uses bare names;
-  // qualified names only go in the lookup table so serialized output matches).
-  FunctionInfo info = FunctionInfo { chunk_name, 0, param_count, "", [], [] };
-  co.chunk.functions.push(info);
-  int func_index = co.chunk.functions.len() - 1;
-  // Every function gets a Function_ constant, even at decl time. Mirrors
-  // compiler.cc:130 chunk_.add_constant(Value::function_value(idx)).
-  Constant fc = Constant {
-    ConstKind::Function_,
-    0, 0.0, false, "",
-    func_index, 0,
-  };
-  co.chunk.constants.push(fc);
-  int const_index = co.chunk.constants.len() - 1;
-  FuncEntry fe = FuncEntry { lookup_name, func_index, const_index, param_count, first_param_type };
-  co.funcs.push(fe);
+  compiler::compiler_state::register_compiler_function(co, chunk_name, lookup_name, param_count, first_param_type);
 }
 
 string first_param_type_name(Parameter[] params) {
@@ -617,12 +601,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   }
   // Preamble: load function-value(main); Call 0; Return.
   // Source location is hardcoded to 1:0 to match C++'s preamble_loc{1, 0}.
-  Constant main_fc = Constant {
-    ConstKind::Function_,
-    0, 0.0, false, "",
-    co.funcs[main_fi].func_index, 0,
-  };
-  compiler::bytecode::write_constant(co.chunk, main_fc, 1, 0);
+  compiler::bytecode::write_constant(co.chunk, compiler::bytecode::const_function(co.funcs[main_fi].func_index), 1, 0);
   compiler::bytecode::write_operand(co.chunk, OpCode::Call, 0, 1, 0);
   compiler::bytecode::write_op(co.chunk, OpCode::Return_, 1, 0);
   // Pass 2: compile each function body, in source order.

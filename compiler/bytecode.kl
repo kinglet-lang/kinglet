@@ -68,6 +68,28 @@ pub enum OpCode {
   DenseArrayNew,
 }
 
+// Plain u8 ordinals for critical opcode comparisons (avoid enum wire / kl_value_eq).
+int vm_op_enum_variant() { return 47; }
+
+// Opcode ordinals stored in Instruction.op (u8 wire, matches serialize write_u8).
+bool vm_is_inline_enum_wire(int wire) {
+  return ((wire >> 48) & 0xFFFF) == 0xFFFD;
+}
+
+int vm_opcode_ord(OpCode op) {
+  // Enum members compile as KL_INLINE_ENUM_MARK wires (0xFFFD<<48 | type | variant).
+  if (vm_is_inline_enum_wire(op)) {
+    return op & 0xFFFF;
+  }
+  // Compiler-internal OpCode values are encoded as 32768 + ordinal; bytecode
+  // stores the plain u8 ordinal only. kl_cast_to_int on these wires returns the
+  // wire itself, not the ordinal — subtract the base instead.
+  if (op >= 32768) {
+    return op - 32768;
+  }
+  return op;
+}
+
 // Constant pool entry. Tag dispatches which storage field to read.
 //
 // The bootstrap compiler only places scalars in the constant pool: ints,
@@ -108,16 +130,17 @@ pub Constant const_bool(bool v)  => Constant { ConstKind::Bool_,   0, 0.0, v,   
 pub Constant const_char(int v)   => Constant { ConstKind::Char_,   v, 0.0, false, "",  0, 0 };
 pub Constant const_null()         => Constant { ConstKind::Null_,   0, 0.0, false, "",  0, 0 };
 pub Constant const_string(string v) => Constant { ConstKind::String_, 0, 0.0, false, v,   0, 0 };
+pub Constant const_function(int func_index) => Constant { ConstKind::Function_, 0, 0.0, false, "", func_index, 0 };
 
 pub struct Instruction {
-  OpCode op;
+  int op;        // u8 VM opcode ordinal (vm_opcode_ord(OpCode::…))
   int operand;   // index / slot / jump-distance / argc / cast-tag — opcode-dependent
   int line;
   int col;
 }
 
 pub Instruction make_insn(OpCode op, int operand, int line, int col) {
-  return Instruction { op, operand, line, col };
+  return Instruction { vm_opcode_ord(op), operand, line, col };
 }
 
 // Function table entry. `entry` is an instruction index (not byte offset).
@@ -195,12 +218,12 @@ pub int add_constant(Chunk c, Constant v) {
 
 // Append an instruction with no operand. Mirrors Chunk::write.
 pub void write_op(Chunk c, OpCode op, int line, int col) {
-  c.instructions.push(Instruction { op, 0, line, col });
+  c.instructions.push(Instruction { vm_opcode_ord(op), 0, line, col });
 }
 
 // Append an instruction with operand. Mirrors Chunk::write_operand.
 pub void write_operand(Chunk c, OpCode op, int operand, int line, int col) {
-  c.instructions.push(Instruction { op, operand, line, col });
+  c.instructions.push(Instruction { vm_opcode_ord(op), operand, line, col });
 }
 
 // Push constant + emit OP_Constant referring to it. Deduplicates before adding.
@@ -232,7 +255,7 @@ pub void write_constant(Chunk c, Constant v, int line, int col) {
     c.constants.push(v);
     idx = c.constants.len() - 1;
   }
-  c.instructions.push(Instruction { OpCode::Constant, idx, line, col });
+  c.instructions.push(Instruction { vm_opcode_ord(OpCode::Constant), idx, line, col });
 }
 
 pub int add_function(Chunk c, FunctionInfo info) {
@@ -417,7 +440,7 @@ pub void serialize_chunk(Chunk c, string path, bool strip_debug) {
   buf = write_u32(buf, c.instructions.len());
   for (int i = 0; i < c.instructions.len(); i += 1) {
     Instruction insn = c.instructions[i];
-    buf = write_u8(buf, int(insn.op));
+    buf = write_u8(buf, insn.op);
     buf = write_sleb128(buf, insn.operand);
     if (!strip_debug) {
       buf = write_sleb128(buf, insn.line);

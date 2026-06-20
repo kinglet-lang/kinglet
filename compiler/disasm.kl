@@ -24,98 +24,98 @@ export module compiler.disasm;
 import compiler.bytecode;
 using namespace compiler.bytecode;
 
-string opcode_name(OpCode op) {
-  if (op == OpCode::Constant) { return "Constant"; }
-  if (op == OpCode::Null_)    { return "Null"; }
-  if (op == OpCode::True_)    { return "True"; }
-  if (op == OpCode::False_)   { return "False"; }
-  if (op == OpCode::Add)      { return "Add"; }
-  if (op == OpCode::Subtract) { return "Subtract"; }
-  if (op == OpCode::Multiply) { return "Multiply"; }
-  if (op == OpCode::Divide)   { return "Divide"; }
-  if (op == OpCode::Modulo)   { return "Modulo"; }
-  if (op == OpCode::Negate)   { return "Negate"; }
-  if (op == OpCode::Not_)     { return "Not"; }
-  if (op == OpCode::BitNot)   { return "BitNot"; }
-  if (op == OpCode::BitAnd)   { return "BitAnd"; }
-  if (op == OpCode::BitOr)    { return "BitOr"; }
-  if (op == OpCode::BitXor)   { return "BitXor"; }
-  if (op == OpCode::Shl)      { return "Shl"; }
-  if (op == OpCode::Shr)      { return "Shr"; }
-  if (op == OpCode::LoadLocal)  { return "LoadLocal"; }
-  if (op == OpCode::StoreLocal) { return "StoreLocal"; }
-  if (op == OpCode::Pop)      { return "Pop"; }
-  if (op == OpCode::Dup)      { return "Dup"; }
-  if (op == OpCode::IsNull)   { return "IsNull"; }
-  if (op == OpCode::CastTo)   { return "CastTo"; }
-  if (op == OpCode::Call)     { return "Call"; }
-  if (op == OpCode::Return_)  { return "Return"; }
-  if (op == OpCode::Jmp)      { return "Jmp"; }
-  if (op == OpCode::JmpFalse) { return "JmpFalse"; }
-  if (op == OpCode::JmpIfErr)    { return "JmpIfErr"; }
-  if (op == OpCode::PushHandler) { return "PushHandler"; }
-  if (op == OpCode::PopHandler)  { return "PopHandler"; }
-  if (op == OpCode::PropagateErr) { return "PropagateErr"; }
-  if (op == OpCode::Eq)       { return "Eq"; }
-  if (op == OpCode::Neq)      { return "Neq"; }
-  if (op == OpCode::Lt)       { return "Lt"; }
-  if (op == OpCode::Gt)       { return "Gt"; }
-  if (op == OpCode::Le)       { return "Le"; }
-  if (op == OpCode::Ge)       { return "Ge"; }
-  if (op == OpCode::NativeOut)      { return "NativeOut"; }
-  if (op == OpCode::NativeOutLn)    { return "NativeOutLn"; }
-  if (op == OpCode::NativeErr)      { return "NativeErr"; }
-  if (op == OpCode::NativeErrLn)    { return "NativeErrLn"; }
-  if (op == OpCode::NativeIn)       { return "NativeIn"; }
-  if (op == OpCode::NativeInSecret) { return "NativeInSecret"; }
-  if (op == OpCode::NativeFsRead)   { return "NativeFsRead"; }
-  if (op == OpCode::NativeFsWrite)  { return "NativeFsWrite"; }
-  if (op == OpCode::NativeFsListdir) { return "NativeFsListdir"; }
-  if (op == OpCode::NativeSysArgs)  { return "NativeSysArgs"; }
-  if (op == OpCode::StructNew) { return "StructNew"; }
-  if (op == OpCode::FieldGet)  { return "FieldGet"; }
-  if (op == OpCode::FieldSet)  { return "FieldSet"; }
-  if (op == OpCode::EnumVariant_) { return "EnumVariant"; }
-  if (op == OpCode::ArrayNew)     { return "ArrayNew"; }
-  if (op == OpCode::IndexGet)     { return "IndexGet"; }
-  if (op == OpCode::IndexSet)     { return "IndexSet"; }
-  if (op == OpCode::ArrayLen)      { return "ArrayLen"; }
-  if (op == OpCode::ArrayPush)     { return "ArrayPush"; }
-  if (op == OpCode::ArrayResize)   { return "ArrayResize"; }
-  if (op == OpCode::ArrayPop)      { return "ArrayPop"; }
-  if (op == OpCode::ArrayRemove)   { return "ArrayRemove"; }
-  if (op == OpCode::ArrayContains) { return "ArrayContains"; }
-  if (op == OpCode::ArrayClear)    { return "ArrayClear"; }
-  if (op == OpCode::ArrayInsert)   { return "ArrayInsert"; }
-  if (op == OpCode::ArrayIndexOf)  { return "ArrayIndexOf"; }
-  if (op == OpCode::ArraySlice)    { return "ArraySlice"; }
-  if (op == OpCode::ArrayReverse)  { return "ArrayReverse"; }
-  if (op == OpCode::StringStartsWith) { return "StringStartsWith"; }
-  if (op == OpCode::StringEndsWith)   { return "StringEndsWith"; }
-  if (op == OpCode::StringReplace)    { return "StringReplace"; }
-  if (op == OpCode::StringSplit)      { return "StringSplit"; }
-  if (op == OpCode::StringTrim)       { return "StringTrim"; }
-  if (op == OpCode::StringToUpper)    { return "StringToUpper"; }
-  if (op == OpCode::StringToLower)    { return "StringToLower"; }
-  if (op == OpCode::StringToInt)      { return "StringToInt"; }
-  if (op == OpCode::StringToFloat)    { return "StringToFloat"; }
-  if (op == OpCode::StringCode)       { return "StringCode"; }
-  if (op == OpCode::StringCodeAt)     { return "StringCodeAt"; }
-  if (op == OpCode::AddI32)      { return "AddI32"; }
-  if (op == OpCode::SubtractI32) { return "SubtractI32"; }
-  if (op == OpCode::MultiplyI32) { return "MultiplyI32"; }
-  if (op == OpCode::DivideI32)   { return "DivideI32"; }
-  if (op == OpCode::ModuloI32)   { return "ModuloI32"; }
-  if (op == OpCode::DenseArrayNew) { return "DenseArrayNew"; }
-  if (op == OpCode::EnumVariantPayload) { return "EnumVariantPayload"; }
-  if (op == OpCode::EnumPayloadGet)     { return "EnumPayloadGet"; }
-  if (op == OpCode::MapNew)    { return "MapNew"; }
-  if (op == OpCode::MapGet)    { return "MapGet"; }
-  if (op == OpCode::MapSet)    { return "MapSet"; }
-  if (op == OpCode::MapHas)    { return "MapHas"; }
-  if (op == OpCode::MapRemove) { return "MapRemove"; }
-  if (op == OpCode::MapKeys)   { return "MapKeys"; }
-  if (op == OpCode::MapLen)    { return "MapLen"; }
+string opcode_name(int op) {
+  if (op == vm_opcode_ord(OpCode::Constant)) { return "Constant"; }
+  if (op == vm_opcode_ord(OpCode::Null_))    { return "Null"; }
+  if (op == vm_opcode_ord(OpCode::True_))    { return "True"; }
+  if (op == vm_opcode_ord(OpCode::False_))   { return "False"; }
+  if (op == vm_opcode_ord(OpCode::Add))      { return "Add"; }
+  if (op == vm_opcode_ord(OpCode::Subtract)) { return "Subtract"; }
+  if (op == vm_opcode_ord(OpCode::Multiply)) { return "Multiply"; }
+  if (op == vm_opcode_ord(OpCode::Divide))   { return "Divide"; }
+  if (op == vm_opcode_ord(OpCode::Modulo))   { return "Modulo"; }
+  if (op == vm_opcode_ord(OpCode::Negate))   { return "Negate"; }
+  if (op == vm_opcode_ord(OpCode::Not_))     { return "Not"; }
+  if (op == vm_opcode_ord(OpCode::BitNot))   { return "BitNot"; }
+  if (op == vm_opcode_ord(OpCode::BitAnd))   { return "BitAnd"; }
+  if (op == vm_opcode_ord(OpCode::BitOr))    { return "BitOr"; }
+  if (op == vm_opcode_ord(OpCode::BitXor))   { return "BitXor"; }
+  if (op == vm_opcode_ord(OpCode::Shl))      { return "Shl"; }
+  if (op == vm_opcode_ord(OpCode::Shr))      { return "Shr"; }
+  if (op == vm_opcode_ord(OpCode::LoadLocal))  { return "LoadLocal"; }
+  if (op == vm_opcode_ord(OpCode::StoreLocal)) { return "StoreLocal"; }
+  if (op == vm_opcode_ord(OpCode::Pop))      { return "Pop"; }
+  if (op == vm_opcode_ord(OpCode::Dup))      { return "Dup"; }
+  if (op == vm_opcode_ord(OpCode::IsNull))   { return "IsNull"; }
+  if (op == vm_opcode_ord(OpCode::CastTo))   { return "CastTo"; }
+  if (op == vm_opcode_ord(OpCode::Call))     { return "Call"; }
+  if (op == vm_opcode_ord(OpCode::Return_))  { return "Return"; }
+  if (op == vm_opcode_ord(OpCode::Jmp))      { return "Jmp"; }
+  if (op == vm_opcode_ord(OpCode::JmpFalse)) { return "JmpFalse"; }
+  if (op == vm_opcode_ord(OpCode::JmpIfErr))    { return "JmpIfErr"; }
+  if (op == vm_opcode_ord(OpCode::PushHandler)) { return "PushHandler"; }
+  if (op == vm_opcode_ord(OpCode::PopHandler))  { return "PopHandler"; }
+  if (op == vm_opcode_ord(OpCode::PropagateErr)) { return "PropagateErr"; }
+  if (op == vm_opcode_ord(OpCode::Eq))       { return "Eq"; }
+  if (op == vm_opcode_ord(OpCode::Neq))      { return "Neq"; }
+  if (op == vm_opcode_ord(OpCode::Lt))       { return "Lt"; }
+  if (op == vm_opcode_ord(OpCode::Gt))       { return "Gt"; }
+  if (op == vm_opcode_ord(OpCode::Le))       { return "Le"; }
+  if (op == vm_opcode_ord(OpCode::Ge))       { return "Ge"; }
+  if (op == vm_opcode_ord(OpCode::NativeOut))      { return "NativeOut"; }
+  if (op == vm_opcode_ord(OpCode::NativeOutLn))    { return "NativeOutLn"; }
+  if (op == vm_opcode_ord(OpCode::NativeErr))      { return "NativeErr"; }
+  if (op == vm_opcode_ord(OpCode::NativeErrLn))    { return "NativeErrLn"; }
+  if (op == vm_opcode_ord(OpCode::NativeIn))       { return "NativeIn"; }
+  if (op == vm_opcode_ord(OpCode::NativeInSecret)) { return "NativeInSecret"; }
+  if (op == vm_opcode_ord(OpCode::NativeFsRead))   { return "NativeFsRead"; }
+  if (op == vm_opcode_ord(OpCode::NativeFsWrite))  { return "NativeFsWrite"; }
+  if (op == vm_opcode_ord(OpCode::NativeFsListdir)) { return "NativeFsListdir"; }
+  if (op == vm_opcode_ord(OpCode::NativeSysArgs))  { return "NativeSysArgs"; }
+  if (op == vm_opcode_ord(OpCode::StructNew)) { return "StructNew"; }
+  if (op == vm_opcode_ord(OpCode::FieldGet))  { return "FieldGet"; }
+  if (op == vm_opcode_ord(OpCode::FieldSet))  { return "FieldSet"; }
+  if (op == vm_opcode_ord(OpCode::EnumVariant_)) { return "EnumVariant"; }
+  if (op == vm_opcode_ord(OpCode::ArrayNew))     { return "ArrayNew"; }
+  if (op == vm_opcode_ord(OpCode::IndexGet))     { return "IndexGet"; }
+  if (op == vm_opcode_ord(OpCode::IndexSet))     { return "IndexSet"; }
+  if (op == vm_opcode_ord(OpCode::ArrayLen))      { return "ArrayLen"; }
+  if (op == vm_opcode_ord(OpCode::ArrayPush))     { return "ArrayPush"; }
+  if (op == vm_opcode_ord(OpCode::ArrayResize))   { return "ArrayResize"; }
+  if (op == vm_opcode_ord(OpCode::ArrayPop))      { return "ArrayPop"; }
+  if (op == vm_opcode_ord(OpCode::ArrayRemove))   { return "ArrayRemove"; }
+  if (op == vm_opcode_ord(OpCode::ArrayContains)) { return "ArrayContains"; }
+  if (op == vm_opcode_ord(OpCode::ArrayClear))    { return "ArrayClear"; }
+  if (op == vm_opcode_ord(OpCode::ArrayInsert))   { return "ArrayInsert"; }
+  if (op == vm_opcode_ord(OpCode::ArrayIndexOf))  { return "ArrayIndexOf"; }
+  if (op == vm_opcode_ord(OpCode::ArraySlice))    { return "ArraySlice"; }
+  if (op == vm_opcode_ord(OpCode::ArrayReverse))  { return "ArrayReverse"; }
+  if (op == vm_opcode_ord(OpCode::StringStartsWith)) { return "StringStartsWith"; }
+  if (op == vm_opcode_ord(OpCode::StringEndsWith))   { return "StringEndsWith"; }
+  if (op == vm_opcode_ord(OpCode::StringReplace))    { return "StringReplace"; }
+  if (op == vm_opcode_ord(OpCode::StringSplit))      { return "StringSplit"; }
+  if (op == vm_opcode_ord(OpCode::StringTrim))       { return "StringTrim"; }
+  if (op == vm_opcode_ord(OpCode::StringToUpper))    { return "StringToUpper"; }
+  if (op == vm_opcode_ord(OpCode::StringToLower))    { return "StringToLower"; }
+  if (op == vm_opcode_ord(OpCode::StringToInt))      { return "StringToInt"; }
+  if (op == vm_opcode_ord(OpCode::StringToFloat))    { return "StringToFloat"; }
+  if (op == vm_opcode_ord(OpCode::StringCode))       { return "StringCode"; }
+  if (op == vm_opcode_ord(OpCode::StringCodeAt))     { return "StringCodeAt"; }
+  if (op == vm_opcode_ord(OpCode::AddI32))      { return "AddI32"; }
+  if (op == vm_opcode_ord(OpCode::SubtractI32)) { return "SubtractI32"; }
+  if (op == vm_opcode_ord(OpCode::MultiplyI32)) { return "MultiplyI32"; }
+  if (op == vm_opcode_ord(OpCode::DivideI32))   { return "DivideI32"; }
+  if (op == vm_opcode_ord(OpCode::ModuloI32))   { return "ModuloI32"; }
+  if (op == vm_opcode_ord(OpCode::DenseArrayNew)) { return "DenseArrayNew"; }
+  if (op == vm_opcode_ord(OpCode::EnumVariantPayload)) { return "EnumVariantPayload"; }
+  if (op == vm_opcode_ord(OpCode::EnumPayloadGet))     { return "EnumPayloadGet"; }
+  if (op == vm_opcode_ord(OpCode::MapNew))    { return "MapNew"; }
+  if (op == vm_opcode_ord(OpCode::MapGet))    { return "MapGet"; }
+  if (op == vm_opcode_ord(OpCode::MapSet))    { return "MapSet"; }
+  if (op == vm_opcode_ord(OpCode::MapHas))    { return "MapHas"; }
+  if (op == vm_opcode_ord(OpCode::MapRemove)) { return "MapRemove"; }
+  if (op == vm_opcode_ord(OpCode::MapKeys))   { return "MapKeys"; }
+  if (op == vm_opcode_ord(OpCode::MapLen))    { return "MapLen"; }
   return "Unknown";
 }
 
@@ -148,17 +148,17 @@ string cast_kind_name(int operand) {
   return "?";
 }
 
-bool is_native_call(OpCode op) {
-  if (op == OpCode::NativeOut)      { return true; }
-  if (op == OpCode::NativeOutLn)    { return true; }
-  if (op == OpCode::NativeErr)      { return true; }
-  if (op == OpCode::NativeErrLn)    { return true; }
-  if (op == OpCode::NativeIn)       { return true; }
-  if (op == OpCode::NativeInSecret) { return true; }
-  if (op == OpCode::NativeFsRead)   { return true; }
-  if (op == OpCode::NativeFsWrite)  { return true; }
-  if (op == OpCode::NativeFsListdir) { return true; }
-  if (op == OpCode::NativeSysArgs)  { return true; }
+bool is_native_call(int op) {
+  if (op == vm_opcode_ord(OpCode::NativeOut))      { return true; }
+  if (op == vm_opcode_ord(OpCode::NativeOutLn))    { return true; }
+  if (op == vm_opcode_ord(OpCode::NativeErr))      { return true; }
+  if (op == vm_opcode_ord(OpCode::NativeErrLn))    { return true; }
+  if (op == vm_opcode_ord(OpCode::NativeIn))       { return true; }
+  if (op == vm_opcode_ord(OpCode::NativeInSecret)) { return true; }
+  if (op == vm_opcode_ord(OpCode::NativeFsRead))   { return true; }
+  if (op == vm_opcode_ord(OpCode::NativeFsWrite))  { return true; }
+  if (op == vm_opcode_ord(OpCode::NativeFsListdir)) { return true; }
+  if (op == vm_opcode_ord(OpCode::NativeSysArgs))  { return true; }
   return false;
 }
 
@@ -186,32 +186,32 @@ string format_insn(Chunk c, int idx) {
               + opcode_name(ins.op);
   string operand_s = string(ins.operand);
 
-  if (ins.op == OpCode::Constant) {
+  if (ins.op == vm_opcode_ord(OpCode::Constant)) {
     Constant v = c.constants[ins.operand];
     return head + " #" + operand_s + " (" + format_constant(v) + ")";
   }
-  if (ins.op == OpCode::LoadLocal || ins.op == OpCode::StoreLocal) {
+  if (ins.op == vm_opcode_ord(OpCode::LoadLocal) || ins.op == vm_opcode_ord(OpCode::StoreLocal)) {
     return head + " slot " + operand_s;
   }
-  if (ins.op == OpCode::Call) {
+  if (ins.op == vm_opcode_ord(OpCode::Call)) {
     return head + " args=" + operand_s;
   }
-  if (ins.op == OpCode::Jmp || ins.op == OpCode::JmpFalse) {
+  if (ins.op == vm_opcode_ord(OpCode::Jmp) || ins.op == vm_opcode_ord(OpCode::JmpFalse)) {
     return head + " +" + operand_s;
   }
-  if (ins.op == OpCode::CastTo) {
+  if (ins.op == vm_opcode_ord(OpCode::CastTo)) {
     return head + " -> " + cast_kind_name(ins.operand);
   }
   if (is_native_call(ins.op)) {
     return head + " argc=" + operand_s;
   }
-  if (ins.op == OpCode::ArrayNew) {
+  if (ins.op == vm_opcode_ord(OpCode::ArrayNew)) {
     return head + " count=" + operand_s;
   }
-  if (ins.op == OpCode::MapNew) {
+  if (ins.op == vm_opcode_ord(OpCode::MapNew)) {
     return head + " pairs=" + operand_s;
   }
-  if (ins.op == OpCode::DenseArrayNew) {
+  if (ins.op == vm_opcode_ord(OpCode::DenseArrayNew)) {
     int rows = ins.operand / 65536;
     int cols = ins.operand % 65536;
     return head + " rows=" + string(rows) + " cols=" + string(cols);

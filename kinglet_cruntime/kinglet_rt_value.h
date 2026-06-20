@@ -25,6 +25,11 @@ static inline kl_h kl_enum_inline(int32_t type_index, int32_t variant_index) {
                          static_cast<uint64_t>(variant_index & 0xFFFF));
 }
 
+static inline kl_h kl_enum_inline_packed(int32_t packed) {
+  return static_cast<kl_h>(KL_INLINE_ENUM_MARK |
+                         static_cast<uint64_t>(packed & 0xFFFFFFFFu));
+}
+
 static inline kl_h kl_from_int(int64_t value) {
   return static_cast<kl_h>(value);
 }

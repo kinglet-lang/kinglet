@@ -8,42 +8,47 @@ export module ir.ir_print;
 import ir.ir;
 using namespace ir.ir;
 
-string kir_opcode_name(KirOpcode op) {
-  if (op == KirOpcode::ConstInt) { return "const_int"; }
-  if (op == KirOpcode::ConstFloat) { return "const_float"; }
-  if (op == KirOpcode::ConstBool) { return "const_bool"; }
-  if (op == KirOpcode::ConstNull) { return "const_null"; }
-  if (op == KirOpcode::ConstString) { return "const_string"; }
-  if (op == KirOpcode::LoadLocal) { return "load_local"; }
-  if (op == KirOpcode::StoreLocal) { return "store_local"; }
-  if (op == KirOpcode::Pop) { return "pop"; }
-  if (op == KirOpcode::IAdd) { return "iadd"; }
-  if (op == KirOpcode::ISub) { return "isub"; }
-  if (op == KirOpcode::IMul) { return "imul"; }
-  if (op == KirOpcode::IDiv) { return "idiv"; }
-  if (op == KirOpcode::IMod) { return "imod"; }
-  if (op == KirOpcode::Call) { return "call"; }
-  if (op == KirOpcode::Ret) { return "ret"; }
-  if (op == KirOpcode::Br) { return "br"; }
-  if (op == KirOpcode::CondBr) { return "cond_br"; }
-  if (op == KirOpcode::Switch) { return "switch"; }
-  if (op == KirOpcode::Unreachable) { return "unreachable"; }
-  return "nop";
+string kir_opcode_name(int op) {
+  if (op == kir_opcode_ord(KirOpcode::ConstInt)) { return "const_int"; }
+  if (op == kir_opcode_ord(KirOpcode::ConstFloat)) { return "const_float"; }
+  if (op == kir_opcode_ord(KirOpcode::ConstBool)) { return "const_bool"; }
+  if (op == kir_opcode_ord(KirOpcode::ConstNull)) { return "const_null"; }
+  if (op == kir_opcode_ord(KirOpcode::ConstString)) { return "const_string"; }
+  if (op == kir_opcode_ord(KirOpcode::LoadLocal)) { return "load_local"; }
+  if (op == kir_opcode_ord(KirOpcode::StoreLocal)) { return "store_local"; }
+  if (op == kir_opcode_ord(KirOpcode::Pop)) { return "pop"; }
+  if (op == kir_opcode_ord(KirOpcode::IAdd)) { return "iadd"; }
+  if (op == kir_opcode_ord(KirOpcode::ISub)) { return "isub"; }
+  if (op == kir_opcode_ord(KirOpcode::IMul)) { return "imul"; }
+  if (op == kir_opcode_ord(KirOpcode::IDiv)) { return "idiv"; }
+  if (op == kir_opcode_ord(KirOpcode::IMod)) { return "imod"; }
+  if (op == kir_opcode_ord(KirOpcode::Call)) { return "call"; }
+  if (op == kir_opcode_ord(KirOpcode::Ret)) { return "ret"; }
+  if (op == kir_opcode_ord(KirOpcode::Br)) { return "br"; }
+  if (op == kir_opcode_ord(KirOpcode::CondBr)) { return "cond_br"; }
+  if (op == kir_opcode_ord(KirOpcode::StructNew)) { return "struct_new"; }
+  if (op == kir_opcode_ord(KirOpcode::FieldGet)) { return "field_get"; }
+  if (op == kir_opcode_ord(KirOpcode::IEq)) { return "icmp_eq"; }
+  if (op - kir_op_enum_variant() == 0) { return "enum_variant"; }
+  if (op == kir_opcode_ord(KirOpcode::Switch)) { return "switch"; }
+  if (op == kir_opcode_ord(KirOpcode::Unreachable)) { return "unreachable"; }
+  return "op" + string(op);
 }
 
-bool kir_instr_has_result(KirOpcode op) {
-  if (op == KirOpcode::ConstInt) { return true; }
-  if (op == KirOpcode::ConstFloat) { return true; }
-  if (op == KirOpcode::ConstBool) { return true; }
-  if (op == KirOpcode::ConstNull) { return true; }
-  if (op == KirOpcode::ConstString) { return true; }
-  if (op == KirOpcode::LoadLocal) { return true; }
-  if (op == KirOpcode::IAdd) { return true; }
-  if (op == KirOpcode::ISub) { return true; }
-  if (op == KirOpcode::IMul) { return true; }
-  if (op == KirOpcode::IDiv) { return true; }
-  if (op == KirOpcode::IMod) { return true; }
-  if (op == KirOpcode::Call) { return true; }
+bool kir_instr_has_result(int op) {
+  if (op == kir_opcode_ord(KirOpcode::ConstInt)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::ConstFloat)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::ConstBool)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::ConstNull)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::ConstString)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::LoadLocal)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::IAdd)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::ISub)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::IMul)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::IDiv)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::IMod)) { return true; }
+  if (op == kir_opcode_ord(KirOpcode::Call)) { return true; }
+  if (op - kir_op_enum_variant() == 0) { return true; }
   return false;
 }
 
@@ -68,17 +73,24 @@ pub string dump_function(KirFunction function) {
   for (int b = 0; b < function.blocks.len(); b += 1) {
     KirBasicBlock bb = function.blocks[b];
     out = out + "  " + bb.label + ":\n";
-    for (int i = 0; i < bb.instrs.len(); i += 1) {
-      KirInstr insn = bb.instrs[i];
-      if (kir_instr_has_result(insn.op)) {
+    KirInstr[] instrs = bb.instrs;
+    for (int i = 0; i < instrs.len(); i += 1) {
+      int iop = kir_instr_op(instrs, i);
+      int[] iops = kir_instr_operands(instrs, i);
+      if (kir_instr_has_result(iop)) {
         out = out + "    %" + string(temp) + " = ";
         temp = temp + 1;
       } else {
         out = out + "    ";
       }
-      out = out + kir_opcode_name(insn.op);
-      if (insn.operands.len() > 0) {
-        out = out + " " + dump_operands(insn);
+      out = out + kir_opcode_name(iop);
+      if (iops.len() > 0) {
+        string ops = "";
+        for (int j = 0; j < iops.len(); j += 1) {
+          if (j > 0) { ops = ops + " "; }
+          ops = ops + string(iops[j]);
+        }
+        out = out + " " + ops;
       }
       out = out + "\n";
     }
