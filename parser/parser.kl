@@ -868,6 +868,12 @@ Decl parse_export_module(Parser p) {
 Decl parse_import(Parser p) {
   Token import_tok = previous(p);
 
+  if (match_tt(p, TokenType::LeftBrace)) {
+    error_at(p, import_tok,
+             "Import block syntax `import { ... }` is removed; use `import module-id;` "
+             + "with kinglet.nest.");
+    return Decl::LogicalImportDecl("", import_tok.line, import_tok.col);
+  }
   if (check(p, TokenType::Identifier)) {
     string module_id = parse_module_id(p, "module name");
     consume(p, TokenType::Semicolon, "Expected ';' after import.");
@@ -1088,12 +1094,12 @@ Parameter[] parse_parameters(Parser p) {
   if (check(p, TokenType::RightParen)) { return params; }
   TypeExpr t = parse_type_expr(p);
   Token n = consume(p, TokenType::Identifier, "Expected parameter name.");
-  Parameter pp = Parameter { t, n.lexeme };
+  Parameter pp = Parameter { n.lexeme, t };
   params.push(pp);
   while (match_tt(p, TokenType::Comma)) {
     TypeExpr t2 = parse_type_expr(p);
     Token n2 = consume(p, TokenType::Identifier, "Expected parameter name.");
-    Parameter qq = Parameter { t2, n2.lexeme };
+    Parameter qq = Parameter { n2.lexeme, t2 };
     params.push(qq);
   }
   return params;

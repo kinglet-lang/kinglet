@@ -1,6 +1,6 @@
 // RUN: check
 // COMPILE-FAIL
-// CHECK-ERR: Expected module name after 'import'
+// CHECK-ERR: Import block syntax
 import { "token.kl" };
 
 int main() {
