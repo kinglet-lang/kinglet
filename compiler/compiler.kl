@@ -131,7 +131,7 @@ bool str_arr_contains(string[] arr, string val) {
 
 bool func_exists(Compiler co, string name) {
   for (int i = 0; i < co.funcs.len(); i = i + 1) {
-    if (co.funcs[i].name == name) { return true; }
+    if (compiler::compiler_state::func_entry_name(co.funcs, i) == name) { return true; }
   }
   return false;
 }
@@ -162,8 +162,12 @@ void _reg_import_func(Compiler co, string ns, string n, string return_type, Para
     co.imports.pending.push(ImportedFunc { ns, qualified, return_type, params, body, dl, dc });
   }
   int fi = resolve_function(co, qualified);
-  if (is_pub && is_sel && !func_exists(co, n)) {
-    register_func_alias(co, n, co.funcs[fi].func_index, co.funcs[fi].const_index, params.len(), co.funcs[fi].first_param_type);
+  if (is_pub) {
+    register_func_alias(co, n,
+      compiler::compiler_state::func_entry_func_index(co.funcs, fi),
+      compiler::compiler_state::func_entry_const_index(co.funcs, fi),
+      compiler::compiler_state::func_entry_param_count(co.funcs, fi),
+      compiler::compiler_state::func_entry_first_param_type(co.funcs, fi));
   }
 }
 
@@ -250,6 +254,34 @@ bool ends_with_kl(string s) {
   return n >= 3 && s.slice(n - 3, n) == ".kl";
 }
 
+string listdir_entry(string[] entries, int idx) {
+  return entries[idx];
+}
+
+string trim_line(string s) {
+  int start = 0;
+  int end = s.len();
+  while (start < end) {
+    string c = s.slice(start, start + 1);
+    if (c == " " || c == "\t" || c == "\r") { start = start + 1; } else { break; }
+  }
+  while (end > start) {
+    string c = s.slice(end - 1, end);
+    if (c == " " || c == "\t" || c == "\r") { end = end - 1; } else { break; }
+  }
+  return s.slice(start, end);
+}
+
+string[] stems_from_dir_manifest(string text) {
+  string[] out = [];
+  string[] lines = text.split("\n");
+  for (int i = 0; i < lines.len(); i = i + 1) {
+    string stem = trim_line(lines[i]);
+    if (stem.len() > 0) { out.push(stem); }
+  }
+  return out;
+}
+
 string try_directory_import(Compiler co, string module_id, string importing_dir, int line, int col) {
   string dir_rel = module_id_to_path(module_id);
   // Bases to search: the importing file's directory first (file-relative, works
@@ -273,16 +305,33 @@ string try_directory_import(Compiler co, string module_id, string importing_dir,
   }
   if (entries == null) { return "no directory '" + dir_rel + "' found for " + module_id; }
   string load_base = resolved_base.len() > 0 ? resolved_base : ".";
-  for (int ei = 0; ei < entries.len(); ei = ei + 1) {
-    string name = entries[ei];
-    if (!ends_with_kl(name)) { continue; }
-    string stem = name.slice(0, name.len() - 3);
-    if (stem == "_dir") { continue; }
+  string[] stems = [];
+  string dir_path = resolved_base.len() > 0 ? resolved_base + "/" + dir_rel : dir_rel;
+  string manifest = fs::__read(dir_path + "/_dir.kl");
+  if (manifest != null) {
+    stems = stems_from_dir_manifest(manifest);
+  }
+  if (stems.len() == 0) {
+    for (int ei = 0; ei < entries.len(); ei = ei + 1) {
+      string name = listdir_entry(entries, ei);
+      string stem = name;
+      if (ends_with_kl(name)) {
+        stem = name.slice(0, name.len() - 3);
+      }
+      if (stem == "_dir") { continue; }
+      stems.push(stem);
+    }
+  }
+  int loaded = 0;
+  for (int si = 0; si < stems.len(); si = si + 1) {
+    string stem = stems[si];
     string sub_module_id = module_id + "." + stem;
     string sub_rel = dir_rel + "/" + stem + ".kl";
     string err = load_module(co, sub_rel, load_base, sub_module_id, [], true);
     if (err.len() > 0) { return err; }
+    loaded = loaded + 1;
   }
+  if (loaded == 0) { return "no .kl modules in directory '" + dir_rel + "'"; }
   return "";
 }
 
@@ -302,7 +351,7 @@ void handle_logical_import(Compiler co, string module_id, string importing_dir, 
   // directory-as-module relative to the importing file (no .nest needed).
   string dir_err = try_directory_import(co, module_id, importing_dir, line, col);
   if (dir_err.len() == 0) { return; }
-  compile_error(co, line, col, "Unknown module '" + module_id + "'");
+  compile_error(co, line, col, dir_err);
 }
 
 string load_module(Compiler co, string import_path, string importing_dir, string alias, string[] selected, bool export_must_match) {
@@ -508,11 +557,11 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
   }
   // Patch entry to current instruction count, mirroring compile_function in
   // compiler.cc:393.
-  co.chunk.functions[co.funcs[fi].func_index].entry = co.chunk.instructions.len();
-  co.chunk.functions[co.funcs[fi].func_index].return_type_name = ret_type;
+  co.chunk.functions[compiler::compiler_state::func_entry_func_index(co.funcs, fi)].entry = co.chunk.instructions.len();
+  co.chunk.functions[compiler::compiler_state::func_entry_func_index(co.funcs, fi)].return_type_name = ret_type;
   string[] fn_ptypes = [];
   for (int fn_pi = 0; fn_pi < params.len(); fn_pi = fn_pi + 1) { fn_ptypes.push(decl_type_name(params[fn_pi].type)); }
-  co.chunk.functions[co.funcs[fi].func_index].param_type_names = fn_ptypes;
+  co.chunk.functions[compiler::compiler_state::func_entry_func_index(co.funcs, fi)].param_type_names = fn_ptypes;
   // Reset locals; params take slots 0..N-1 at depth 1.
   while (co.locals.len() > 0) { co.locals.pop(); }
   while (co.scope_starts.len() > 0) { co.scope_starts.pop(); }
@@ -536,7 +585,7 @@ void compile_function_body(Compiler co, string name, string ret_type, Parameter[
   for (int li = 0; li < co.locals.len(); li = li + 1) {
     slot_names.push(local_type_name_at(co.locals, li));
   }
-  co.chunk.functions[co.funcs[fi].func_index].slot_type_names = slot_names;
+  co.chunk.functions[compiler::compiler_state::func_entry_func_index(co.funcs, fi)].slot_type_names = slot_names;
   compiler_pop_scope(co);
   co.compiling_ns = prev_ns;
 }
@@ -604,7 +653,7 @@ pub int compile_program(Compiler co, Program prog, string source_path) {
   }
   // Preamble: load function-value(main); Call 0; Return.
   // Source location is hardcoded to 1:0 to match C++'s preamble_loc{1, 0}.
-  compiler::bytecode::write_constant(co.chunk, compiler::bytecode::const_function(co.funcs[main_fi].func_index), 1, 0);
+  compiler::bytecode::write_constant(co.chunk, compiler::bytecode::const_function(compiler::compiler_state::func_entry_func_index(co.funcs, main_fi)), 1, 0);
   compiler::bytecode::write_operand(co.chunk, OpCode::Call, 0, 1, 0);
   compiler::bytecode::write_op(co.chunk, OpCode::Return_, 1, 0);
   // Pass 2: compile each function body, in source order.
@@ -669,7 +718,9 @@ void register_top_function(Compiler co, string name, Parameter[] params) {
   if (receiver.len() > 0 && resolve_struct(co, receiver) >= 0) {
     int fi = co.funcs.len() - 1;
     register_func_alias(co, receiver + "::" + name,
-      co.funcs[fi].func_index, co.funcs[fi].const_index, params.len(), receiver);
+      compiler::compiler_state::func_entry_func_index(co.funcs, fi),
+      compiler::compiler_state::func_entry_const_index(co.funcs, fi),
+      params.len(), receiver);
   }
 }
 
