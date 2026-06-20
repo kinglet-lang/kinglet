@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fast test orchestrator (Ref path + selfhost suites on cached compiler.kbc).
+# Fast test orchestrator (native selfhost compiler + bootstrap native exec).
 #
 # Shadow parity (round-trip, differential) lives in: ./kinglet prove
 set -u
@@ -41,9 +41,10 @@ bash "$ROOT/tests/builtin_methods/run_matrix.sh"
 TOTAL=$((TOTAL + 1))
 PASSED=$((PASSED + 1))
 run_suite "Diagnostic tests" "$ROOT/tests/diagnostics/run_golden.sh"
-run_suite "KBC tests" "$ROOT/tests/kbc/run_golden.sh"
-run_suite "Regression (oracle + drift)" "$ROOT/tests/regression/run_golden.sh"
-run_suite "Property (round-trip + fuzz)" "$ROOT/tests/property/run.sh"
+# VM/kbc-only suites retired with P0-0 (ADR 0022):
+# run_suite "KBC tests" "$ROOT/tests/kbc/run_golden.sh"
+# run_suite "Regression (oracle + drift)" "$ROOT/tests/regression/run_golden.sh"
+# run_suite "Property (round-trip + fuzz)" "$ROOT/tests/property/run.sh"
 
 echo "Summary: $PASSED/$TOTAL suites passed"
 [[ "$PASSED" -eq "$TOTAL" ]] && exit 0 || exit 1

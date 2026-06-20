@@ -7,7 +7,7 @@ source "$ROOT/tests/common.sh"
 
 KINGLET_BIN=""
 BOOTSTRAP_BIN=""
-CLI_KBC=""
+CLI_COMPILER=""
 TMP=""
 FAILURES=0
 PASSED=0
@@ -194,11 +194,14 @@ assert_check_list() {
 
 run_selfhost_pipeline() {
   local src="$1"
-  local kbc="$2"
+  local _kbc="$2"
   local stdout="$3"
   local stderr="$4"
+  local bin="${TMP}/harness-run.bin"
   local compile_ec=0
-  compile_selfhost "$CLI_KBC" "$src" "$kbc" 2>"$stderr" || compile_ec=$?
+  if ! "$BOOTSTRAP_BIN" --backend native -o "$bin" "$src" 2>"$stderr"; then
+    compile_ec=$?
+  fi
   if [[ "$COMPILE_FAIL" -eq 1 ]]; then
     echo "$compile_ec"
     return 0
@@ -208,7 +211,7 @@ run_selfhost_pipeline() {
     return 0
   fi
   local run_ec=0
-  run_kbc "$kbc" >"$stdout" 2>>"$stderr" || run_ec=$?
+  "$bin" >"$stdout" 2>>"$stderr" || run_ec=$?
   echo "$run_ec"
 }
 
@@ -216,8 +219,13 @@ run_bootstrap_pipeline() {
   local src="$1"
   local stdout="$2"
   local stderr="$3"
+  local bin="${TMP}/harness-bs.bin"
   local ec=0
-  "$BOOTSTRAP_BIN" "$src" >"$stdout" 2>"$stderr" || ec=$?
+  if ! "$BOOTSTRAP_BIN" --backend native -o "$bin" "$src" 2>"$stderr"; then
+    echo "$?"
+    return 0
+  fi
+  "$bin" >"$stdout" 2>>"$stderr" || ec=$?
   echo "$ec"
 }
 
@@ -226,7 +234,7 @@ run_check_pipeline() {
   local stdout="$2"
   local stderr="$3"
   local ec=0
-  "$KINGLET_BIN" --run "$CLI_KBC" "$src" --check >"$stdout" 2>"$stderr" || ec=$?
+  "$CLI_COMPILER" --check "$src" >"$stdout" 2>"$stderr" || ec=$?
   echo "$ec"
 }
 
@@ -241,7 +249,7 @@ run_bytecode_pipeline() {
   local stdout="$2"
   local stderr="$3"
   local ec=0
-  "$KINGLET_BIN" --run "$CLI_KBC" --bytecode "$src" >"$stdout" 2>"$stderr" || ec=$?
+  "$CLI_COMPILER" --bytecode "$src" >"$stdout" 2>"$stderr" || ec=$?
   echo "$ec"
 }
 
@@ -250,7 +258,7 @@ run_ast_pipeline() {
   local stdout="$2"
   local stderr="$3"
   local ec=0
-  "$KINGLET_BIN" --run "$CLI_KBC" --ast "$src" >"$stdout" 2>"$stderr" || ec=$?
+  "$CLI_COMPILER" --ast "$src" >"$stdout" 2>"$stderr" || ec=$?
   echo "$ec"
 }
 
@@ -409,10 +417,11 @@ main() {
 
   export_kinglet_bins "$ROOT" || exit 2
   BOOTSTRAP_BIN="$KINGLET_BOOTSTRAP"
-  CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
+  CLI_COMPILER=$(ensure_native_compiler "$ROOT") || exit 2
+  KINGLET_BIN="$CLI_COMPILER"
   TMP="$(mktemp -d)"
 
-  echo "Harness (selfhost via compiler.kbc; VM $KINGLET_BIN; bootstrap $BOOTSTRAP_BIN)"
+  echo "Harness (native compiler $CLI_COMPILER; bootstrap $BOOTSTRAP_BIN)"
   echo "================================="
 
   local path f

@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# Capability matrix probe runner for the self-hosted Kinglet compiler.
-#
-# Every stage goes through compiler.kbc (bootstrap kinglet is only the VM host):
-#   parse  → kinglet --run compiler.kbc --ast <probe>
-#   check  → kinglet --run compiler.kbc --check <probe>   (informational)
-#   compile→ kinglet --run compiler.kbc --save-bytecode <tmp> <probe>
-#   run    → kinglet --run <tmp>
+# Capability matrix probe runner for the native self-hosted Kinglet compiler.
 #
 # The `check` column is reported separately and does NOT gate compile/run: the
 # selfhost checker is still shallow on match, builtins, and using-selective.
@@ -20,8 +14,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/common.sh"
 
 export_kinglet_bins "$ROOT" || exit 2
-KINGLET="$KINGLET_BIN"
-CLI_KBC=$(ensure_cli_kbc "$ROOT") || exit 2
+BOOTSTRAP="$KINGLET_BOOTSTRAP"
+CLI_COMPILER=$(ensure_native_compiler "$ROOT") || exit 2
 
 CASES="$ROOT/tests/probe/cases"
 TMP="$(mktemp -d)"
@@ -37,22 +31,21 @@ classify() {
   local note=""
 
   # Parse
-  if ! "$KINGLET" --run "$CLI_KBC" --ast "$f" >/dev/null 2>"$TMP/e"; then
+  if ! "$CLI_COMPILER" --ast "$f" >/dev/null 2>"$TMP/e"; then
     echo "parse✗|chk-|$(head -1 "$TMP/e")"
     return
   fi
 
   # Check (non-blocking; match "N type error(s)", not "OK: no type errors")
-  "$KINGLET" --run "$CLI_KBC" "$f" --check >/dev/null 2>"$TMP/e"
+  "$CLI_COMPILER" --check "$f" >/dev/null 2>"$TMP/e"
   if grep -qE '[0-9]+ type error' "$TMP/e"; then
     check_cell="chk✗"
     note=$(head -1 "$TMP/e")
   fi
 
-  # Compile
+  local bin="${kbc}.bin"
   : >"$TMP/e"
-  "$KINGLET" --run "$CLI_KBC" --save-bytecode "$kbc" "$f" >/dev/null 2>"$TMP/e" || true
-  if grep -q 'compile error' "$TMP/e"; then
+  if ! "$BOOTSTRAP" --backend native -o "$bin" "$f" >/dev/null 2>"$TMP/e"; then
     local cg_note
     cg_note=$(head -1 "$TMP/e")
     if [[ -n "$note" ]]; then
@@ -62,14 +55,14 @@ classify() {
     fi
     return
   fi
-  if [[ ! -f "$kbc" ]]; then
-    echo "cg✗|${check_cell}|failed to write bytecode"
+  if [[ ! -x "$bin" ]]; then
+    echo "cg✗|${check_cell}|failed to build native probe binary"
     return
   fi
 
   # Run
   local out ec
-  out=$("$KINGLET" --run "$kbc" 2>"$TMP/e") || ec=$?
+  out=$("$bin" 2>"$TMP/e") || ec=$?
   ec=${ec:-0}
   if [[ "$ec" -ne 0 ]]; then
     local rt_note

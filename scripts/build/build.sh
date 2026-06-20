@@ -53,7 +53,12 @@ if [[ "$ENGINE" != "ref" ]]; then
 fi
 
 if [[ -z "$BACKEND" ]]; then
-  BACKEND=$(get_build_config "$ROOT" default_backend "vm")
+  BACKEND=$(get_build_config "$ROOT" default_backend "native")
+fi
+
+if [[ "$BACKEND" != "native" ]]; then
+  echo "kinglet build: only native backend is supported (vm removed)" >&2
+  exit 2
 fi
 
 ensure_kinglet_dirs "$ROOT"
@@ -101,49 +106,5 @@ if [[ "$BACKEND" == "native" ]]; then
   exit 0
 fi
 
-OUT_NAME="compiler.kbc"
-kinglet_layout_dirs "$ROOT"
-OUT_PATH="$KINGLET_OUT_DIR/$OUT_NAME"
-
-if [[ "$STAMP" == "$CACHED_STAMP" && -n "$OBJECT_ID" && -f "$KINGLET_OBJECTS_DIR/$OBJECT_ID" && -f "$OUT_PATH" ]]; then
-  if [[ "$QUIET" -eq 0 ]]; then
-    echo "kinglet build: cache hit (stamp $STAMP)" >&2
-  fi
-  printf '%s\n' "$OUT_PATH"
-  exit 0
-fi
-
-if [[ "$QUIET" -eq 0 ]]; then
-  echo "kinglet build: compiling $BUILD_ROOT via bootstrap ..." >&2
-fi
-
-TMP_OUT=$(mktemp "${TMPDIR:-/tmp}/kinglet-build.XXXXXX.kbc")
-trap 'rm -f "$TMP_OUT"' EXIT
-
-if [[ "${KINGLET_STRIP_DEBUG:-0}" == "1" ]]; then
-  if ! "$BOOTSTRAP" --save-bytecode "$TMP_OUT" --strip-debug "$ENTRY" 2>"$ROOT/.kinglet_build.err"; then
-    echo "kinglet build: bootstrap compile failed:" >&2
-    cat "$ROOT/.kinglet_build.err" >&2
-    rm -f "$ROOT/.kinglet_build.err"
-    exit 2
-  fi
-elif ! "$BOOTSTRAP" --save-bytecode "$TMP_OUT" "$ENTRY" 2>"$ROOT/.kinglet_build.err"; then
-  echo "kinglet build: bootstrap compile failed:" >&2
-  cat "$ROOT/.kinglet_build.err" >&2
-  rm -f "$ROOT/.kinglet_build.err"
-  exit 2
-fi
-rm -f "$ROOT/.kinglet_build.err"
-
-OBJECT_ID=$(object_id_for_file "$TMP_OUT")
-klos_write_object "$ROOT" "$OBJECT_ID" "$TMP_OUT" "kbc" "$STAMP" "ref"
-OUT_PATH=$(install_out_artifact "$ROOT" "$TMP_OUT" "$OUT_NAME")
-stamp_write "$ROOT" compiler "$STAMP" "$OBJECT_ID"
-
-# Backward-compatible symlink at repo root (release workflow, docs).
-ln -sf ".kinglet/out/$OUT_NAME" "$ROOT/compiler.kbc"
-
-if [[ "$QUIET" -eq 0 ]]; then
-  echo "kinglet build: wrote $OUT_PATH (object $OBJECT_ID)" >&2
-fi
-printf '%s\n' "$OUT_PATH"
+echo "kinglet build: unreachable (native-only)" >&2
+exit 2

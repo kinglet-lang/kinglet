@@ -24,7 +24,7 @@ command -v clang++ >/dev/null 2>&1 || { echo "SKIP shadow smoke: clang++ not fou
 RT_LIB="$(ensure_cruntime_rt "$ROOT" 2>/dev/null)" || RT_LIB="$(dirname "$BOOTSTRAP")/obj/runtime/libkinglet_rt.a"
 [[ -f "$RT_LIB" ]] || { echo "SKIP shadow smoke: $RT_LIB not found (build bootstrap with LLVM)" >&2; exit 0; }
 
-SHADOW_KBC="$(ensure_build_stamp "$ROOT")" || exit 2
+SHADOW_COMPILER="$(ensure_native_compiler "$ROOT")" || exit 2
 
 run_case() {
   local name="$1"
@@ -45,7 +45,7 @@ run_case() {
     want_exit=$(cat "$CASES_DIR/$name.exit")
   fi
 
-  if ! "$KINGLET_BIN" --run "$SHADOW_KBC" --emit-ll "$ll" "$src" 2>"$stderr"; then
+  if ! "$SHADOW_COMPILER" --emit-ll "$ll" "$src" 2>"$stderr"; then
     echo "FAIL $name: shadow --emit-ll failed" >&2
     cat "$stderr" >&2
     FAILURES=$((FAILURES + 1))
@@ -67,14 +67,20 @@ run_case() {
   local stdout_file="$TMP_DIR/$name.stdout"
   local parity_file="$CASES_DIR/$name.stdout"
   if [[ -f "$parity_file" ]]; then
-    local vm_stdout="$TMP_DIR/$name.vm.stdout"
-    "$BOOTSTRAP" "$src" >"$vm_stdout" 2>>"$stderr" || true
-    strip_cr "$vm_stdout"
+    local bs_stdout="$TMP_DIR/$name.bs.stdout"
+    local bs_bin="$TMP_DIR/$name.bs"
+    if ! "$BOOTSTRAP" --backend native -o "$bs_bin" "$src" 2>>"$stderr"; then
+      echo "FAIL $name: bootstrap native build failed" >&2
+      FAILURES=$((FAILURES + 1))
+      return
+    fi
+    "$bs_bin" >"$bs_stdout" 2>>"$stderr" || true
+    strip_cr "$bs_stdout"
     "$bin" >"$stdout_file" 2>>"$stderr" || ec=$?
     strip_cr "$stdout_file"
-    if ! diff -u "$vm_stdout" "$stdout_file" >/dev/null; then
-      echo "FAIL $name: native stdout != VM stdout" >&2
-      diff -u "$vm_stdout" "$stdout_file" >&2
+    if ! diff -u "$bs_stdout" "$stdout_file" >/dev/null; then
+      echo "FAIL $name: native stdout != bootstrap native stdout" >&2
+      diff -u "$bs_stdout" "$stdout_file" >&2
       FAILURES=$((FAILURES + 1))
       return
     fi

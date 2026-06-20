@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
 # Shared helpers for self-hosted golden suites.
 #
-# All suites that drive the self-hosted entry (`core/main.kl`) call
-# `ensure_build_stamp` (Klos + stamp via bootstrap Ref compile on cache miss).
-# A warm cache hit is ~instant; bootstrap compile is ~0.1s locally.
-#
-# Selfhost suites run bytecode on the bootstrap Ref compiler, which doubles as
-# the VM host (`--run`). The standalone backend/vm C++ VM copy was removed; the
-# self-host backend is to be reimplemented in Kinglet itself.
-# Override with KINGLET (VM host) or KINGLET_BOOTSTRAP (C++ compiler).
+# Selfhost suites drive the native toolchain compiler (`.kinglet/out/compiler`)
+# built via `ensure_native_compiler`. Override with KINGLET_BOOTSTRAP (Ref C++
+# compiler, must be LLVM-enabled) or KINGLET (native self-host binary).
 
-# Bootstrap C++ compiler + full CLI (--ast, --check, --save-bytecode on .kl).
+# Bootstrap C++ compiler (native build required for toolchain compile).
 resolve_bootstrap() {
   local root="$1"
   local k="${KINGLET_BOOTSTRAP:-}"
@@ -28,60 +23,62 @@ resolve_bootstrap() {
   fi
 
   for candidate in \
+    "$root/../kinglet-bootstrap/out/Llvm/kinglet" \
     "$root/../kinglet-bootstrap/out/Default/kinglet" \
+    "$root/bootstrap/out/Llvm/kinglet" \
     "$root/bootstrap/out/Default/kinglet" \
+    "$root/../../kinglet/out/Llvm/kinglet" \
     "$root/../../kinglet/out/Default/kinglet" \
-    "$root/../../../kinglet/out/Default/kinglet" \
-    "$root/bootstrap/out/Default/kinglet.exe" \
-    "$root/../../kinglet/out/Default/kinglet.exe" \
-    "$root/../../../kinglet/out/Default/kinglet.exe"; do
+    "$root/../../../kinglet/out/Llvm/kinglet" \
+    "$root/../../../kinglet/out/Default/kinglet"; do
     if [[ -x "$candidate" || -f "$candidate" ]]; then
       printf '%s' "$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"
       return 0
     fi
   done
 
-  echo "bootstrap kinglet not found (tried KINGLET_BOOTSTRAP and sibling kinglet/out/Default/)" >&2
-  echo "Set KINGLET_BOOTSTRAP=/path/to/bootstrap/kinglet to override." >&2
+  echo "bootstrap kinglet not found (tried KINGLET_BOOTSTRAP and sibling out/Llvm/)" >&2
+  echo "Set KINGLET_BOOTSTRAP=/path/to/bootstrap/kinglet (LLVM build)." >&2
   return 2
 }
 
-# Export VM host + bootstrap paths for suites that source common.sh.
-# The bootstrap Ref compiler is the VM host (`--run`); KINGLET overrides it.
+# Export bootstrap + native self-host compiler paths.
 export_kinglet_bins() {
   local root="$1"
   export KINGLET_BOOTSTRAP="$(resolve_bootstrap "$root")" || return 2
-  export KINGLET_BIN="${KINGLET:-$KINGLET_BOOTSTRAP}"
+  export KINGLET_COMPILER="${KINGLET:-}"
+  if [[ -z "$KINGLET_COMPILER" ]]; then
+    export KINGLET_COMPILER="$(ensure_native_compiler "$root" 2>/dev/null)" || true
+  fi
+  export KINGLET_BIN="${KINGLET_COMPILER:-$KINGLET_BOOTSTRAP}"
   export KINGLET="$KINGLET_BIN"
 }
 
-# Ensure toolchain compiler.kbc is built and stamp-fresh (ADR 0014 M0).
-# Selfhost suites need bytecode artefact; always use vm backend here even when
-# kinglet.toml sets default_backend=native (CI bootstrap may lack LLVM).
-# Prints absolute path to .kinglet/out/compiler.kbc on stdout.
-ensure_build_stamp() {
+# Ensure native toolchain compiler binary (ADR 0014 / 0022 P0-0).
+# Prints absolute path to `.kinglet/out/compiler` on stdout.
+ensure_native_compiler() {
   local root="$1"
   local build_sh="$root/scripts/build/build.sh"
   if [[ ! -f "$build_sh" ]]; then
-    echo "ensure_build_stamp: $build_sh not found" >&2
+    echo "ensure_native_compiler: $build_sh not found" >&2
     return 2
   fi
   if [[ -n "${2:-}" ]]; then
     export KINGLET_BOOTSTRAP="$2"
   fi
-  bash "$build_sh" --quiet --backend vm "$root"
+  bash "$build_sh" --quiet --backend native "$root"
 }
 
-# Deprecated alias — use ensure_build_stamp.
+# Deprecated: VM bytecode artefact (removed). Alias for native compiler path.
+ensure_build_stamp() {
+  ensure_native_compiler "$@"
+}
+
 ensure_cli_kbc() {
-  ensure_build_stamp "$@"
+  ensure_native_compiler "$@"
 }
 
-# Normalize CRLF to LF byte-for-byte in the given files. `tr -d` deletes raw
-# 0x0D bytes, sidestepping the text-mode pitfalls of in-place editors: BSD
-# `sed -i` needs a backup-suffix argument and does not interpret `\r`, while
-# Windows `perl -i` re-adds `\r` on write via its `:crlf` layer. tr operates on
-# the byte stream and behaves the same on macOS, Linux, and Git-Bash.
+# Normalize CRLF to LF byte-for-byte in the given files.
 strip_cr() {
   local f
   for f in "$@"; do
@@ -90,59 +87,18 @@ strip_cr() {
   done
 }
 
-# Compile .kl source to .kbc bytecode using the bootstrap compiler.
-# Usage: compile_kl <src.kl> <out.kbc> [--strip-debug]
-# Returns: compiler exit code
-# Side effects: stderr captured to <out.kbc>.stderr
-compile_kl() {
-  local src="$1"
-  local out="$2"
-  local strip_flag=""
-  shift 2
-  if [[ "${1:-}" == "--strip-debug" ]]; then
-    strip_flag="--strip-debug"
-  fi
-  local kinglet="${KINGLET_BOOTSTRAP:-}"
-  if [[ -z "$kinglet" ]]; then
-    echo "compile_kl: KINGLET_BOOTSTRAP not set" >&2
-    return 2
-  fi
-  "$kinglet" --save-bytecode "$out" $strip_flag "$src" 2>"$out.stderr"
-  return $?
-}
-
-# Compile .kl with the self-hosted compiler (compiler.kbc artefact).
-# Usage: compile_selfhost <cli_kbc> <src.kl> <out.kbc> [--strip-debug]
-# Returns: compiler exit code
-# Side effects: stderr captured to <out.kbc>.stderr
-compile_selfhost() {
-  local cli_kbc="$1"
-  local src="$2"
-  local out="$3"
-  local strip_flag=""
+# Run native self-host compiler with flags on a .kl source.
+# Usage: run_compiler <compiler_bin> <mode-flag> <src.kl> [extra args...]
+run_compiler() {
+  local compiler="$1"
+  local flag="$2"
+  local src="$3"
   shift 3
-  if [[ "${1:-}" == "--strip-debug" ]]; then
-    strip_flag="--strip-debug"
-  fi
-  local kinglet="${KINGLET_BIN:-$KINGLET}"
-  "$kinglet" --run "$cli_kbc" --save-bytecode "$out" $strip_flag "$src" 2>"$out.stderr"
-  return $?
-}
-
-# Run compiled .kbc bytecode file using the host VM.
-# Usage: run_kbc <prog.kbc> [args...]
-# Returns: program exit code
-run_kbc() {
-  local kbc="$1"
-  shift
-  local kinglet="${KINGLET_BIN:-$KINGLET}"
-  "$kinglet" --run "$kbc" "$@"
-  return $?
+  "$compiler" "$flag" "$src" "$@"
 }
 
 # Test case runner: compile .kl, run in specified mode, compare outputs.
-# Usage: run_case <name> <mode> <expected_exit> <expected_stdout> <expected_stderr>
-# mode: "run" (execute) | "--ast" | "--check" | "--bytecode"
+# mode: "run" (execute via bootstrap native) | "--ast" | "--check" | "--bytecode"
 run_case() {
   local name="$1"
   local mode="$2"
@@ -153,13 +109,21 @@ run_case() {
   local stdout="${TMP_DIR:-.}/$name.stdout"
   local stderr="${TMP_DIR:-.}/$name.stderr"
   local kinglet="${KINGLET_BIN:-$KINGLET}"
+  local bootstrap="${KINGLET_BOOTSTRAP:-$kinglet}"
 
   if [[ "$mode" == "run" ]]; then
-    "$kinglet" "$source" >"$stdout" 2>"$stderr"
+    local tmpbin="${TMP_DIR:-.}/$name.bin"
+    local actual_exit=0
+    if ! "$bootstrap" --backend native -o "$tmpbin" "$source" 2>"$stderr"; then
+      actual_exit=$?
+    else
+      "$tmpbin" >"$stdout" 2>>"$stderr"
+      actual_exit=$?
+    fi
   else
     "$kinglet" "$mode" "$source" >"$stdout" 2>"$stderr"
+    actual_exit=$?
   fi
-  local actual_exit=$?
 
   strip_cr "$stdout" "$stderr"
 
@@ -182,8 +146,6 @@ run_case() {
   return $failed
 }
 
-# Test case runner with program arguments (forwarded to sys::args()).
-# Usage: run_args_case <name> <expected_exit> <expected_stdout> <expected_stderr> [program args...]
 run_args_case() {
   local name="$1"
   local expected_exit="$2"
@@ -193,9 +155,14 @@ run_args_case() {
   local source="${TEST_CASES_DIR:-.}/$name.kl"
   local stdout="${TMP_DIR:-.}/$name.stdout"
   local stderr="${TMP_DIR:-.}/$name.stderr"
-  local kinglet="${KINGLET_BIN:-$KINGLET}"
+  local bootstrap="${KINGLET_BOOTSTRAP:-$KINGLET_BIN}"
 
-  "$kinglet" "$source" "$@" >"$stdout" 2>"$stderr"
+  local tmpbin="${TMP_DIR:-.}/$name.bin"
+  if ! "$bootstrap" --backend native -o "$tmpbin" "$source" 2>"$stderr"; then
+    strip_cr "$stdout" "$stderr"
+    return 1
+  fi
+  "$tmpbin" "$@" >"$stdout" 2>>"$stderr"
   local actual_exit=$?
 
   strip_cr "$stdout" "$stderr"
@@ -219,8 +186,6 @@ run_args_case() {
   return $failed
 }
 
-# Test case runner: run in mode, assert exit 0, no stderr, stdout contains patterns.
-# Usage: run_contains_case <name> <mode> [pattern1] [pattern2] ...
 run_contains_case() {
   local name="$1"
   local mode="$2"
@@ -255,8 +220,6 @@ run_contains_case() {
   return $failed
 }
 
-# Run a command with a wall-clock cap. Uses GNU timeout or gtimeout when present.
-# Exit code 124 means the child was killed by timeout.
 run_with_timeout() {
   local secs="$1"
   shift
