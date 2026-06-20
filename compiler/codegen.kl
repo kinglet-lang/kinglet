@@ -409,8 +409,7 @@ void emit_propagate(Compiler co, Expr value, int line, int col) {
 void compile_match(Compiler co, Expr value, MatchArm[] arms, int line, int col) {
   // Compile the match value and store in a temp local.
   compile_expr(co, value);
-  int temp_slot = co.locals.len();
-  co.locals.push(Local { "<match_value>", temp_slot, co.scope_depth, "" });
+  int temp_slot = declare_local_typed(co, "<match_value>", "");
   compiler::bytecode::write_operand(co.chunk, OpCode::StoreLocal, temp_slot, line, col);
 
   int[] end_jumps = [];
@@ -460,8 +459,7 @@ void compile_match(Compiler co, Expr value, MatchArm[] arms, int line, int col) 
         Expr::BindingPat(let n, let _l, let _c) => n,
         _ => "",
       };
-      int bind_slot = co.locals.len();
-      co.locals.push(Local { bind_name, bind_slot, co.scope_depth, "" });
+      int bind_slot = declare_local_typed(co, bind_name, "");
       compiler::bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
       compiler::bytecode::write_operand(co.chunk, OpCode::StoreLocal, bind_slot, line, col);
       compiler::bytecode::write_op(co.chunk, OpCode::Pop, line, col);
@@ -576,8 +574,7 @@ void _compile_enum_arm(Compiler co, MatchArm arm, int temp_slot, int line, int c
         Expr::BindingPat(let n, let _l, let _c) => n,
         _ => "",
       };
-      int slot = co.locals.len();
-      co.locals.push(Local { field_name, slot, co.scope_depth, "" });
+      int slot = declare_local_typed(co, field_name, "");
       compiler::bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, pat_line, pat_col);
       compiler::bytecode::write_operand(co.chunk, OpCode::EnumPayloadGet, i, pat_line, pat_col);
       compiler::bytecode::write_operand(co.chunk, OpCode::StoreLocal, slot, pat_line, pat_col);
@@ -647,8 +644,7 @@ void _compile_struct_arm(Compiler co, MatchArm arm, int temp_slot, int line, int
     bool is_wild = fp match { Expr::Ident(let n, _, _) => n == "_", _ => false, };
     if (is_bind) {
       string bn = fp match { Expr::BindingPat(let n, _, _) => n, _ => "", };
-      int slot = co.locals.len();
-      co.locals.push(Local { bn, slot, co.scope_depth, "" });
+      int slot = declare_local_typed(co, bn, "");
       compiler::bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, pat_line, pat_col);
       int fc = compiler::bytecode::add_constant(co.chunk, compiler::bytecode::const_string(fname));
       compiler::bytecode::write_operand(co.chunk, OpCode::FieldGet, fc, pat_line, pat_col);
@@ -705,8 +701,7 @@ void _compile_array_arm(Compiler co, MatchArm arm, int temp_slot, int line, int 
         Expr::BindingPat(let n, let _l, let _c) => n,
         _ => "",
       };
-      int slot = co.locals.len();
-      co.locals.push(Local { elem_name, slot, co.scope_depth, "" });
+      int slot = declare_local_typed(co, elem_name, "");
       compiler::bytecode::write_operand(co.chunk, OpCode::LoadLocal, temp_slot, line, col);
       compiler::bytecode::write_constant(co.chunk, compiler::bytecode::const_int(i), line, col);
       compiler::bytecode::write_op(co.chunk, OpCode::IndexGet, line, col);
@@ -869,8 +864,7 @@ void emit_ns_access(Compiler co, string ns, string member, int line, int col) {
       compile_error(co, line, col, "Unknown enum variant '" + ns + "::" + member + "'.");
       return;
     }
-    EnumMeta meta = co.chunk.enum_metas[type_idx];
-    if (meta.variant_param_counts[variant_idx] > 0) {
+    if (enum_variant_has_payload(co, type_idx, variant_idx)) {
       compile_error(co, line, col, "Enum variant '" + member + "' requires arguments.");
       return;
     }
@@ -1249,8 +1243,7 @@ void compile_try_catch(Compiler co, Stmt body, CatchArm[] catches, int line, int
   // Single catch arm: bind error value, execute body.
   if (catches.len() > 0) {
     CatchArm arm = catches[0];
-    int err_slot = co.locals.len();
-    co.locals.push(Local { arm.binding_name, err_slot, co.scope_depth, "" });
+    int err_slot = declare_local_typed(co, arm.binding_name, "");
     compiler::bytecode::write_operand(co.chunk, OpCode::StoreLocal, err_slot, line, col);
     compile_stmt(co, arm.body);
     co.locals.pop();

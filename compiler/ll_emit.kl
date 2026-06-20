@@ -432,9 +432,9 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         int cs_len = 0;
         string cs_global = "";
         if (cs_pool >= 0 && cs_pool < ch.constants.len()) {
-          Constant csk = ch.constants[cs_pool];
-          if (csk.kind == ConstKind::String_) {
-            cs_len = csk.string_value.len();
+          if (constant_kind_at(ch.constants, cs_pool) == ConstKind::String_) {
+            string sv = constant_string_at(ch.constants, cs_pool);
+            cs_len = sv.len();
             cs_global = "@.str." + string(cs_pool);
           }
         }
@@ -446,7 +446,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         tstack.push(0);
       } else if (iop == kir_opcode_ord(KirOpcode::ConstFloat)) {
         int cidx = iops[0];
-        float dbl = ch.constants[cidx].double_value;
+        float dbl = constant_double_at(ch.constants, cidx);
         string hex = double_to_hex(dbl);
         string r = "%" + string(reg); reg = reg + 1;
         out.push("  " + r + " = call i64 @kl_float_new(double " + hex + ")\n");
@@ -1005,9 +1005,8 @@ pub string emit_ll(KirModule m, Chunk ch) {
   // LLVM c"\HH" bytes. Byte access uses int(s[i]) (char -> code) per the
   // kinglet design (no `as int` on values).
   for (int sci = 0; sci < ch.constants.len(); sci = sci + 1) {
-    Constant sck = ch.constants[sci];
-    if (sck.kind == ConstKind::String_) {
-      string svs = sck.string_value;
+    if (constant_kind_at(ch.constants, sci) == ConstKind::String_) {
+      string svs = constant_string_at(ch.constants, sci);
       out.push("@.str." + string(sci) + " = private unnamed_addr constant [" + string(svs.len()) + " x i8] c\"" + llvm_str_escape(svs) + "\"\n");
     }
   }

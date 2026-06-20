@@ -29,6 +29,46 @@ pub struct TypeExpr {
 
 pub TypeExpr make_type(string name) => TypeExpr { name, [] };
 
+// Field accessors must live in the same module as Parameter/TypeExpr: cross-module
+// `params[i].name` misreads under ll_emit.
+pub string type_expr_name(TypeExpr t) { return t.name; }
+
+pub string parameter_name_at(Parameter[] arr, int idx) { return arr[idx].name; }
+
+pub string parameter_type_name_at(Parameter[] arr, int idx) {
+  return type_expr_name(arr[idx].type);
+}
+
+pub string type_expr_arg_at(TypeExpr t, int idx) { return t.type_args[idx]; }
+
+pub Parameter[] function_decl_params(Decl d) {
+  return d match {
+    Decl::FunctionDecl(_, _, _, let params, _, _, _, _, _) => params,
+    _ => [],
+  };
+}
+
+pub string function_decl_name(Decl d) {
+  return d match {
+    Decl::FunctionDecl(let n, _, _, _, _, _, _, _, _) => n,
+    _ => "",
+  };
+}
+
+pub TypeExpr function_decl_return_type(Decl d) {
+  return d match {
+    Decl::FunctionDecl(_, let rt, _, _, _, _, _, _, _) => rt,
+    _ => make_type("void"),
+  };
+}
+
+pub Stmt function_decl_body(Decl d) {
+  return d match {
+    Decl::FunctionDecl(_, _, _, _, _, let body, _, _, _) => body,
+    _ => Stmt::None,
+  };
+}
+
 // Expression node. Variant payloads, in order:
 //
 //   IntLit(value, width_suffix, line, col)
@@ -99,8 +139,8 @@ pub struct FieldInit {
 }
 
 pub struct Parameter {
-  TypeExpr type;
   string name;
+  TypeExpr type;
 }
 
 // Statement node. Variant payloads, in order:
@@ -145,6 +185,12 @@ pub struct FieldDef {
 pub struct EnumVariant {
   string name;
   TypeExpr[] param_types;
+}
+
+pub string enum_variant_name_at(EnumVariant[] arr, int idx) { return arr[idx].name; }
+
+pub int enum_variant_param_types_len(EnumVariant[] arr, int idx) {
+  return arr[idx].param_types.len();
 }
 
 pub struct ConceptMethod {

@@ -164,10 +164,7 @@ KirInstr to_kir_instr(Chunk c, Instruction ins, int rel_pc) {
     int variant_idx = packed & 0xFFFF;
     int param_count = 0;
     if (type_idx >= 0 && type_idx < c.enum_metas.len()) {
-      EnumMeta em = c.enum_metas[type_idx];
-      if (variant_idx >= 0 && variant_idx < em.variant_param_counts.len()) {
-        param_count = em.variant_param_counts[variant_idx];
-      }
+      param_count = enum_variant_param_count_at(c.enum_metas, type_idx, variant_idx);
     }
     // Payload values are already on the stack (pushed before this instruction);
     // EnumPayloadNew pops param_count of them.

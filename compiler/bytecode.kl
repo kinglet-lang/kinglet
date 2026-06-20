@@ -132,6 +132,28 @@ pub Constant const_null()         => Constant { ConstKind::Null_,   0, 0.0, fals
 pub Constant const_string(string v) => Constant { ConstKind::String_, 0, 0.0, false, v,   0, 0 };
 pub Constant const_function(int func_index) => Constant { ConstKind::Function_, 0, 0.0, false, "", func_index, 0 };
 
+// Field accessors must live in the same module as Constant: cross-module
+// `pool[i].double_value` misreads adjacent slots under ll_emit.
+pub float constant_double_at(Constant[] pool, int idx) { return pool[idx].double_value; }
+
+pub string constant_string_at(Constant[] pool, int idx) { return pool[idx].string_value; }
+
+pub ConstKind constant_kind_at(Constant[] pool, int idx) { return pool[idx].kind; }
+
+pub int enum_variant_param_count_at(EnumMeta[] metas, int type_idx, int variant_idx) {
+  return metas[type_idx].variant_param_counts[variant_idx];
+}
+
+pub EnumMeta[] chunk_enum_metas(Chunk ch) { return ch.enum_metas; }
+
+pub int enum_variant_index_at(EnumMeta[] metas, int type_idx, string variant_name) {
+  string[] variants = metas[type_idx].variants;
+  for (int i = 0; i < variants.len(); i = i + 1) {
+    if (variants[i] == variant_name) { return i; }
+  }
+  return -1;
+}
+
 pub struct Instruction {
   int op;        // u8 VM opcode ordinal (vm_opcode_ord(OpCode::…))
   int operand;   // index / slot / jump-distance / argc / cast-tag — opcode-dependent

@@ -222,10 +222,16 @@ pub int declare_local_typed(Compiler co, string name, string type_name) {
   return slot;
 }
 
+// Field accessors must live in the same module as Local: cross-module
+// `co.locals[i].name` misreads adjacent slots under ll_emit.
+pub string local_name_at(Local[] arr, int idx) { return arr[idx].name; }
+pub int local_slot_at(Local[] arr, int idx) { return arr[idx].slot; }
+pub string local_type_name_at(Local[] arr, int idx) { return arr[idx].type_name; }
+
 pub string lookup_local_type(Compiler co, string name) {
   int i = co.locals.len() - 1;
   while (i >= 0) {
-    if (co.locals[i].name == name) { return co.locals[i].type_name; }
+    if (local_name_at(co.locals, i) == name) { return local_type_name_at(co.locals, i); }
     i = i - 1;
   }
   return "";
@@ -297,7 +303,7 @@ pub int declare_local(Compiler co, string name) {
 pub int resolve_local(Compiler co, string name) {
   int i = co.locals.len() - 1;
   while (i >= 0) {
-    if (co.locals[i].name == name) { return co.locals[i].slot; }
+    if (local_name_at(co.locals, i) == name) { return local_slot_at(co.locals, i); }
     i = i - 1;
   }
   return -1;
@@ -394,11 +400,11 @@ pub int resolve_struct(Compiler co, string name) {
 
 // Look up variant index within an enum type. Returns -1 if not found.
 pub int resolve_variant(Compiler co, int type_idx, string variant_name) {
-  EnumMeta meta = co.chunk.enum_metas[type_idx];
-  for (int i = 0; i < meta.variants.len(); i = i + 1) {
-    if (meta.variants[i] == variant_name) { return i; }
-  }
-  return -1;
+  return enum_variant_index_at(co.chunk.enum_metas, type_idx, variant_name);
+}
+
+pub bool enum_variant_has_payload(Compiler co, int type_idx, int variant_idx) {
+  return enum_variant_param_count_at(co.chunk.enum_metas, type_idx, variant_idx) > 0;
 }
 
 pub int callee_ident_line(Expr callee, int fallback) {
