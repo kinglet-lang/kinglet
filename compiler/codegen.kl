@@ -219,9 +219,8 @@ string infer_struct_type(Compiler co, Expr e) {
 
 int resolve_concept_impl(Compiler co, string method, string arg_type) {
   for (int i = 0; i < co.funcs.len(); i = i + 1) {
-    FuncEntry fe = co.funcs[i];
-    if (fe.name != method) { continue; }
-    if (fe.first_param_type == arg_type) { return i; }
+    if (compiler::compiler_state::func_entry_name(co.funcs, i) != method) { continue; }
+    if (compiler::compiler_state::func_entry_first_param_type(co.funcs, i) == arg_type) { return i; }
   }
   return -1;
 }
@@ -230,7 +229,7 @@ void emit_user_call(Compiler co, int fi, int arg_count, int line, int col) {
   Constant fc = Constant {
     ConstKind::Function_,
     0, 0.0, false, "",
-    co.funcs[fi].func_index, 0,
+    compiler::compiler_state::func_entry_func_index(co.funcs, fi), 0,
   };
   compiler::bytecode::write_constant(co.chunk, fc, line, col);
   compiler::bytecode::write_operand(co.chunk, OpCode::Call, arg_count, line, col);
@@ -880,7 +879,7 @@ void emit_ns_access(Compiler co, string ns, string member, int line, int col) {
       Constant fc = Constant {
         ConstKind::Function_,
         0, 0.0, false, "",
-        co.funcs[fi].func_index, 0,
+        compiler::compiler_state::func_entry_func_index(co.funcs, fi), 0,
       };
       compiler::bytecode::write_constant(co.chunk, fc, line, col);
       return;

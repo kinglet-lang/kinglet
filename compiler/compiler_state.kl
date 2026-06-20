@@ -210,8 +210,11 @@ pub void open_imported_namespace(Compiler co, string module_id) {
   for (int i = 0; i < qualified.len(); i = i + 1) {
     int fi = indices[i];
     string bare = qualified[i].slice(prefix.len(), qualified[i].len());
-    co.funcs.push(FuncEntry { bare, co.funcs[fi].func_index, co.funcs[fi].const_index,
-                                co.funcs[fi].param_count, co.funcs[fi].first_param_type });
+    co.funcs.push(FuncEntry { bare,
+      func_entry_func_index(co.funcs, fi),
+      func_entry_const_index(co.funcs, fi),
+      func_entry_param_count(co.funcs, fi),
+      func_entry_first_param_type(co.funcs, fi) });
   }
 }
 
@@ -322,6 +325,22 @@ pub int resolve_function(Compiler co, string name) {
 
 pub string func_entry_name(FuncEntry[] arr, int idx) {
   return arr[idx].name;
+}
+
+pub int func_entry_func_index(FuncEntry[] arr, int idx) {
+  return arr[idx].func_index;
+}
+
+pub int func_entry_const_index(FuncEntry[] arr, int idx) {
+  return arr[idx].const_index;
+}
+
+pub int func_entry_param_count(FuncEntry[] arr, int idx) {
+  return arr[idx].param_count;
+}
+
+pub string func_entry_first_param_type(FuncEntry[] arr, int idx) {
+  return arr[idx].first_param_type;
 }
 
 // Register a function table slot; must live here so FuncEntry[] push is not cross-module.
