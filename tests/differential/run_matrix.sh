@@ -65,6 +65,11 @@ run_sh() {
   return $?
 }
 
+# Create fs_read probe fixture when present in corpus.
+if [[ -f "$ROOT/tests/probe/cases/28_fs_read.kl" ]]; then
+  printf 'hello' > /tmp/_kl_probe_fs.txt
+fi
+
 printf '| %-26s | %-7s | %-10s | %-9s | %s |\n' "case" "compile" "bytecode" "behavior" "note"
 printf '|%s|%s|%s|%s|%s|\n' "----------------------------" "---------" "------------" "-----------" "--------------------"
 
