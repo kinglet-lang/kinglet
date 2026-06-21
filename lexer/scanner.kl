@@ -520,7 +520,7 @@ pub int emit_lexer_errors(Token[] tokens) {
   int n = 0;
   for (int i = 0; i < tokens.len(); i = i + 1) {
     Token t = tokens[i];
-    if (t.type == TokenType::Error) {
+    if (token_type_eq(t.type, TokenType::Error)) {
       io::err.line("{}:{}: lexer error: {}", t.line, t.col, t.lexeme);
       n = n + 1;
     }
@@ -531,11 +531,11 @@ pub int emit_lexer_errors(Token[] tokens) {
 pub Token[] scan(string source) {
   Scanner s = make_scanner(source);
   Token[] tokens = [];
-  while (true) {
+  while (!at_end(s)) {
     ScanResult r = scan_token(s);
     s = r.sc;
     tokens.push(r.tok);
-    if (r.tok.type == TokenType::Eof) { break; }
   }
+  tokens.push(make_token(s, TokenType::Eof));
   return tokens;
 }

@@ -63,3 +63,19 @@ int token_type_ord(TokenType ty) {
   }
   return ty;
 }
+
+// Native runtime may store enum struct fields as wire or ordinal; compare ordinals.
+pub bool token_type_eq(TokenType a, TokenType b) {
+  if (token_is_inline_enum_wire(a) && token_is_inline_enum_wire(b)) {
+    return a == b;
+  }
+  int ao = token_type_ord(a);
+  int bo = token_type_ord(b);
+  if (token_is_inline_enum_wire(a)) {
+    ao = a & 0xFFFF;
+  }
+  if (token_is_inline_enum_wire(b)) {
+    bo = b & 0xFFFF;
+  }
+  return ao == bo;
+}

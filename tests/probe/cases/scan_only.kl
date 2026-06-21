@@ -1,0 +1,11 @@
+import lexer.token;
+import lexer.scanner;
+using io;
+using namespace lexer.token;
+using namespace lexer.scanner;
+
+int main() {
+  string src = "int main() { return 0; }";
+  Token[] tok = scan(src);
+  return tok.len();
+}

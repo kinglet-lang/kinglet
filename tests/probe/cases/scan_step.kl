@@ -1,0 +1,13 @@
+import lexer.token;
+import lexer.scanner;
+using io;
+using namespace lexer.token;
+using namespace lexer.scanner;
+
+int main() {
+  string src = "ab";
+  Scanner sc = make_scanner(src);
+  ScanResult r = scan_token(sc);
+  sc = r.sc;
+  return sc.current * 100 + r.tok.lexeme.len();
+}
