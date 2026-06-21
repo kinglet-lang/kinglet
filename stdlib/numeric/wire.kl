@@ -1,0 +1,35 @@
+// Copyright (c) 2026 Kinglet Language Developers
+// SPDX-License-Identifier: MIT
+//
+// i64 wire composition helpers (ADR 0023 D3). Used by ll_emit and compiler paths
+// that must not depend on signed-int truncation or decimal magic constants.
+
+export module numeric.wire;
+
+// High u32 of KL_INLINE_ENUM_MARK (0xFFFD000000000000).
+pub int enum_mark_hi32() { return 0xFFFD0000; }
+
+// `sub i64 0, enum_mark_sub_mag()` yields bit pattern 0xFFFD000000000000.
+pub int enum_mark_sub_mag() { return 0x3000000000000; }
+
+// Full inline enum mark wire (low 32 bits clear).
+pub int enum_mark_wire() {
+  return wire_i64_from_halves(0, enum_mark_hi32());
+}
+
+pub int wire_i64_from_halves(int lo, int hi) {
+  int blo = lo & 0xFFFFFFFF;
+  int bhi = hi & 0xFFFFFFFF;
+  if (bhi == 0) { return blo; }
+  return (bhi << 32) | blo;
+}
+
+pub int enum_inline_wire(int packed) {
+  return wire_i64_from_halves(packed & 0xFFFFFFFF, enum_mark_hi32());
+}
+
+// Compose enum inline wire with type/variant in low 32 bits (matches kir_to_llvm.cc).
+pub int enum_inline_wire_typed(int type_idx, int variant_idx) {
+  int packed = ((type_idx & 0xFFFF) << 16) | (variant_idx & 0xFFFF);
+  return enum_inline_wire(packed);
+}

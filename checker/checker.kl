@@ -17,6 +17,7 @@ using namespace parser.ast;
 pub enum TypeKind {
   Int, Float, Bool, String, Void, Unknown, Null,
   Array, Map, Struct, Enum,
+  Ref, MutRef,
 }
 
 pub struct Type {
@@ -27,7 +28,7 @@ pub struct Type {
 
 // Stable ordinals for TypeKind — store `int` in Type.kind (ADR 0023 D10).
 pub int type_kind_ord(TypeKind k) {
-  if (k >= 0 && k <= 10) { return k; }
+  if (k >= 0 && k <= 12) { return k; }
   return tk_unknown();
 }
 
@@ -42,6 +43,8 @@ int tk_array()   { return 7; }
 int tk_map()     { return 8; }
 int tk_struct()  { return 9; }
 int tk_enum()    { return 10; }
+int tk_ref()     { return 11; }
+int tk_mut_ref() { return 12; }
 
 pub struct StructField {
   string name;
@@ -89,6 +92,8 @@ pub Type type_array(string elem_enc) => Type { tk_array(), elem_enc, false };
 pub Type type_map(string key_enc, string val_enc) => Type { tk_map(), key_enc + ":" + val_enc, false };
 pub Type type_struct(string name) => Type { tk_struct(), name, false };
 pub Type type_enum(string name) => Type { tk_enum(), name, false };
+pub Type type_ref(string inner_enc) => Type { tk_ref(), inner_enc, false };
+pub Type type_mut_ref(string inner_enc) => Type { tk_mut_ref(), inner_enc, false };
 
 string int_type_name(Type t) {
   if (t.tag == "int64") { return "int"; }
@@ -137,6 +142,8 @@ pub string type_encode(Type t) {
   if (t.kind == tk_map())     { return "Map<" + t.tag + ">"; }
   if (t.kind == tk_struct())  { return t.tag; }
   if (t.kind == tk_enum())    { return t.tag; }
+  if (t.kind == tk_ref())     { return "&" + t.tag; }
+  if (t.kind == tk_mut_ref()) { return "&mut " + t.tag; }
   return type_kind_name(t);
 }
 
@@ -176,6 +183,15 @@ bool types_assignable(Type from, Type to) {
     return float_assignable(from, to);
   }
   if (from.kind == tk_struct() && to.kind == tk_struct()) {
+    return from.tag == to.tag;
+  }
+  if (from.kind == tk_ref() && to.kind == tk_ref()) {
+    return from.tag == to.tag;
+  }
+  if (from.kind == tk_mut_ref() && to.kind == tk_mut_ref()) {
+    return from.tag == to.tag;
+  }
+  if (from.kind == tk_mut_ref() && to.kind == tk_ref()) {
     return from.tag == to.tag;
   }
   if (from.kind == tk_array() && to.kind == tk_array()) {
@@ -440,10 +456,31 @@ Type resolve_scalar_name(string name) {
 }
 
 Type default_int_literal_type(int value) {
-  if (value >= -2147483648 && value <= 2147483647) {
-    return make_int_tag("int32");
-  }
+  (void)value;
   return type_int();
+}
+
+bool integer_literal_fits(Type t, int value) {
+  if (t.name == "int8") { return value >= -128 && value <= 127; }
+  if (t.name == "int16") { return value >= -32768 && value <= 32767; }
+  if (t.name == "int32") { return value >= -2147483648 && value <= 2147483647; }
+  if (t.name == "int64" || t.name == "int") { return true; }
+  if (t.name == "uint8") { return value >= 0 && value <= 255; }
+  if (t.name == "uint16") { return value >= 0 && value <= 65535; }
+  if (t.name == "uint32") {
+    if (value >= 0) { return value <= 4294967295; }
+    return value >= -2147483648;
+  }
+  if (t.name == "uint64") { return true; }
+  return true;
+}
+
+Type check_int_literal(Checker c, int v, string suf, int line, int col) {
+  Type t = int_literal_type_from_suffix(suf, v);
+  if (!integer_literal_fits(t, v)) {
+    add_error(c, line, col, "Integer literal out of range for type '" + t.name + "'.");
+  }
+  return t;
 }
 
 Type int_literal_type_from_suffix(string suffix, int value) {
@@ -467,6 +504,18 @@ Type float_literal_type_from_suffix(string suffix) {
 
 // Parse surface encodings produced by parser type_to_string (e.g. Array<int32>).
 Type resolve_encoded_type(Checker c, string encoded) {
+  if (encoded.len() >= 6) {
+    string head6 = encoded.slice(0, 5);
+    if (head6 == "&mut ") {
+      return type_mut_ref(encoded.slice(5, encoded.len()));
+    }
+  }
+  if (encoded.len() >= 2) {
+    string head1 = encoded.slice(0, 1);
+    if (head1 == "&") {
+      return type_ref(encoded.slice(1, encoded.len()));
+    }
+  }
   if (encoded.len() >= 7) {
     string head = encoded.slice(0, 6);
     if (head == "Array<") {
@@ -501,6 +550,12 @@ Type resolve_type_expr(Checker c, TypeExpr t) {
     inner.nullable = true;
     return inner;
   }
+  if (t.name == "&" && t.type_args.len() == 1) {
+    return type_ref(t.type_args[0]);
+  }
+  if (t.name == "&mut" && t.type_args.len() == 1) {
+    return type_mut_ref(t.type_args[0]);
+  }
   Type scalar = resolve_scalar_name(t.name);
   if (scalar.kind != tk_unknown()) { return scalar; }
   if (enum_exists(c, t.name)) { return type_enum(t.name); }
@@ -515,39 +570,52 @@ Type resolve_type_expr(Checker c, TypeExpr t) {
 // binary-op helpers
 
 bool is_arithmetic_op(BinaryOp op) {
-  return op match {
-    BinaryOp::Add => true, BinaryOp::Sub => true, BinaryOp::Mul => true,
-    BinaryOp::Div => true, BinaryOp::Mod => true, _ => false,
-  };
+  int o = binary_op_ord(op);
+  if (o == bo_add()) { return true; }
+  if (o == bo_sub()) { return true; }
+  if (o == bo_mul()) { return true; }
+  if (o == bo_div()) { return true; }
+  if (o == bo_mod()) { return true; }
+  return false;
 }
 
 bool is_comparison_op(BinaryOp op) {
-  return op match {
-    BinaryOp::Eq => true, BinaryOp::Neq => true, BinaryOp::Lt => true,
-    BinaryOp::Gt => true, BinaryOp::Le => true, BinaryOp::Ge => true, _ => false,
-  };
+  int o = binary_op_ord(op);
+  if (o == bo_eq())  { return true; }
+  if (o == bo_neq()) { return true; }
+  if (o == bo_lt())  { return true; }
+  if (o == bo_gt())  { return true; }
+  if (o == bo_le())  { return true; }
+  if (o == bo_ge())  { return true; }
+  return false;
 }
 
 bool is_logical_op(BinaryOp op) {
-  return op match { BinaryOp::And => true, BinaryOp::Or => true, _ => false, };
+  int o = binary_op_ord(op);
+  if (o == bo_and()) { return true; }
+  if (o == bo_or())  { return true; }
+  return false;
 }
 
 bool is_bitwise_op(BinaryOp op) {
-  return op match {
-    BinaryOp::BitAnd => true, BinaryOp::BitOr => true, BinaryOp::BitXor => true,
-    BinaryOp::Shl => true, BinaryOp::Shr => true, _ => false,
-  };
+  int o = binary_op_ord(op);
+  if (o == bo_bitand()) { return true; }
+  if (o == bo_bitor())  { return true; }
+  if (o == bo_bitxor()) { return true; }
+  if (o == bo_shl())    { return true; }
+  if (o == bo_shr())    { return true; }
+  return false;
 }
 
 bool op_is_add(BinaryOp op) {
-  return op match { BinaryOp::Add => true, _ => false, };
+  return binary_op_ord(op) == bo_add();
 }
 
 // expression checking
 
 Type check_expr(Checker c, Expr e) {
   return e match {
-    Expr::IntLit(let v, let suf, _, _)   => int_literal_type_from_suffix(suf, v),
+    Expr::IntLit(let v, let suf, let l, let co) => check_int_literal(c, v, suf, l, co),
     Expr::FloatLit(_, let suf, _, _)     => float_literal_type_from_suffix(suf),
     Expr::StringLit(_, _, _)    => type_string(),
     Expr::BoolLit(_, _, _)      => type_bool(),
@@ -644,12 +712,35 @@ Type check_ident(Checker c, string name, int line, int col) {
 }
 
 Type check_unary(Checker c, UnaryOp op, Expr r, int line, int col) {
+  int o = unary_op_ord(op);
+  if (o == uo_ref())    { return check_borrow(c, r, false, line, col); }
+  if (o == uo_mutref()) { return check_borrow(c, r, true, line, col); }
   Type rt = check_expr(c, r);
-  return op match {
-    UnaryOp::Neg    => check_neg(c, rt, line, col),
-    UnaryOp::Not    => type_bool(),
-    UnaryOp::BitNot => check_bitnot(c, rt, line, col),
+  if (o == uo_neg())    { return check_neg(c, rt, line, col); }
+  if (o == uo_not())    { return type_bool(); }
+  if (o == uo_bitnot()) { return check_bitnot(c, rt, line, col); }
+  return type_unknown();
+}
+
+bool expr_is_lvalue(Checker c, Expr e) {
+  return e match {
+    Expr::Ident(let n, let _l, let _c) => var_exists(c, n),
+    Expr::FieldAccess(let obj, let _f, let _l, let _c) => expr_is_lvalue(c, obj),
+    Expr::Index(let obj, let _i, let _l, let _c) => expr_is_lvalue(c, obj),
+    _ => false,
   };
+}
+
+Type check_borrow(Checker c, Expr r, bool mut, int line, int col) {
+  if (!expr_is_lvalue(c, r)) {
+    add_error(c, line, col, "Cannot borrow a non-lvalue expression.");
+    return type_unknown();
+  }
+  Type inner = check_expr(c, r);
+  if (mut) {
+    return type_mut_ref(type_encode(inner));
+  }
+  return type_ref(type_encode(inner));
 }
 
 Type check_neg(Checker c, Type rt, int line, int col) {
@@ -724,7 +815,7 @@ Type check_assign(Checker c, string name, AssignOp op, Expr value, int line, int
     return vt;
   }
   Type target = lookup_var(c, name);
-  bool is_plain = op match { AssignOp::Assign => true, _ => false, };
+  bool is_plain = assign_op_ord(op) == ao_assign();
   if (is_plain) {
     if (!types_assignable(vt, target)) {
       add_error(c, line, col,
@@ -866,6 +957,21 @@ Type check_native_qualified_call(Checker c, string ns, string member, Expr[] arg
     }
     return type_string();
   }
+  if (ns == "rt" && member == "enum_payload_at") {
+    if (args.len() != 2) {
+      add_error(c, line, col, "rt::enum_payload_at expects exactly two arguments.");
+    } else {
+      check_expr(c, args[0]);
+      bool is_int_lit = args[1] match {
+        Expr::IntLit(let _v, let _w, let _l, let _c) => true,
+        _ => false,
+      };
+      if (!is_int_lit) {
+        add_error(c, line, col, "rt::enum_payload_at index must be an int literal.");
+      }
+    }
+    return type_unknown();
+  }
   if (ns == "sys" && member == "args") {
     if (args.len() != 0) {
       add_error(c, line, col, "sys::args expects no arguments.");
@@ -903,7 +1009,7 @@ Type check_ns_qualified_call(Checker c, string ns, string member, Expr[] args, i
   if (enum_exists(c, ns)) {
     return check_enum_variant_call(c, ns, member, args, line, col);
   }
-  if (is_native_namespace(ns) && native_namespace_open(c, ns) && is_native_member(ns, member)) {
+  if (is_native_namespace(ns) && (native_namespace_open(c, ns) || ns == "rt") && is_native_member(ns, member)) {
     return check_native_qualified_call(c, ns, member, args, line, col);
   }
   add_error(c, line, col, "Unknown namespace '" + ns + "'.");
@@ -2186,22 +2292,23 @@ void apply_using_decl(Checker c, string module_id, bool is_ns) {
 }
 
 void register_using_decl(Checker c, Decl d) {
-  d match {
-    Decl::UsingDecl(let n, let is_ns, let _l, let _c) =>
-      apply_using_decl(c, n, is_ns),
-    Decl::UsingAliasDecl(_, _, _, _) => check_void(),
-    _ => check_void(),
-  };
+  if (decl_kind_ord(d) == dk_using_decl()) {
+    apply_using_decl(c, using_decl_module(d), using_decl_is_namespace(d));
+    return;
+  }
+  if (decl_kind_ord(d) == dk_using_alias_decl()) {
+    check_void();
+  }
 }
 
 void forward_decl(Checker c, Decl d) {
-  d match {
-    Decl::StructDecl(let n, let tps, let fields, let _is_pub, let _l, let _c) =>
-      forward_struct(c, n, tps, fields),
-    Decl::EnumDecl(let n, let variants, let _is_pub, let _l, let _c) =>
-      forward_enum(c, n, variants),
-    _ => check_void(),
-  };
+  if (decl_kind_ord(d) == dk_struct_decl()) {
+    forward_struct(c, struct_decl_name(d), struct_decl_type_params(d), struct_decl_fields(d));
+    return;
+  }
+  if (decl_kind_ord(d) == dk_enum_decl()) {
+    forward_enum(c, enum_decl_name(d), enum_decl_variants(d));
+  }
 }
 
 void forward_struct(Checker c, string name, string[] type_params, FieldDef[] fields) {
@@ -2214,13 +2321,14 @@ void forward_struct(Checker c, string name, string[] type_params, FieldDef[] fie
 }
 
 void register_decl(Checker c, Decl d) {
-  d match {
-    Decl::FunctionDecl(let n, let rt, let _tps, let params, let _w, let _b, let _is_pub, let l, let col) =>
-      register_function_sig(c, n, rt, params, l, col),
-    Decl::ConceptDecl(let n, let _tps, let _methods, let _is_pub, let _l, let _c) =>
-      c.concepts.push(n),
-    _ => check_void(),
-  };
+  if (decl_kind_ord(d) == dk_function_decl()) {
+    register_function_sig(c, function_decl_name(d), function_decl_return_type(d),
+      function_decl_params(d), function_decl_line(d), function_decl_col(d));
+    return;
+  }
+  if (decl_kind_ord(d) == dk_concept_decl()) {
+    c.concepts.push(concept_decl_name(d));
+  }
 }
 
 void register_function_sig(Checker c, string n, TypeExpr rt, Parameter[] params, int line, int col) {
@@ -2240,12 +2348,14 @@ void register_function_sig(Checker c, string n, TypeExpr rt, Parameter[] params,
 }
 
 void check_decl(Checker c, Decl d) {
-  d match {
-    Decl::FunctionDecl(let _n, let rt, let _tps, let params, let _w, let body, let _is_pub, let l, let co) =>
-      check_function(c, rt, params, body, l, co),
-    Decl::TopLevelStmt(let s, _, _) => check_stmt(c, s),
-    _ => check_void(),
-  };
+  if (decl_kind_ord(d) == dk_function_decl()) {
+    check_function(c, function_decl_return_type(d), function_decl_params(d),
+      function_decl_body(d), function_decl_line(d), function_decl_col(d));
+    return;
+  }
+  if (decl_kind_ord(d) == dk_top_level_stmt()) {
+    check_stmt(c, top_level_stmt_body(d));
+  }
 }
 
 void check_function(Checker c, TypeExpr rt, Parameter[] params, Stmt body, int line, int col) {

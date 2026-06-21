@@ -7,8 +7,10 @@ export module compiler.ll_emit;
 
 import ir.ir;
 import compiler.bytecode;
+import numeric.wire;
 using namespace ir.ir;
 using namespace compiler.bytecode;
+using namespace numeric.wire;
 
 // Concatenate a list of string pieces in O(total_len) work via divide and
 // conquer, instead of the O(n^2) left-fold `out = out + piece` accumulator
@@ -69,50 +71,37 @@ string llvm_str_escape(string s) {
 // --- KIR opcode helpers ---
 
 bool is_bin_op(int op) {
-  return op == kir_opcode_ord(KirOpcode::IAdd) || op == kir_opcode_ord(KirOpcode::ISub) || op == kir_opcode_ord(KirOpcode::IMul) || op == kir_opcode_ord(KirOpcode::IDiv) || op == kir_opcode_ord(KirOpcode::IMod)
-      || op == kir_opcode_ord(KirOpcode::IAnd) || op == kir_opcode_ord(KirOpcode::IOr) || op == kir_opcode_ord(KirOpcode::IXor) || op == kir_opcode_ord(KirOpcode::IShl) || op == kir_opcode_ord(KirOpcode::IShr);
+  return op == kop_iadd() || op == kop_isub() || op == kop_imul() || op == kop_idiv() || op == kop_imod()
+      || op == kop_iand() || op == kop_ior() || op == kop_ixor() || op == kop_ishl() || op == kop_ishr();
 }
 
 string ll_bin_op(int op) {
-  if (op == kir_opcode_ord(KirOpcode::IAdd)) { return "add"; }
-  if (op == kir_opcode_ord(KirOpcode::ISub)) { return "sub"; }
-  if (op == kir_opcode_ord(KirOpcode::IMul)) { return "mul"; }
-  if (op == kir_opcode_ord(KirOpcode::IDiv)) { return "sdiv"; }
-  if (op == kir_opcode_ord(KirOpcode::IMod)) { return "srem"; }
-  if (op == kir_opcode_ord(KirOpcode::IAnd)) { return "and"; }
-  if (op == kir_opcode_ord(KirOpcode::IOr)) { return "or"; }
-  if (op == kir_opcode_ord(KirOpcode::IXor)) { return "xor"; }
-  if (op == kir_opcode_ord(KirOpcode::IShl)) { return "shl"; }
-  if (op == kir_opcode_ord(KirOpcode::IShr)) { return "lshr"; }
+  if (op == kop_iadd()) { return "add"; }
+  if (op == kop_isub()) { return "sub"; }
+  if (op == kop_imul()) { return "mul"; }
+  if (op == kop_idiv()) { return "sdiv"; }
+  if (op == kop_imod()) { return "srem"; }
+  if (op == kop_iand()) { return "and"; }
+  if (op == kop_ior()) { return "or"; }
+  if (op == kop_ixor()) { return "xor"; }
+  if (op == kop_ishl()) { return "shl"; }
+  if (op == kop_ishr()) { return "lshr"; }
   return "add";
 }
 
 bool is_cmp(int op) {
-  return op == kir_opcode_ord(KirOpcode::IEq) || op == kir_opcode_ord(KirOpcode::INe) || op == kir_opcode_ord(KirOpcode::ILt) || op == kir_opcode_ord(KirOpcode::IGt) || op == kir_opcode_ord(KirOpcode::ILe) || op == kir_opcode_ord(KirOpcode::IGe);
+  return op == kop_ieq() || op == kop_ine() || op == kop_ilt() || op == kop_igt() || op == kop_ile() || op == kop_ige();
 }
 
-// Build i64 wire from ConstInt lo/hi operand halves.
+// Build i64 wire from u32 halves (unsigned hi; avoids signed 0xFFFD0000 truncation).
 int wire_i64_from_parts(int lo, int hi) {
-  int blo = lo & 0xFFFFFFFF;
-  int bhi = hi & 0xFFFFFFFF;
-  if (bhi == 0) {
-    return blo;
-  }
-  return (bhi << 32) | blo;
+  return wire_i64_from_halves(lo, hi);
 }
 
-// Inline enum wire (KL_INLINE_ENUM_MARK | packed), matches kir_to_llvm.cc EnumVariant.
-int enum_inline_wire(int packed) {
-  return wire_i64_from_parts(packed & 0xFFFFFFFF, 0xFFFD0000);
-}
-
-// Emit `sub`/`or` LLVM ops for an inline enum wire; returns the result reg name.
-// sub operand is -mark as i64 where mark = 0xFFFD000000000000 (see kinglet_rt_value.h).
+// Emit inline enum wire as LLVM i64 (ADR 0023 D3 — hex constant, not decimal magic).
 string emit_enum_wire_insn(string[] out, int packed, int reg) {
-  string ew0 = "%" + string(reg);
-  string ew = "%" + string(reg + 1);
-  out.push("  " + ew0 + " = sub i64 0, 844424930131968\n");
-  out.push("  " + ew + " = or i64 " + ew0 + ", " + string(packed) + "\n");
+  string ew = "%" + string(reg);
+  out.push("  " + ew + " = or i64 0xFFFD000000000000, " + string(packed) + "\n");
   return ew;
 }
 
@@ -124,26 +113,26 @@ int[] compute_leaders(KirInstr[] instrs) {
   for (int i = 0; i < n; i = i + 1) {
     int iop = kir_instr_op(instrs, i);
     int[] iops = kir_instr_operands(instrs, i);
-    if (iop == kir_opcode_ord(KirOpcode::Br) || iop == kir_opcode_ord(KirOpcode::CondBr)) {
+    if (iop == kop_br() || iop == kop_cond_br()) {
       int target = iops[0];
       if (target >= 0 && target < n) { marks[target] = true; }
       if (i + 1 < n) { marks[i + 1] = true; }
     }
-    if (iop == kir_opcode_ord(KirOpcode::JmpIfErr)) {
+    if (iop == kop_jmp_if_err()) {
       int target = iops[0];
       int err_t = i + 1 + target;
       if (err_t >= 0 && err_t < n) { marks[err_t] = true; }
       if (i + 1 < n) { marks[i + 1] = true; }
     }
-    if (iop == kir_opcode_ord(KirOpcode::PropagateErr)) {
+    if (iop == kop_propagate_err()) {
       if (i + 1 < n) { marks[i + 1] = true; }
     }
-    if (iop == kir_opcode_ord(KirOpcode::PushHandler)) {
+    if (iop == kop_push_handler()) {
       int target = iops[0];
       int landing = i + 1 + target;
       if (landing >= 0 && landing < n) { marks[landing] = true; }
     }
-    if (iop == kir_opcode_ord(KirOpcode::Ret)) {
+    if (iop == kop_ret()) {
       if (i + 1 < n) { marks[i + 1] = true; }
     }
   }
@@ -168,7 +157,7 @@ int count_locals(KirInstr[] instrs) {
   for (int i = 0; i < instrs.len(); i = i + 1) {
     int iop = kir_instr_op(instrs, i);
     int[] iops = kir_instr_operands(instrs, i);
-    if (iop == kir_opcode_ord(KirOpcode::StoreLocal) || iop == kir_opcode_ord(KirOpcode::LoadLocal)) {
+    if (iop == kop_store_local() || iop == kop_load_local()) {
       if (iops[0] > max_slot) { max_slot = iops[0]; }
     }
   }
@@ -226,13 +215,13 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
     for (int i = 0; i < n; i = i + 1) {
       int hop = kir_instr_op(instrs, i);
       int[] hops = kir_instr_operands(instrs, i);
-      if (hop == kir_opcode_ord(KirOpcode::PushHandler)) {
+      if (hop == kop_push_handler()) {
         int landing = i + 1 + hops[0];
         hstack.push(landing);
         handler_landings.push(landing);
-      } else if (hop == kir_opcode_ord(KirOpcode::PopHandler)) {
+      } else if (hop == kop_pop_handler()) {
         if (hstack.len() > 0) { hstack.pop(); }
-      } else if (hop == kir_opcode_ord(KirOpcode::PropagateErr)) {
+      } else if (hop == kop_propagate_err()) {
         int ct = 0;
         if (hstack.len() > 0) { ct = hstack[hstack.len() - 1]; }
         prop_idx.push(i);
@@ -246,21 +235,21 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
     int lend = n;
     if (k + 1 < nl) { lend = leaders[k + 1]; }
     KirInstr last = instrs[lend - 1];
-    if (last.op == kir_opcode_ord(KirOpcode::Br)) {
+    if (last.op == kop_br()) {
       edge_pred.push(k);
       edge_succ.push(leader_pos(leaders, last.operands[0]));
-    } else if (last.op == kir_opcode_ord(KirOpcode::CondBr)) {
+    } else if (last.op == kop_cond_br()) {
       edge_pred.push(k);
       edge_succ.push(k + 1);
       edge_pred.push(k);
       edge_succ.push(leader_pos(leaders, last.operands[0]));
-    } else if (last.op == kir_opcode_ord(KirOpcode::JmpIfErr)) {
+    } else if (last.op == kop_jmp_if_err()) {
       int jidx = lend - 1;
       edge_pred.push(k);
       edge_succ.push(k + 1);
       edge_pred.push(k);
       edge_succ.push(leader_pos(leaders, jidx + 1 + last.operands[0]));
-    } else if (last.op == kir_opcode_ord(KirOpcode::PropagateErr)) {
+    } else if (last.op == kop_propagate_err()) {
       int pidx = lend - 1;
       int pcatch = 0;
       for (int qi = 0; qi < prop_idx.len(); qi = qi + 1) {
@@ -351,9 +340,9 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
     for (int i = lstart; i < lend; i = i + 1) {
       if (bc_pc < bc_end) {
         Instruction bcins = ch.instructions[bc_pc];
-        if (bcins.op - vm_op_enum_variant() == 0) {
+        if (bcins.op - vm_op_enum_tag() == 0) {
           string ew = emit_enum_wire_insn(out, bcins.operand, reg);
-          reg = reg + 2;
+          reg = reg + 1;
           vstack.push(ew);
           tstack.push(0);
           bc_pc = bc_pc + 1;
@@ -363,7 +352,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
       int iop = kir_instr_op(instrs, i);
       int[] iops = kir_instr_operands(instrs, i);
       int ins_rt = kir_instr_result_type(instrs, i);
-      if (iop == kir_opcode_ord(KirOpcode::Ret)) {
+      if (iop == kop_ret()) {
         if (vstack.len() > 0) {
           string v = vstack[vstack.len() - 1];
           out.push("  ret i64 " + v + "\n");
@@ -371,10 +360,10 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
           out.push("  ret i64 0\n");
         }
         terminated = true;
-      } else if (iop == kir_opcode_ord(KirOpcode::Br)) {
+      } else if (iop == kop_br()) {
         out.push("  br label %" + label_for(leaders, iops[0]) + "\n");
         terminated = true;
-      } else if (iop == kir_opcode_ord(KirOpcode::CondBr)) {
+      } else if (iop == kop_cond_br()) {
         string cond = vstack[vstack.len() - 1];
         vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string t = "%" + string(reg);
@@ -382,7 +371,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + t + " = icmp ne i64 " + cond + ", 0\n");
         out.push("  br i1 " + t + ", label %" + label_for(leaders, i + 1) + ", label %" + label_for(leaders, iops[0]) + "\n");
         terminated = true;
-      } else if (iop == kir_opcode_ord(KirOpcode::JmpIfErr)) {
+      } else if (iop == kop_jmp_if_err()) {
         // Peek (no pop): both branches keep the value on the wire.
         string je_top = vstack[vstack.len() - 1];
         string je_is = "%" + string(reg); reg = reg + 1;
@@ -392,7 +381,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         int je_err = i + 1 + iops[0];
         out.push("  br i1 " + je_c + ", label %" + label_for(leaders, je_err) + ", label %" + label_for(leaders, i + 1) + "\n");
         terminated = true;
-      } else if (iop == kir_opcode_ord(KirOpcode::PropagateErr)) {
+      } else if (iop == kop_propagate_err()) {
         string pe_top = vstack[vstack.len() - 1];
         string pe_is = "%" + string(reg); reg = reg + 1;
         out.push("  " + pe_is + " = call i32 @kl_value_is_err(i64 " + pe_top + ")\n");
@@ -404,30 +393,30 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         }
         out.push("  br i1 " + pe_c + ", label %" + label_for(leaders, pe_catch) + ", label %" + label_for(leaders, i + 1) + "\n");
         terminated = true;
-      } else if (iop == kir_opcode_ord(KirOpcode::PushHandler) || iop == kir_opcode_ord(KirOpcode::PopHandler)) {
+      } else if (iop == kop_push_handler() || iop == kop_pop_handler()) {
         // Compile-time handler markers: no IR, no stack effect.
       } else if (iop - kir_op_enum_variant() == 0) {
         int ev_packed = iops[0];
         string ev = emit_enum_wire_insn(out, ev_packed, reg);
-        reg = reg + 2;
+        reg = reg + 1;
         vstack.push(ev);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::ConstInt)) {
+      } else if (iop == kop_const_int()) {
         int clo = iops[0];
         int chi = iops.len() > 1 ? iops[1] : 0;
         if (chi == 1) {
           string ev = emit_enum_wire_insn(out, clo, reg);
-          reg = reg + 2;
+          reg = reg + 1;
           vstack.push(ev);
           tstack.push(0);
         } else {
           vstack.push(string(wire_i64_from_parts(clo, chi)));
           tstack.push(0);
         }
-      } else if (iop == kir_opcode_ord(KirOpcode::ConstNull)) {
+      } else if (iop == kop_const_null()) {
         vstack.push("0");
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::ConstString)) {
+      } else if (iop == kop_const_string()) {
         int cs_pool = iops[0];
         int cs_len = 0;
         string cs_global = "";
@@ -444,7 +433,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + cs_r + " = call i64 @kl_string_new(i8* " + cs_gep + ", i32 " + string(cs_len) + ")\n");
         vstack.push(cs_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::ConstFloat)) {
+      } else if (iop == kop_const_float()) {
         int cidx = iops[0];
         float dbl = constant_double_at(ch.constants, cidx);
         string hex = double_to_hex(dbl);
@@ -465,10 +454,10 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
           out.push("  " + rb + " = call double @kl_float_get(i64 " + b + ")\n");
           string fr = "%" + string(reg); reg = reg + 1;
           string fop = "fadd";
-          if (iop == kir_opcode_ord(KirOpcode::ISub)) { fop = "fsub"; }
-          if (iop == kir_opcode_ord(KirOpcode::IMul)) { fop = "fmul"; }
-          if (iop == kir_opcode_ord(KirOpcode::IDiv)) { fop = "fdiv"; }
-          if (iop == kir_opcode_ord(KirOpcode::IMod)) { fop = "frem"; }
+          if (iop == kop_isub()) { fop = "fsub"; }
+          if (iop == kop_imul()) { fop = "fmul"; }
+          if (iop == kop_idiv()) { fop = "fdiv"; }
+          if (iop == kop_imod()) { fop = "frem"; }
           out.push("  " + fr + " = " + fop + " double " + la + ", " + rb + "\n");
           string r = "%" + string(reg); reg = reg + 1;
           out.push("  " + r + " = call i64 @kl_float_new(double " + fr + ")\n");
@@ -504,11 +493,11 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
           out.push("  " + rb + " = call double @kl_float_get(i64 " + b + ")\n");
           string c = "%" + string(reg); reg = reg + 1;
           string pred = "oeq";
-          if (iop == kir_opcode_ord(KirOpcode::INe)) { pred = "one"; }
-          if (iop == kir_opcode_ord(KirOpcode::ILt)) { pred = "olt"; }
-          if (iop == kir_opcode_ord(KirOpcode::IGt)) { pred = "ogt"; }
-          if (iop == kir_opcode_ord(KirOpcode::ILe)) { pred = "ole"; }
-          if (iop == kir_opcode_ord(KirOpcode::IGe)) { pred = "oge"; }
+          if (iop == kop_ine()) { pred = "one"; }
+          if (iop == kop_ilt()) { pred = "olt"; }
+          if (iop == kop_igt()) { pred = "ogt"; }
+          if (iop == kop_ile()) { pred = "ole"; }
+          if (iop == kop_ige()) { pred = "oge"; }
           out.push("  " + c + " = fcmp " + pred + " double " + la + ", " + rb + "\n");
           string z = "%" + string(reg); reg = reg + 1;
           out.push("  " + z + " = zext i1 " + c + " to i64\n");
@@ -520,13 +509,13 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
           // strings compare by value, not by raw bits. Result normalised to
           // i64 0/1 to match the stack convention. Temporaries are allocated
           // in emission order so LLVM instruction numbering stays sequential.
-          if (iop == kir_opcode_ord(KirOpcode::IEq)) {
+          if (iop == kop_ieq()) {
             string c = "%" + string(reg); reg = reg + 1;
             out.push("  " + c + " = call i32 @kl_value_eq(i64 " + a + ", i64 " + b + ")\n");
             string r = "%" + string(reg); reg = reg + 1;
             out.push("  " + r + " = zext i32 " + c + " to i64\n");
             vstack.push(r);
-          } else if (iop == kir_opcode_ord(KirOpcode::INe)) {
+          } else if (iop == kop_ine()) {
             string c = "%" + string(reg); reg = reg + 1;
             out.push("  " + c + " = call i32 @kl_value_eq(i64 " + a + ", i64 " + b + ")\n");
             string z = "%" + string(reg); reg = reg + 1;
@@ -539,9 +528,9 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
             string c = "%" + string(reg); reg = reg + 1;
             out.push("  " + c + " = call i32 @kl_value_cmp(i64 " + a + ", i64 " + b + ")\n");
             string pred = "slt";
-            if (iop == kir_opcode_ord(KirOpcode::IGt)) { pred = "sgt"; }
-            if (iop == kir_opcode_ord(KirOpcode::ILe)) { pred = "sle"; }
-            if (iop == kir_opcode_ord(KirOpcode::IGe)) { pred = "sge"; }
+            if (iop == kop_igt()) { pred = "sgt"; }
+            if (iop == kop_ile()) { pred = "sle"; }
+            if (iop == kop_ige()) { pred = "sge"; }
             string z = "%" + string(reg); reg = reg + 1;
             out.push("  " + z + " = icmp " + pred + " i32 " + c + ", 0\n");
             string r = "%" + string(reg); reg = reg + 1;
@@ -550,7 +539,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
           }
           tstack.push(0);
         }
-      } else if (iop == kir_opcode_ord(KirOpcode::IsNull)) {
+      } else if (iop == kop_is_null()) {
         string iv = vstack[vstack.len() - 1]; vstack.pop();
         if (tstack.len() > 0) { tstack.pop(); }
         string c = "%" + string(reg); reg = reg + 1;
@@ -559,7 +548,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + r + " = zext i1 " + c + " to i64\n");
         vstack.push(r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::CastTo)) {
+      } else if (iop == kop_cast_to()) {
         int ck = iops[0];
         string cv = vstack[vstack.len() - 1]; vstack.pop();
         if (tstack.len() > 0) { tstack.pop(); }
@@ -574,10 +563,10 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + r + " = call i64 @" + fn_name + "(i64 " + cv + ")\n");
         vstack.push(r);
         tstack.push(res_ty);
-      } else if (iop == kir_opcode_ord(KirOpcode::INeg) || iop == kir_opcode_ord(KirOpcode::IBNot)) {
+      } else if (iop == kop_ineg() || iop == kop_ibnot()) {
         string a = vstack[vstack.len() - 1];
         vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
-        if (ins_rt == kir_type_ord(KirType::Float) && iop == kir_opcode_ord(KirOpcode::INeg)) {
+        if (ins_rt == kir_type_ord(KirType::Float) && iop == kop_ineg()) {
           // Float negation: unbox → fneg → box
           string fa = "%" + string(reg); reg = reg + 1;
           out.push("  " + fa + " = call double @kl_float_get(i64 " + a + ")\n");
@@ -590,7 +579,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         } else {
           string r = "%" + string(reg);
           reg = reg + 1;
-          if (iop == kir_opcode_ord(KirOpcode::INeg)) {
+          if (iop == kop_ineg()) {
             out.push("  " + r + " = sub i64 0, " + a + "\n");
           } else {
             out.push("  " + r + " = xor i64 " + a + ", -1\n");
@@ -598,7 +587,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
           vstack.push(r);
           tstack.push(0);
         }
-      } else if (iop == kir_opcode_ord(KirOpcode::LNot)) {
+      } else if (iop == kop_lnot()) {
         string lna = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string lnc = "%" + string(reg); reg = reg + 1;
         out.push("  " + lnc + " = icmp eq i64 " + lna + ", 0\n");
@@ -606,13 +595,13 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + lnr + " = zext i1 " + lnc + " to i64\n");
         vstack.push(lnr);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::StoreLocal)) {
+      } else if (iop == kop_store_local()) {
         int slot = iops[0];
         string v = vstack[vstack.len() - 1];
         int sty = 0; if (tstack.len() > 0) { sty = tstack[tstack.len() - 1]; }
         if (slot >= 0 && slot < local_types.len() && sty == 1) { local_types[slot] = 1; }
         out.push("  store i64 " + v + ", i64* %slot" + string(slot) + "\n");
-      } else if (iop == kir_opcode_ord(KirOpcode::LoadLocal)) {
+      } else if (iop == kop_load_local()) {
         int lslot = iops[0];
         string r = "%" + string(reg);
         reg = reg + 1;
@@ -620,13 +609,13 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         vstack.push(r);
         int lty = 0; if (lslot >= 0 && lslot < local_types.len()) { lty = local_types[lslot]; }
         tstack.push(lty);
-      } else if (iop == kir_opcode_ord(KirOpcode::Pop)) {
+      } else if (iop == kop_pop()) {
         vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
-      } else if (iop == kir_opcode_ord(KirOpcode::Dup)) {
+      } else if (iop == kop_dup()) {
         // SSA: a value can have many uses, so Dup just references the top again.
         if (vstack.len() > 0) { vstack.push(vstack[vstack.len() - 1]); }
         if (tstack.len() > 0) { tstack.push(tstack[tstack.len() - 1]); }
-      } else if (iop == kir_opcode_ord(KirOpcode::Call)) {
+      } else if (iop == kop_call()) {
         int argc = iops[0];
         int fn_idx = iops[1];
         string[] args = [];
@@ -644,7 +633,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + r + " = call i64 @" + resolve_target(m, fn_idx) + "(" + callstr + ")\n");
         vstack.push(r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::StructNew)) {
+      } else if (iop == kop_struct_new()) {
         // Operand packs (type_idx << 16) | field_count. Heap-allocate via
         // kl_struct_new so structs fit i64 locals/params/fields.
         int sn_packed = iops[0];
@@ -669,14 +658,14 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + sn_r + " = call i64 @kl_struct_new(i32 " + string(sn_type) + ", i32 " + string(sn_fc) + ", i64* " + sn_ptr + ")\n");
         vstack.push(sn_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::FieldGet)) {
+      } else if (iop == kop_field_get()) {
         int gidx = iops[0];
         string gs = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string gr = "%" + string(reg); reg = reg + 1;
         out.push("  " + gr + " = call i64 @kl_struct_field_at(i64 " + gs + ", i32 " + string(gidx) + ")\n");
         vstack.push(gr);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::FieldSet)) {
+      } else if (iop == kop_field_set()) {
         int sidx = iops[0];
         string sval = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ss = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
@@ -684,7 +673,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + sr + " = call i64 @kl_struct_field_set(i64 " + ss + ", i32 " + string(sidx) + ", i64 " + sval + ")\n");
         vstack.push(sr);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::EnumPayloadNew)) {
+      } else if (iop == kop_enum_payload_new()) {
         int ep_packed = iops[0];
         int ep_pc = iops[1];
         int ep_type = ep_packed >> 16;
@@ -712,7 +701,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + ep_r + " = call i64 @kl_enum_new_payload(i32 " + string(ep_type) + ", i32 " + string(ep_var) + ", i32 " + string(ep_pc) + ", i64* " + ep_ptr + ")\n");
         vstack.push(ep_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::EnumPayloadGet)) {
+      } else if (iop == kop_enum_payload_get()) {
         int ep_idx = iops[0];
         string ep_ev = vstack[vstack.len() - 1]; vstack.pop();
         if (tstack.len() > 0) { tstack.pop(); }
@@ -720,7 +709,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + ep_r + " = call i64 @kl_enum_payload_at(i64 " + ep_ev + ", i32 " + string(ep_idx) + ")\n");
         vstack.push(ep_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::ArrayNew)) {
+      } else if (iop == kop_array_new()) {
         int na_n = iops[0];
         string[] na_flds = [];
         for (int na_p = 0; na_p < na_n; na_p = na_p + 1) { na_flds.push(vstack[vstack.len() - 1]); vstack.pop(); if (tstack.len() > 0) { tstack.pop(); } }
@@ -742,14 +731,14 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + na_r + " = call i64 @kl_array_new(i32 " + string(na_n) + ", i64* " + na_ptr + ")\n");
         vstack.push(na_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::IndexGet)) {
+      } else if (iop == kop_index_get()) {
         string ni_idx = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ni_arr = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ni_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + ni_r + " = call i64 @kl_index_get(i64 " + ni_arr + ", i64 " + ni_idx + ")\n");
         vstack.push(ni_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::ArrayLen)) {
+      } else if (iop == kop_array_len()) {
         // kl_value_len is polymorphic across arrays and (now real) strings.
         string nl_s = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string nl_l = "%" + string(reg); reg = reg + 1;
@@ -758,7 +747,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + nl_r + " = sext i32 " + nl_l + " to i64\n");
         vstack.push(nl_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::IndexSet)) {
+      } else if (iop == kop_index_set()) {
         string is_val = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string is_idx = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string is_arr = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
@@ -766,20 +755,20 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + is_r + " = call i64 @kl_index_set(i64 " + is_arr + ", i64 " + is_idx + ", i64 " + is_val + ")\n");
         vstack.push(is_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::ArrayPush)) {
+      } else if (iop == kop_array_push()) {
         string ap_val = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ap_arr = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ap_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + ap_r + " = call i64 @kl_array_push(i64 " + ap_arr + ", i64 " + ap_val + ")\n");
         vstack.push(ap_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::ArrayPop)) {
+      } else if (iop == kop_array_pop()) {
         string po_arr = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string po_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + po_r + " = call i64 @kl_array_pop(i64 " + po_arr + ")\n");
         vstack.push(po_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::ArraySlice)) {
+      } else if (iop == kop_array_slice()) {
         string sl_end = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string sl_start = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string sl_obj = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
@@ -787,7 +776,7 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + sl_r + " = call i64 @kl_slice(i64 " + sl_obj + ", i64 " + sl_start + ", i64 " + sl_end + ")\n");
         vstack.push(sl_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::ArrayContains)) {
+      } else if (iop == kop_array_contains()) {
         string ct_n = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ct_o = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ct_f = "%" + string(reg); reg = reg + 1;
@@ -796,18 +785,18 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + ct_r + " = zext i32 " + ct_f + " to i64\n");
         vstack.push(ct_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::StrStartsWith) || iop == kir_opcode_ord(KirOpcode::StrEndsWith)) {
+      } else if (iop == kop_str_starts_with() || iop == kop_str_ends_with()) {
         string ss_needle = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ss_str = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string ss_fn = "@kl_str_starts_with";
-        if (iop == kir_opcode_ord(KirOpcode::StrEndsWith)) { ss_fn = "@kl_str_ends_with"; }
+        if (iop == kop_str_ends_with()) { ss_fn = "@kl_str_ends_with"; }
         string ss_f = "%" + string(reg); reg = reg + 1;
         out.push("  " + ss_f + " = call i32 " + ss_fn + "(i64 " + ss_str + ", i64 " + ss_needle + ")\n");
         string ss_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + ss_r + " = zext i32 " + ss_f + " to i64\n");
         vstack.push(ss_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::StrReplace)) {
+      } else if (iop == kop_str_replace()) {
         string rp_new = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string rp_old = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string rp_str = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
@@ -815,23 +804,23 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
         out.push("  " + rp_r + " = call i64 @kl_str_replace(i64 " + rp_str + ", i64 " + rp_old + ", i64 " + rp_new + ")\n");
         vstack.push(rp_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::StrSplit)) {
+      } else if (iop == kop_str_split()) {
         string sp_delim = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string sp_str = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string sp_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + sp_r + " = call i64 @kl_str_split(i64 " + sp_str + ", i64 " + sp_delim + ")\n");
         vstack.push(sp_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::StrTrim) || iop == kir_opcode_ord(KirOpcode::StrToUpper) || iop == kir_opcode_ord(KirOpcode::StrToLower)) {
+      } else if (iop == kop_str_trim() || iop == kop_str_to_upper() || iop == kop_str_to_lower()) {
         string tr_s = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string tr_fn = "@kl_str_trim";
-        if (iop == kir_opcode_ord(KirOpcode::StrToUpper)) { tr_fn = "@kl_str_to_upper"; }
-        if (iop == kir_opcode_ord(KirOpcode::StrToLower)) { tr_fn = "@kl_str_to_lower"; }
+        if (iop == kop_str_to_upper()) { tr_fn = "@kl_str_to_upper"; }
+        if (iop == kop_str_to_lower()) { tr_fn = "@kl_str_to_lower"; }
         string tr_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + tr_r + " = call i64 " + tr_fn + "(i64 " + tr_s + ")\n");
         vstack.push(tr_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::NativeOut) || iop == kir_opcode_ord(KirOpcode::NativeOutLn) || iop == kir_opcode_ord(KirOpcode::NativeErr) || iop == kir_opcode_ord(KirOpcode::NativeErrLn)) {
+      } else if (iop == kop_native_out() || iop == kop_native_out_ln() || iop == kop_native_err() || iop == kop_native_err_ln()) {
         int io_n = iops[0];
         string[] io_flds = [];
         for (int io_p = 0; io_p < io_n; io_p = io_p + 1) { io_flds.push(vstack[vstack.len() - 1]); vstack.pop(); if (tstack.len() > 0) { tstack.pop(); } }
@@ -848,14 +837,14 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
           io_ptr = io_buf;
         }
         string io_fn = "@kl_native_out";
-        if (iop == kir_opcode_ord(KirOpcode::NativeOutLn)) { io_fn = "@kl_native_out_ln"; }
-        if (iop == kir_opcode_ord(KirOpcode::NativeErr)) { io_fn = "@kl_native_err"; }
-        if (iop == kir_opcode_ord(KirOpcode::NativeErrLn)) { io_fn = "@kl_native_err_ln"; }
+        if (iop == kop_native_out_ln()) { io_fn = "@kl_native_out_ln"; }
+        if (iop == kop_native_err()) { io_fn = "@kl_native_err"; }
+        if (iop == kop_native_err_ln()) { io_fn = "@kl_native_err_ln"; }
         string io_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + io_r + " = call i64 " + io_fn + "(i32 " + string(io_n) + ", i64* " + io_ptr + ")\n");
         vstack.push(io_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::NativeIn) || iop == kir_opcode_ord(KirOpcode::NativeInSecret)) {
+      } else if (iop == kop_native_in() || iop == kop_native_in_secret()) {
         int ni_n = iops[0];
         string[] ni_flds = [];
         for (int ni_p = 0; ni_p < ni_n; ni_p = ni_p + 1) { ni_flds.push(vstack[vstack.len() - 1]); vstack.pop(); if (tstack.len() > 0) { tstack.pop(); } }
@@ -871,31 +860,31 @@ string emit_function_body(KirFunction fn, KirModule m, Chunk ch) {
           }
           ni_ptr = ni_buf;
         }
-        int ni_secret = iop == kir_opcode_ord(KirOpcode::NativeInSecret) ? 1 : 0;
+        int ni_secret = iop == kop_native_in_secret() ? 1 : 0;
         string ni_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + ni_r + " = call i64 @kl_native_in(i32 " + string(ni_n) + ", i64* " + ni_ptr + ", i32 " + string(ni_secret) + ")\n");
         vstack.push(ni_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::NativeFsRead)) {
+      } else if (iop == kop_native_fs_read()) {
         string fr_p = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string fr_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + fr_r + " = call i64 @kl_native_fs_read(i64 " + fr_p + ")\n");
         vstack.push(fr_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::NativeFsWrite)) {
+      } else if (iop == kop_native_fs_write()) {
         string fw_c = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string fw_p = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string fw_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + fw_r + " = call i64 @kl_native_fs_write(i64 " + fw_p + ", i64 " + fw_c + ")\n");
         vstack.push(fw_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::NativeFsListdir)) {
+      } else if (iop == kop_native_fs_listdir()) {
         string fl_p = vstack[vstack.len() - 1]; vstack.pop(); if (tstack.len() > 0) { tstack.pop(); }
         string fl_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + fl_r + " = call i64 @kl_native_fs_listdir(i64 " + fl_p + ")\n");
         vstack.push(fl_r);
         tstack.push(0);
-      } else if (iop == kir_opcode_ord(KirOpcode::NativeSysArgs)) {
+      } else if (iop == kop_native_sys_args()) {
         string sa_r = "%" + string(reg); reg = reg + 1;
         out.push("  " + sa_r + " = call i64 @kl_native_sys_args()\n");
         vstack.push(sa_r);

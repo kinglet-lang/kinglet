@@ -178,6 +178,36 @@ int hex_digit_value(string c) {
   return int(c[0]) - int("A"[0]) + 10;
 }
 
+int wire_i64_from_halves_local(int lo, int hi) {
+  int blo = lo & 0xFFFFFFFF;
+  int bhi = hi & 0xFFFFFFFF;
+  if (bhi == 0) { return blo; }
+  return (bhi << 32) | blo;
+}
+
+int compose_hex_digits(int[] digs) {
+  int n = digs.len();
+  if (n == 0) { return 0; }
+  if (n <= 8) {
+    int lo = 0;
+    for (int i = 0; i < n; i = i + 1) {
+      lo = lo * 16 + digs[i];
+    }
+    return lo;
+  }
+  if (n > 16) { return -1; }
+  int hi = 0;
+  int lo = 0;
+  int hi_count = n - 8;
+  for (int i = 0; i < hi_count; i = i + 1) {
+    hi = hi * 16 + digs[i];
+  }
+  for (int i = hi_count; i < n; i = i + 1) {
+    lo = lo * 16 + digs[i];
+  }
+  return wire_i64_from_halves_local(lo, hi);
+}
+
 ScanResult scan_number(Scanner s) {
   string first = char_at(s, s.start);
 
@@ -186,11 +216,15 @@ ScanResult scan_number(Scanner s) {
     if (!is_hex(peek(s))) {
       return ScanResult { s, make_error(s, "Expected hex digit after 0x.") };
     }
-    int val = 0;
+    int[] digs = [];
     while (!at_end(s) && (is_hex(peek(s)) || peek(s) == "_")) {
       string c = peek(s);
-      if (c != "_") { val = val * 16 + hex_digit_value(c); }
+      if (c != "_") { digs.push(hex_digit_value(c)); }
       AdvResult r = advance(s); s = r.sc;
+    }
+    int val = compose_hex_digits(digs);
+    if (val < 0) {
+      return ScanResult { s, make_error(s, "Integer literal too large.") };
     }
     Token tok = make_token(s, TokenType::Integer);
     tok.int_value = val;
