@@ -1,4 +1,4 @@
-# 0018 — LSP Completion: Sema-Backed Single Source of Truth
+# 0018 — LSP Completion: Sema-Backed Field-Access Resolution
 
 - **Status**: draft
 - **Proposed**: 2026-07-06
@@ -50,19 +50,17 @@ bootstrap whenever a language feature grows:
 
 ## Decision
 
-Land three prior data-source fixes first (independent, low/medium risk, each
-its own bootstrap PR followed by a perch consumer PR, same fork-PR flow as
-bootstrap PR #50):
-
-- **Phase A** — bootstrap exports a keyword→completion-category table
-  alongside `scanner.cc`'s `keywords` map; perch's four
-  `add_*_keywords` functions query it instead of hand-listing keywords.
-- **Phase B** — generalize the `io_intrinsics` table (PR #50) to cover
-  `fs`/`sys` as well; perch's `add_io_members` /
-  `add_namespace_completions` / `resolve_namespace_access` query it instead
-  of hand-listing members. Closes the known `fs::__listdir` gap.
-
-Then, as the larger effort this ADR exists to scope:
+Phase A (keyword table) and Phase B (native member table generalization)
+were considered and explicitly **dropped**: with a single developer as both
+author and sole user of perch, the manual-sync cost they eliminate is lower
+than the cost of building and maintaining the table infrastructure itself.
+A drifted keyword or namespace member list is fixed by editing the one
+hand-written array on the spot, when noticed — that is cheaper than a
+standing table + accessor + two-repo consumer wiring at this project's
+current scale. This ADR proceeds directly to Phase C, which is not a
+sync-cost problem but a *correctness* problem: perch's field-access
+completion runs its own weaker type resolver and can produce wrong or
+missing completions independent of team size.
 
 - **Phase C — Sema completion hook.** Give `Parser` a way to keep parsing
   past a completion point instead of abandoning the current statement:
@@ -134,5 +132,8 @@ this ADR's acceptance, but blocking C2's start):
   diagnostic quality, not just LSP completion. Treat C1 with the same
   scrutiny as any other `TypeChecker` change, independent of the LSP
   motivation.
-- Phases A and B are unblocked by and independent of Phase C; land them on
-  their own schedule regardless of when C1/C2 start.
+- Keyword and native-member completion lists remain hand-maintained arrays
+  in `completion_resolver.cc` for now (Phase A/B dropped per above). If
+  contributor count grows beyond the current single-developer scale, revisit
+  Phase A/B — the drift risk they address becomes real again once more than
+  one person is adding language features without also touching perch.
