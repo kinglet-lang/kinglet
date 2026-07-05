@@ -60,3 +60,4 @@ draft → accepted → implemented
 | 0015 | [LLVM backend roadmap](0015-llvm-backend-roadmap.md) | implemented | 2026-06-09 | 2026-06-10 |
 | 0016 | [Typed KIR for native lowering](0016-typed-kir.md) | implemented (phase 1; phase 2 partial) | 2026-06-10 | 2026-06-10 |
 | 0017 | [Dense layout for `T[][]…[]` syntax](0017-dense-nested-array-layout.md) | implemented (v1: 2D literals) | 2026-06-12 | 2026-06-12 |
+| 0018 | [LSP completion: Sema-backed single source of truth](0018-lsp-completion-sema-integration.md) | draft | 2026-07-06 | |
