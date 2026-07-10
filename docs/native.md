@@ -1,9 +1,9 @@
 # Native backend (LLVM)
 
 KIR → LLVM IR → per-module objects → link → executable
-([ADR 0015](../decisions/0015-llvm-backend-roadmap.md)). Phases **L0–L5** are
+([ADR 0015](https://github.com/kinglet-lang/ADRs/blob/main/0015-llvm-backend-roadmap.md)). Phases **L0–L5** are
 complete: the toolchain root (`core/main.kl`) builds and runs natively, which
-closes [ADR 0014](../decisions/0014-compilation-toolchain-architecture.md) **M3**.
+closes [ADR 0014](https://github.com/kinglet-lang/ADRs/blob/main/0014-compilation-toolchain-architecture.md) **M3**.
 
 ## Prerequisites
 
@@ -97,7 +97,7 @@ bootstrap was built without LLVM.
 | Typed scalars | `bool_null_print`, `fixed_width_int32`, `fixed_width_parity` | `string(bool/null)`; `int32` literals and `io` format |
 | Typed containers | `struct_int32_field`, `array_int32_index`, `array_int32_index_set`, `map_int32_value` | Scalar unbox on field get and single-level `IndexGet` |
 | Nested containers | `nested_array_index`, `nested_map_array_index`, `if_else_array_index` | Chained `IndexGet`; CFG merge after `if/else` array assign |
-| Dense `T[][]` | `dense_array_literal` | Rectangular literal → `DenseArrayNew` row-major storage ([0017](../decisions/0017-dense-nested-array-layout.md)) |
+| Dense `T[][]` | `dense_array_literal` | Rectangular literal → `DenseArrayNew` row-major storage ([ADR 0017](https://github.com/kinglet-lang/ADRs/blob/main/0017-dense-nested-array-layout.md)) |
 
 ## Runtime (`libkinglet_rt`)
 
@@ -116,7 +116,7 @@ Linked into every native binary. Bootstrap sources under `runtime/`:
 
 ## Known gaps
 
-See [0016 phase 2b](../decisions/0016-typed-kir.md) and [0015 D6](../decisions/0015-llvm-backend-roadmap.md).
+See [ADR 0016 phase 2b](https://github.com/kinglet-lang/ADRs/blob/main/0016-typed-kir.md) and [ADR 0015 D6](https://github.com/kinglet-lang/ADRs/blob/main/0015-llvm-backend-roadmap.md).
 
 - Generic `io` formatting and `+` concat may still show wire `1`/`0` for bool/null
   on some paths (scalar `string(bool)` / `string(null)` are resolved).

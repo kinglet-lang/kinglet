@@ -2,7 +2,7 @@
 
 A complete listing of Kinglet (`.kl`) syntax, derived from the self-hosting
 compiler in `lexer/`, `parser/`, and `compiler/`. Items marked *(planned)* are
-reserved or tracked in `decisions/` but not yet wired into the parser.
+reserved or tracked in the [ADRs](https://github.com/kinglet-lang/ADRs) but not yet wired into the parser.
 
 ## Comments
 
@@ -303,7 +303,7 @@ syntax (char *literals* `'a'` work; the `char` *type* keyword is unregistered â€
 
 ## Planned (not yet implemented)
 
-From `decisions/0001-pending-syntax-and-perf.md`: `once` lazy blocks,
+From [ADR 0001](https://github.com/kinglet-lang/ADRs/blob/main/0001-pending-syntax-and-perf.md): `once` lazy blocks,
 `retry N { }`, `test "name" { }`, `scope` resource management, struct patterns
 in match, `[[nodiscard]]`, and `spawn`/`channel`/`select` concurrency.
 

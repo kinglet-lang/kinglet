@@ -8,9 +8,9 @@ Self-hosted Kinglet compiler: the `.kl` sources in this repo compile to bytecode
 bootstrap compiler is verified.
 
 Kinglet is a statically typed, value-semantics language (see
-[decisions/0002](decisions/0002-design-principles.md)). This tree is the
-compiler implementation — lexer, parser, checker, and VM bytecode backend — not
-the language spec alone.
+[ADR 0002](https://github.com/kinglet-lang/ADRs/blob/main/0002-design-principles.md)).
+This tree is the compiler implementation — lexer, parser, checker, and VM
+bytecode backend — not the language spec alone.
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ $KINGLET_BOOTSTRAP --native /tmp/out path/to/file.kl && /tmp/out
 bash tests/run_all.sh
 ```
 
-Build output lives under `.kinglet/` (see [decisions/0014](decisions/0014-compilation-toolchain-architecture.md)).
+Build output lives under `.kinglet/` (see [ADR 0014](https://github.com/kinglet-lang/ADRs/blob/main/0014-compilation-toolchain-architecture.md)).
 Test helpers call `ensure_build_stamp` in `tests/common.sh`.
 
 ## Repository layout
@@ -54,7 +54,6 @@ kinglet-self/
   parser/         AST, recursive-descent + Pratt parser
   checker/        Type checker
   compiler/       AST → bytecode (imports, match, builtins, …)
-  decisions/      Design RFCs (English)
   tests/          Harness-driven suites (see tests/README.md)
   kinglet         Project build driver (`./kinglet build`)
   .kinglet/       Klos cache and build output (gitignored)
@@ -65,7 +64,7 @@ kinglet-self/
 
 Module system: `import { "//parser/ast.kl" }` with file-stem namespaces;
 `using ast { Expr };` for selective imports. See
-[decisions/0011](decisions/0011-module-system-redesign.md).
+[ADR 0011](https://github.com/kinglet-lang/ADRs/blob/main/0011-module-system-redesign.md).
 
 ## Testing
 
@@ -106,8 +105,8 @@ Detailed write-ups:
 | Document | Purpose |
 |----------|---------|
 | [SYNTAX.md](SYNTAX.md) | Syntax, operators, sh/bs differences |
-| [decisions/README.md](decisions/README.md) | Architecture RFC index |
-| [decisions/0003-stdlib-roadmap.md](decisions/0003-stdlib-roadmap.md) | Planned `stdlib/` layout |
+| [kinglet-lang/ADRs](https://github.com/kinglet-lang/ADRs) | Architecture decision records (design RFCs) |
+| [ADR 0003](https://github.com/kinglet-lang/ADRs/blob/main/0003-stdlib-roadmap.md) | Planned `stdlib/` layout |
 | [AGENT.md](AGENT.md) | Conventions, commit style, bootstrap quirks |
 | [docs/ci.md](docs/ci.md) | GitHub Actions CI/CD and local reproduction |
 
@@ -117,6 +116,7 @@ Detailed write-ups:
 |------------|------|
 | [github.com/kinglet-lang/bootstrap](https://github.com/kinglet-lang/bootstrap) | C++ bootstrap compiler + VM (reference implementation) |
 | [github.com/kinglet-lang/kinglet](https://github.com/kinglet-lang/kinglet) | Self-host compiler sources + tests (this repo) |
+| [github.com/kinglet-lang/ADRs](https://github.com/kinglet-lang/ADRs) | Architecture decision records (design RFCs) |
 
 ## License
 

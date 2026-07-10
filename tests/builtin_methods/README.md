@@ -123,4 +123,4 @@ Builtin method typing lives in `checker/checker.kl`:
 ## Related
 
 - Feature-level probes: [tests/probe/](../probe/README.md) (`13_array`, `14_string_method`)
-- Stdlib roadmap (moving natives to `stdlib/`): [decisions/0003](../../decisions/0003-stdlib-roadmap.md)
+- Stdlib roadmap (moving natives to `stdlib/`): [ADR 0003](https://github.com/kinglet-lang/ADRs/blob/main/0003-stdlib-roadmap.md)

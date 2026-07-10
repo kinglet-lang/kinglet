@@ -1,6 +1,6 @@
 # Build system
 
-See [decisions/0014](../decisions/0014-compilation-toolchain-architecture.md) (implemented).
+See [ADR 0014](https://github.com/kinglet-lang/ADRs/blob/main/0014-compilation-toolchain-architecture.md) (implemented).
 
 ## Layout
 
@@ -38,7 +38,7 @@ binary. `prove` and `debug emit-kbc` are dev scripts under `scripts/build/`
 
 Prune `.kinglet/objects/` blobs no longer referenced by any stamp (reads
 `.kinglet/stamps/*.object`). **Build-cache housekeeping only** — not language/runtime
-GC ([0014](../decisions/0014-compilation-toolchain-architecture.md) § Post-0014).
+GC ([ADR 0014](https://github.com/kinglet-lang/ADRs/blob/main/0014-compilation-toolchain-architecture.md) § Post-0014).
 
 ```bash
 ./kinglet prune              # remove unreferenced Klos objects

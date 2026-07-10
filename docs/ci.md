@@ -52,7 +52,7 @@ bash scripts/ci/run-tests-native.sh
 - **Linux** (`ubuntu-latest`) is used in **Release** to build `compiler.kbc`.
   Full `run_all.sh` on Linux may hit runner limits during the ~3× self-host
   compile in round-trip, or fail bootstrap parity until `pass2b_ns_rank` is
-  platform-neutral (see [decisions/0013](../decisions/0013-bootstrap-bytecode-delta.md)).
+  platform-neutral (see [ADR 0013](https://github.com/kinglet-lang/ADRs/blob/main/0013-bootstrap-bytecode-delta.md)).
 
 ## Fixtures
 
