@@ -15,7 +15,7 @@ jobs:
 
     env:
       BOOTSTRAP_REPO: kinglet-lang/bootstrap
-      BOOTSTRAP_REF: main
+      BOOTSTRAP_REF: canon
 
     steps:
       - name: Checkout self-host

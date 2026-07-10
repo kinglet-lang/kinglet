@@ -8,7 +8,7 @@ on:
 
 env:
   BOOTSTRAP_REPO: kinglet-lang/bootstrap
-  BOOTSTRAP_REF: main
+  BOOTSTRAP_REF: canon
 
 jobs:
   test-fast:

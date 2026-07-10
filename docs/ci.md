@@ -39,7 +39,7 @@ bash scripts/ci/run-tests-native.sh
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BOOTSTRAP_REPO` | `kinglet-lang/bootstrap` | Bootstrap checkout (CI only) |
-| `BOOTSTRAP_REF` | `main` | Git ref for bootstrap |
+| `BOOTSTRAP_REF` | `canon` | Git ref for bootstrap |
 | `BOOTSTRAP_ROOT` | `$REPO/bootstrap` | Bootstrap source tree |
 | `KINGLET_BOOTSTRAP` | auto | C++ compiler binary |
 | `KINGLET` | `$KINGLET_BOOTSTRAP` | VM host for `--run` (bootstrap Ref) |
