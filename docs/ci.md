@@ -39,7 +39,7 @@ bash scripts/ci/run-tests-native.sh
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BOOTSTRAP_REPO` | `kinglet-lang/bootstrap` | Bootstrap checkout (CI only) |
-| `BOOTSTRAP_REF` | `main` | Git ref for bootstrap |
+| `BOOTSTRAP_REF` | `canon` | Git ref for bootstrap |
 | `BOOTSTRAP_ROOT` | `$REPO/bootstrap` | Bootstrap source tree |
 | `KINGLET_BOOTSTRAP` | auto | C++ compiler binary |
 | `KINGLET` | `$KINGLET_BOOTSTRAP` | VM host for `--run` (bootstrap Ref) |
@@ -52,7 +52,7 @@ bash scripts/ci/run-tests-native.sh
 - **Linux** (`ubuntu-latest`) is used in **Release** to build `compiler.kbc`.
   Full `run_all.sh` on Linux may hit runner limits during the ~3× self-host
   compile in round-trip, or fail bootstrap parity until `pass2b_ns_rank` is
-  platform-neutral (see [decisions/0013](../decisions/0013-bootstrap-bytecode-delta.md)).
+  platform-neutral (see [ADR 0013](https://github.com/kinglet-lang/ADRs/blob/main/0013-bootstrap-bytecode-delta.md)).
 
 ## Fixtures
 

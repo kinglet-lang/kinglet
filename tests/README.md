@@ -1,6 +1,6 @@
 # Test suite
 
-Unified layout per [decision 0012](../decisions/0012-test-suite-redesign.md). All
+Unified layout per [ADR 0012](https://github.com/kinglet-lang/ADRs/blob/main/0012-test-suite-redesign.md). All
 selfhost-driven suites share `common.sh` (`resolve_kinglet`, `ensure_build_stamp`) and
 the bootstrap C++ binary is only the **VM host** unless a suite explicitly compares
 pipelines.
